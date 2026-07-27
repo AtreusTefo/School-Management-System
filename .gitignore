@@ -1,0 +1,23 @@
+# ---- Java / Maven build output ----
+target/
+*.class
+
+# The Maven Wrapper downloads this on first run; it should not be committed.
+.mvn/wrapper/maven-wrapper.jar
+
+# ---- Node / Angular ----
+# (frontend/tracker-ui/.gitignore also covers these; repeated here so the rule
+#  holds even if that file is removed.)
+node_modules/
+.angular/
+dist/
+
+# ---- Logs ----
+*.log
+npm-debug.log*
+
+# ---- Editors / OS ----
+.idea/
+*.iml
+.DS_Store
+Thumbs.db

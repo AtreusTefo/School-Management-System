@@ -1,0 +1,70 @@
+<!-- THE TEMPLATE (the "view")
+     It displays the component's data and wires buttons to component methods. -->
+
+<h1>Assignment Tracker</h1>
+
+<!-- ===== ERROR BANNER =====
+     Only rendered when the component has an errorMessage. Without this, a
+     failed request left the user staring at an unchanged screen with no clue
+     that anything had gone wrong. -->
+<div
+  *ngIf="errorMessage"
+  role="alert"
+  style="border: 1px solid #b00; background: #fee; color: #900;
+         padding: 8px 12px; margin-bottom: 12px; max-width: 640px;">
+  {{ errorMessage }}
+  <button type="button" (click)="clearError()" style="margin-left: 12px;">
+    Dismiss
+  </button>
+</div>
+
+<!-- ===== CREATE ASSIGNMENT FORM ===== -->
+<!-- (ngSubmit) runs onCreate() when the form is submitted (Enter or the button).
+     [(ngModel)] is "two-way binding": whatever the user types is kept in sync
+     with the component's newTitle property, and vice-versa. -->
+<form (ngSubmit)="onCreate()">
+  <input
+    type="text"
+    name="newTitle"
+    [(ngModel)]="newTitle"
+    placeholder="New assignment title" />
+
+  <!-- The button is disabled until the box has some non-space text. -->
+  <button type="submit" [disabled]="!newTitle.trim()">Add</button>
+</form>
+
+<br />
+
+<!-- ===== ASSIGNMENT TABLE ===== -->
+<table border="1" cellpadding="8">
+  <thead>
+    <tr>
+      <th>Title</th>
+      <th>Status</th>
+      <th>Action</th>
+    </tr>
+  </thead>
+  <tbody>
+    <!-- *ngFor loops over the "assignments" array in the component,
+         drawing one <tr> row per assignment. -->
+    <tr *ngFor="let a of assignments">
+      <td>{{ a.title }}</td>
+      <td>{{ a.status }}</td>
+      <td>
+        <!-- (click) calls the component's onSubmit() method, passing this row's id.
+             [disabled] greys out the button once it's already submitted, so the
+             user can't submit twice (matching our backend business rule). -->
+        <button
+          (click)="onSubmit(a.id)"
+          [disabled]="a.status === 'SUBMITTED'">
+          Submit
+        </button>
+      </td>
+    </tr>
+
+    <!-- A friendly message when the list is empty. -->
+    <tr *ngIf="assignments.length === 0">
+      <td colspan="3">No assignments yet. Add one above.</td>
+    </tr>
+  </tbody>
+</table>
