@@ -1,4 +1,4 @@
-# School Management System — Assignment Tracker
+# School Management System — Assignment Tracker (JAVA SPRING BOOT)
 
 A minimal full-stack prototype demonstrating a **layered Spring Boot backend**
 and an **Angular frontend**. Beginner-friendly, heavily commented.
