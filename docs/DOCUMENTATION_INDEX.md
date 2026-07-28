@@ -44,6 +44,7 @@ document permitted to sit loose in `docs/`; everything else belongs in a subfold
 
 | Document | Contents |
 |----------|----------|
+| [`2026-07-28.md`](daily-reports/2026-07-28.md) | Work of 28 July 2026: enforcing data integrity at the database, fixing a concurrency defect measured before and after, upgrading to Java 25 and Spring Boot 3.5.16, and replacing documentation that described an unrelated application. |
 | [`2026-07-27.md`](daily-reports/2026-07-27.md) | Work of 27 July 2026: getting the stack running, fixing the HTTP error contract, making frontend failures visible, and the environment problems resolved along the way. |
 
 ### error-fixes/
