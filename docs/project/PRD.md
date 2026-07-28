@@ -1,4 +1,4 @@
-# Product Requirements Document — Assignment Tracker
+# Product Requirements Document — School Assignment Tracker
 
 | | |
 |---|---|
