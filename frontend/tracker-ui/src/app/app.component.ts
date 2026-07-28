@@ -92,6 +92,25 @@ export class AppComponent implements OnInit {
   }
 
   /**
+   * Retry after a failure: clear the banner and fetch the list again.
+   *
+   * WHY THIS EXISTS
+   * ---------------
+   * The list is fetched exactly once, when the page opens. If the backend
+   * happens to be down at that moment - most commonly because it is mid-restart -
+   * the table stays empty FOREVER, even after the backend comes back. The only
+   * recovery was a full page refresh, which nothing on the page suggested.
+   *
+   * A Retry button turns that dead end into a one-click recovery. loadAssignments()
+   * already clears the error on success and re-raises it on failure, so this stays
+   * honest if the backend is still down.
+   */
+  retry(): void {
+    this.errorMessage = null;
+    this.loadAssignments();
+  }
+
+  /**
    * Turn a failed HTTP call into one sentence a human can read.
    *
    * The backend's GlobalExceptionHandler sends a JSON body shaped like

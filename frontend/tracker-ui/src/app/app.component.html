@@ -13,7 +13,13 @@
   style="border: 1px solid #b00; background: #fee; color: #900;
          padding: 8px 12px; margin-bottom: 12px; max-width: 640px;">
   {{ errorMessage }}
-  <button type="button" (click)="clearError()" style="margin-left: 12px;">
+  <!-- Retry re-fetches the list. Without it, a failed initial load left an
+       empty table that never recovered, even after the backend came back -
+       the only fix was a full page refresh nothing on the page hinted at. -->
+  <button type="button" (click)="retry()" style="margin-left: 12px;">
+    Retry
+  </button>
+  <button type="button" (click)="clearError()" style="margin-left: 6px;">
     Dismiss
   </button>
 </div>
