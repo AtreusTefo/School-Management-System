@@ -3,6 +3,16 @@ import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 
 /**
+ * The states an assignment can be in. This list mirrors the backend's
+ * AssignmentStatus enum exactly.
+ *
+ * Declaring it as a union rather than `string` means a typo like 'SUBMITED'
+ * is a compile error here, instead of a comparison that quietly never matches
+ * and leaves a button enabled forever.
+ */
+export type AssignmentStatus = 'IN_PROGRESS' | 'SUBMITTED';
+
+/**
  * A TypeScript "interface" describing the shape of one assignment.
  * It must match the JSON the backend sends (id, title, status).
  * This gives us autocomplete and type-safety in the editor.
@@ -10,7 +20,7 @@ import { Observable } from 'rxjs';
 export interface Assignment {
   id: number;
   title: string;
-  status: string;
+  status: AssignmentStatus;
 }
 
 /**

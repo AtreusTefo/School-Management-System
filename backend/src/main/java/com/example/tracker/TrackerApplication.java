@@ -1,6 +1,7 @@
 package com.example.tracker;
 
 import com.example.tracker.model.Assignment;
+import com.example.tracker.model.AssignmentStatus;
 import com.example.tracker.repository.AssignmentRepository;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
@@ -33,8 +34,8 @@ public class TrackerApplication {
             if (repository.count() > 0) {
                 return;
             }
-            repository.save(new Assignment("Math Homework 1", "IN_PROGRESS"));
-            repository.save(new Assignment("History Essay", "IN_PROGRESS"));
+            repository.save(new Assignment("Math Homework 1", AssignmentStatus.IN_PROGRESS));
+            repository.save(new Assignment("History Essay", AssignmentStatus.IN_PROGRESS));
         };
     }
 }

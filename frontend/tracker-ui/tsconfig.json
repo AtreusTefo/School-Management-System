@@ -4,6 +4,11 @@
   "compileOnSave": false,
   "compilerOptions": {
     "outDir": "./dist/out-tsc",
+    /* Every source file lives under src/, and TypeScript would infer exactly
+       this. Stating it explicitly pins the output layout instead of letting it
+       shift when files are added or removed, and TypeScript 6 requires it to be
+       explicit wherever outDir is set. */
+    "rootDir": "./src",
     "strict": true,
     "noImplicitOverride": true,
     "noPropertyAccessFromIndexSignature": true,

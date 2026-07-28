@@ -1,0 +1,46 @@
+{
+    "java.compile.nullAnalysis.mode": "automatic",
+
+    // Analyse the Angular code with the SAME TypeScript the project builds with
+    // (5.5.4, per package.json). Without this the editor falls back to its own
+    // bundled compiler, which can be several major versions ahead and reports
+    // errors the real build never produces.
+    //
+    // VS Code will not load a workspace compiler silently. After this lands, run
+    // "TypeScript: Select TypeScript Version" once and choose "Use Workspace
+    // Version"; the prompt setting below offers that automatically.
+    "typescript.tsdk": "frontend/tracker-ui/node_modules/typescript/lib",
+    "typescript.enablePromptUseWorkspaceTsdk": true,
+    "java.configuration.updateBuildConfiguration": "interactive",
+
+    // Tell the Java language server which JDKs exist on this machine.
+    //
+    // The pom sets <java.version>25</java.version>, so the compiler is asked for
+    // "--release 25". The language server keeps its OWN registry of JDKs, entirely
+    // separate from JAVA_HOME, and without an entry here it reports
+    // "release 25 is not found in the system" even though `mvnw clean package`
+    // builds perfectly from the command line.
+    //
+    // The "name" values are Eclipse execution environments and must be spelled
+    // exactly like this; JavaSE-1.8 is the odd one out. The older entries are
+    // listed so the server can still open a project that targets them.
+    "java.configuration.runtimes": [
+        {
+            "name": "JavaSE-25",
+            "path": "C:\\Users\\Developer.03\\Java\\jdk-25.0.4+7",
+            "default": true
+        },
+        {
+            "name": "JavaSE-17",
+            "path": "C:\\Users\\Developer.03\\Java\\jdk-17.0.19+10"
+        },
+        {
+            "name": "JavaSE-11",
+            "path": "C:\\Program Files\\Microsoft\\jdk-11.0.12.7-hotspot"
+        },
+        {
+            "name": "JavaSE-1.8",
+            "path": "C:\\Program Files\\Eclipse Foundation\\jdk-8.0.302.8-hotspot"
+        }
+    ]
+}

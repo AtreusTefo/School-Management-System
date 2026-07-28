@@ -73,8 +73,8 @@ Every error body has the same shape, so the frontend only parses one thing:
 ```
 
 ## Run the backend
-Requires **Java 17 or newer**. Maven does *not* need to be installed — the
-project ships the Maven Wrapper (`mvnw`), which fetches the right Maven itself.
+Requires **Java 25** (the current LTS). Maven does *not* need to be installed —
+the project ships the Maven Wrapper (`mvnw`), which fetches the right Maven itself.
 
 ```bash
 cd "School Management System/backend"
@@ -84,9 +84,17 @@ cd "School Management System/backend"
 - Check it: open http://localhost:8080/api/assignments (should show JSON)
 - DB console: http://localhost:8080/h2-console (JDBC URL: `jdbc:h2:mem:trackerdb`)
 
-**Java 17 is a hard requirement** — Spring Boot 3.x will not start on Java 8 or
-11. Check with `java -version`; if it's older, install a JDK 17+ and point
-`JAVA_HOME` at it before running `mvnw`.
+**`JAVA_HOME` must point at a JDK 25.** The wrapper reads `JAVA_HOME` in
+preference to whatever `java` is on your `PATH`, so it is the setting that
+matters. If it is unset or points somewhere older, the build fails with
+`Unsupported class file major version` or `class file version 61.0`. Check with:
+
+```bash
+echo $JAVA_HOME          # Windows PowerShell: echo $env:JAVA_HOME
+```
+
+A terminal opened before `JAVA_HOME` was set will not see it. In VS Code, restart
+the editor itself — a new terminal tab still inherits the old environment.
 
 <details>
 <summary>If the build fails with <code>PKIX path building failed</code></summary>

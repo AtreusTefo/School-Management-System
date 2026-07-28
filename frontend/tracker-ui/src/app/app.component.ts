@@ -97,16 +97,27 @@ export class AppComponent implements OnInit {
    * The backend's GlobalExceptionHandler sends a JSON body shaped like
    * { status, error, message, path }, so when there IS a message we show it —
    * that's far more useful than a status number. Two cases need care:
-   *   - status 0 means the request never reached the server at all
-   *     (backend down, or CORS blocked it), so say so explicitly.
+   *   - status 0 means the request never reached the server at all,
+   *     which has SEVERAL possible causes (see below).
    *   - otherwise fall back to the caller's generic description.
    */
   private showError(err: unknown, fallback: string): void {
     if (err instanceof HttpErrorResponse) {
       if (err.status === 0) {
+        // status 0 means the browser never got a response. It does NOT prove the
+        // backend is down — the request may also have been blocked before it left
+        // the browser (a CORS rejection looks identical from here, and so does a
+        // proxy or security tool intercepting loopback traffic).
+        //
+        // The previous wording asserted "Is the backend running?" as though that
+        // were the only explanation, which sent a reader hunting the wrong problem
+        // when the server was demonstrably up. List the real candidates instead,
+        // and point at the console, which is the only place the true reason shows.
         this.errorMessage =
-          `${fallback}: cannot reach the API at http://localhost:8080. ` +
-          `Is the backend running?`;
+          `${fallback}: no response from the API at http://localhost:8080. ` +
+          `The backend may be stopped, or the browser may have blocked the request ` +
+          `(CORS, or a proxy intercepting localhost). Check the browser console — ` +
+          `it names the actual cause.`;
         return;
       }
       const serverMessage = err.error?.message;

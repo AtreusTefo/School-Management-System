@@ -1,5 +1,7 @@
 package com.example.tracker.exception;
 
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -88,6 +90,43 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiError> handleBadRequest(
             IllegalArgumentException ex, jakarta.servlet.http.HttpServletRequest request) {
         return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request.getRequestURI());
+    }
+
+    /**
+     * 409 CONFLICT — somebody else changed this row while we were working on it.
+     *
+     * The entity carries a @Version column, so Hibernate adds "AND version = ?"
+     * to every UPDATE. When a competing transaction commits first, this one
+     * matches zero rows and fails here instead of silently overwriting the other
+     * person's change.
+     *
+     * 409 is right for the same reason as the already-submitted case: the
+     * request was well formed, but it no longer fits the current state. Retrying
+     * against fresh data is the correct response, so we say so.
+     */
+    @ExceptionHandler(OptimisticLockingFailureException.class)
+    public ResponseEntity<ApiError> handleConcurrentModification(
+            OptimisticLockingFailureException ex, jakarta.servlet.http.HttpServletRequest request) {
+        return build(HttpStatus.CONFLICT,
+                "This assignment was changed by someone else. Reload and try again.",
+                request.getRequestURI());
+    }
+
+    /**
+     * 400 BAD REQUEST — the database refused the row: a NOT NULL column was
+     * empty, a value was too long, or a CHECK/UNIQUE constraint failed.
+     *
+     * Reaching this handler means something got past the application's own
+     * validation, so the constraint in the schema is what saved the data. We
+     * deliberately do NOT echo the driver's message back to the client, because
+     * it exposes table and column names; the detail belongs in the server log.
+     */
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ApiError> handleDataIntegrityViolation(
+            DataIntegrityViolationException ex, jakarta.servlet.http.HttpServletRequest request) {
+        return build(HttpStatus.BAD_REQUEST,
+                "The assignment could not be saved because it violates a data constraint.",
+                request.getRequestURI());
     }
 
     /**

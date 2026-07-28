@@ -4,6 +4,7 @@ import com.example.tracker.model.Assignment;
 import com.example.tracker.service.AssignmentService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -26,10 +27,21 @@ import java.util.List;
  * origin (http://localhost:4200, the Angular dev server) from calling an API
  * on a different origin (http://localhost:8080, Spring Boot) unless the API
  * explicitly allows it. This line grants that permission (CORS).
+ *
+ * BOTH spellings of loopback are listed deliberately. "localhost" and
+ * "127.0.0.1" are the same machine but NOT the same origin, so a page opened at
+ * http://127.0.0.1:4200 was refused with 403 while the identical page at
+ * http://localhost:4200 worked. Worse, the browser reports that refusal to
+ * Angular as status 0 — indistinguishable from the backend being switched off —
+ * which makes it a genuinely confusing failure to diagnose.
+ *
+ * The list stays explicit rather than becoming a wildcard: "*" would let any
+ * site on the internet call this API from a visitor's browser. For a real
+ * deployment these values belong in configuration, not compiled in.
  */
 @RestController
 @RequestMapping("/api/assignments")
-@CrossOrigin(origins = "http://localhost:4200")
+@CrossOrigin(origins = { "http://localhost:4200", "http://127.0.0.1:4200" })
 public class AssignmentController {
 
     // The controller DEPENDS ON the service below it (dependency injection).
@@ -98,6 +110,7 @@ public class AssignmentController {
          * business rule no matter who calls it. Never rely on one layer alone.
          */
         @NotBlank(message = "Title must not be blank")
+        @Size(max = 200, message = "Title must be at most 200 characters")
         private String title;
 
         public String getTitle() {
