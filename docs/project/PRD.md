@@ -148,7 +148,11 @@ An assignment is represented as:
 { "id": 1, "title": "Math Homework 1", "status": "IN_PROGRESS" }
 ```
 
-Cross-origin requests are permitted from `http://localhost:4200` only.
+Cross-origin requests are permitted from an explicit allow-list, set by
+`app.cors.allowed-origins` and defaulting to `http://localhost:4200` and
+`http://127.0.0.1:4200`. The base URL above is the development default; the frontend
+reads its own value from `environment.apiBaseUrl`, so neither half has the other's
+address compiled in.
 
 ## 6. Non-functional requirements
 
@@ -163,6 +167,7 @@ Cross-origin requests are permitted from `http://localhost:4200` only.
 | **NFR-3** | Startup is repeatable. Sample data is seeded only when the table is empty, so restarting cannot duplicate rows. |
 | **NFR-4** | Building requires only a JDK 25 (current LTS). The Maven Wrapper supplies its own Maven. |
 | **NFR-5** | The code is written to be read: layer responsibilities are commented, and comments explain *why* a choice was made, not just what the line does. |
+| **NFR-5a** | Neither half compiles the other's address in. The backend takes its permitted origins from configuration; the frontend takes its API address from a build-time environment file. The same backend jar runs in any environment, and a production bundle contains no `localhost` reference. |
 
 ### **Proposed**
 
@@ -209,7 +214,7 @@ Accepted for this release, recorded so they are chosen rather than discovered.
 | **L2** | No authentication | Anyone reaching the page has full control |
 | ~~**L3**~~ | ~~Status is an untyped string~~ | **Resolved.** Status is now a typed enum with a database-level constraint on the column. |
 | **L4** | No automated tests | Every change must be re-verified by hand |
-| **L5** | Localhost-only CORS | Cannot be deployed without configuration changes |
+| ~~**L5**~~ | ~~Localhost-only CORS~~ | **Resolved.** Permitted origins come from `app.cors.allowed-origins`, and the frontend's API address from its environment file, so either half can be pointed elsewhere without a code change. |
 | **L6** | The list does not refresh on its own | Two people working at once can act on stale data. Handled safely — the server returns `409` and the interface explains it — but it is a recovery, not a prevention. |
 | **L7** | Single shared list | No classes, terms, or subjects |
 | **L8** | No relationships between tables | The schema is a single table, so there are no foreign keys and nothing for referential integrity to enforce. It becomes relevant at R3 and R4. |

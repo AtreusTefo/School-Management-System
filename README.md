@@ -125,7 +125,39 @@ npm start
 - UI runs at http://localhost:4200
 
 Start the **backend first**, then the frontend, so the API is ready. If the API
-isn't up, the page now says so in a red banner instead of sitting there blank.
+isn't up, the page says so in a red banner and offers a **Retry** button — no need
+to refresh once the backend comes back.
 
 If `node_modules/` is ever missing or broken, restore it with `npm install` in
 `frontend/tracker-ui`.
+
+## Pointing the two halves elsewhere
+
+Neither half has the other's address compiled in, so moving either one is
+configuration rather than a code change.
+
+**Backend** — the same jar runs anywhere. Port and permitted origins are supplied
+at launch:
+
+```bash
+java -jar target/tracker-0.0.1-SNAPSHOT.jar \
+     --server.port=8081 \
+     --app.cors.allowed-origins=https://tracker.example.com
+```
+
+Environment variables work too (`APP_CORS_ALLOWED_ORIGINS=...`). The origins in
+force are logged at startup. Never set this to `*` — that would let any site on
+the internet call the API from a visitor's browser.
+
+**Frontend** — the API address lives in `src/environments/`:
+
+| File | Used by | `apiBaseUrl` |
+|------|---------|--------------|
+| `environment.development.ts` | `npm start` | `http://localhost:8080` |
+| `environment.ts` | `npm run build` | `''` (same origin) |
+
+The production build's empty base makes every request relative, so the site calls
+whichever host serves it — the usual shape behind a reverse proxy that forwards
+`/api` to the backend. That also means production needs no CORS permission at all;
+CORS is a development concern here, created by serving the page and the API on
+different ports.

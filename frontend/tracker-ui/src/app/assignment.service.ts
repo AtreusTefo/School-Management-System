@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
+import { environment } from '../environments/environment';
 
 /**
  * The states an assignment can be in. This list mirrors the backend's
@@ -36,8 +37,20 @@ export interface Assignment {
 @Injectable({ providedIn: 'root' })
 export class AssignmentService {
 
-  // The base address of our Spring Boot controller.
-  private readonly baseUrl = 'http://localhost:8080/api/assignments';
+  /**
+   * The address of our Spring Boot controller, built from configuration.
+   *
+   * This used to be the literal string 'http://localhost:8080/api/assignments'.
+   * That made the compiled site usable on exactly one machine: pointing it at a
+   * real backend meant editing source and rebuilding, which is not a property a
+   * deployable artefact should have.
+   *
+   * environment.apiBaseUrl supplies the host, and Angular swaps the environment
+   * file per build configuration (see angular.json). In development it is
+   * 'http://localhost:8080'; in production it is empty, which makes the path
+   * relative so the site calls whichever host served it.
+   */
+  private readonly baseUrl = `${environment.apiBaseUrl}/api/assignments`;
 
   // Angular injects HttpClient for us (its version of dependency injection).
   constructor(private http: HttpClient) {}

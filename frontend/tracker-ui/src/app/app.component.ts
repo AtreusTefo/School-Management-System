@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Assignment, AssignmentService } from './assignment.service';
+import { environment } from '../environments/environment';
 
 /**
  * THE COMPONENT
@@ -132,8 +133,12 @@ export class AppComponent implements OnInit {
         // were the only explanation, which sent a reader hunting the wrong problem
         // when the server was demonstrably up. List the real candidates instead,
         // and point at the console, which is the only place the true reason shows.
+        // Name the API by its configured address rather than a literal, so the
+        // message stays true when the app is pointed at a different backend.
+        // In production apiBaseUrl is empty (same-origin), so describe it that way.
+        const api = environment.apiBaseUrl || 'this site';
         this.errorMessage =
-          `${fallback}: no response from the API at http://localhost:8080. ` +
+          `${fallback}: no response from the API at ${api}. ` +
           `The backend may be stopped, or the browser may have blocked the request ` +
           `(CORS, or a proxy intercepting localhost). Check the browser console — ` +
           `it names the actual cause.`;

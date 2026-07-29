@@ -26,7 +26,7 @@ be built, run and deployed independently.
 +------------------------------------------------------------------+
 |  AssignmentService the only place that knows the API URLs         |
 +------------------------------------------------------------------+
-|  HttpClient          CORS origin http://localhost:4200            |
+|  HttpClient        API base URL from environment.ts (build config) |
 +------------------------------------------------------------------+
                           HTTP / JSON
 +------------------------------------------------------------------+
@@ -85,6 +85,8 @@ backend/
     │   │   └── AssignmentService.java
     │   ├── controller/
     │   │   └── AssignmentController.java
+    │   ├── config/
+    │   │   └── CorsConfig.java        # CORS origins, read from configuration
     │   └── exception/
     │       ├── AssignmentNotFoundException.java
     │       └── GlobalExceptionHandler.java
@@ -115,7 +117,8 @@ POST /api/assignments               -> Assignment         200  (400 on invalid)
 PUT  /api/assignments/{id}/submit   -> Assignment         200  (400 / 404 / 409)
 ```
 
-- Annotated `@CrossOrigin(origins = "http://localhost:4200")`.
+- Declares **no** CORS annotation. Permitted origins come from configuration via
+  `CorsConfig` (see 2.7), so the frontend's address is not compiled into the backend.
 - Accepts a nested `CreateAssignmentRequest` DTO carrying only `title`, so a client
   cannot set `id` or `status`. Assigning those is the service's job.
 - `@Valid` on the request body activates the DTO's constraints. Without it the
@@ -265,9 +268,40 @@ that check and the commit.
 | `spring.jpa.hibernate.ddl-auto` | `create-drop` | Guarantees the schema matches the entities. `update` only ever adds and will not tighten an existing column, so constraints could silently drift |
 | `spring.jpa.open-in-view` | `false` | Closes the persistence context when the service returns, instead of holding a connection through view rendering |
 | `spring.h2.console.enabled` | `true` | Browse real rows at `/h2-console` |
+| `app.cors.allowed-origins` | `http://localhost:4200,http://127.0.0.1:4200` | Which origins may call the API. Read by `CorsConfig`; see 2.7 |
 
 On a persistent database, `ddl-auto` should be `validate` with schema changes managed
 by migrations.
+
+---
+
+### 2.7 Cross-Origin Configuration
+
+`CorsConfig` registers a `CorsFilter` for `/api/**`, with the permitted origins read
+from `app.cors.allowed-origins`. Nothing about the frontend's address is compiled
+into the backend, so one artefact serves every environment:
+
+```bash
+java -jar tracker.jar --app.cors.allowed-origins=https://tracker.example.com
+APP_CORS_ALLOWED_ORIGINS=https://tracker.example.com java -jar tracker.jar
+```
+
+The origins in force are logged at startup, so there is no guessing which
+configuration source won.
+
+**Why a filter rather than `WebMvcConfigurer`.** The usual implementation overrides
+`addCorsMappings`, whose parameter Spring declares `@NonNull`; an override that does
+not repeat the annotation produces an unchecked-conversion warning on every build.
+A filter overrides nothing, so the contract cannot be broken. It also runs earlier in
+the chain, which matters if authentication is added in front of the controllers.
+
+Both loopback spellings are listed by default because `localhost` and `127.0.0.1` are
+the same machine but **not** the same origin - a page served from one was refused
+while the identical page from the other worked, and the browser reports that refusal
+to the client as `status 0`, indistinguishable from the server being switched off.
+
+The list stays explicit. `*` would let any site on the internet call this API from a
+visitor's browser.
 
 ---
 
@@ -281,11 +315,19 @@ frontend/tracker-ui/
 └── src/
     ├── main.ts                     # bootstrapApplication + provideHttpClient
     ├── index.html
+    ├── environments/
+    │   ├── environment.ts          # production - apiBaseUrl '' (same origin)
+    │   └── environment.development.ts  # dev - apiBaseUrl http://localhost:8080
     └── app/
         ├── assignment.service.ts   # Assignment, AssignmentStatus, HTTP calls
         ├── app.component.ts        # state, actions, error handling
         └── app.component.html      # error banner, create form, table
 ```
+
+`angular.json` swaps `environment.ts` for `environment.development.ts` under the
+`development` configuration, which `npm start` uses; `npm run build` keeps the
+production file. The API address is therefore a build input, not source code - the
+production bundle contains no `localhost` reference at all.
 
 There is one component and one service. `app.config.ts` and `app.component.css` were
 removed because nothing referenced them.
@@ -295,9 +337,14 @@ removed because nothing referenced them.
 The only place that knows the backend's URLs; components never call `HttpClient`
 directly. This mirrors the backend rule that only the repository touches the database.
 
+The base address comes from `environment.apiBaseUrl` rather than a literal, so
+pointing the app at another backend is a build setting rather than a code change.
+
 ```typescript
 type AssignmentStatus = 'IN_PROGRESS' | 'SUBMITTED';   // mirrors the Java enum
 interface Assignment { id: number; title: string; status: AssignmentStatus; }
+
+private readonly baseUrl = `${environment.apiBaseUrl}/api/assignments`;
 
 getAssignments()      : Observable<Assignment[]>   // GET
 createAssignment(t)   : Observable<Assignment>     // POST { title }
@@ -317,7 +364,14 @@ rather than a comparison that never matches and leaves a button permanently enab
 | `loadAssignments()` | Fetch and replace the list |
 | `onCreate()` | Trim, guard against blank, POST, reload |
 | `onSubmit(id)` | PUT, reload |
+| `retry()` | Clear the banner and re-fetch the list |
+| `clearError()` | Dismiss the banner |
 | `showError(err, fallback)` | Turn a failure into one readable sentence |
+
+`retry()` exists because the list is fetched once, at page load. If the backend was
+down at that moment - most often mid-restart - the table stayed empty permanently
+even after the backend returned, and the only recovery was a page refresh that
+nothing on screen suggested.
 
 Every `subscribe()` supplies an error callback. Before that, a failed request did
 nothing visible and a click that failed looked identical to one that was ignored.
@@ -382,7 +436,7 @@ Tab A banner     -> shows the server's message, list reloads on next action
 ```
 No authentication and no user identity of any kind
 Anyone who can reach the page has full control of the shared list
-CORS restricted to http://localhost:4200
+CORS restricted to an explicit allow-list (loopback by default, configurable)
 No HTTPS
 No rate limiting
 H2 console exposed at /h2-console with default credentials
@@ -397,11 +451,13 @@ its current form.
 Authentication and server-enforced roles      (PRD R3)
 Password hashing - bcrypt or Argon2
 HTTPS/TLS
-CORS whitelist driven by configuration, not a hard-coded origin
 Disable the H2 console
 Rate limiting
 A persistent database with migrations         (PRD R1)
 ```
+
+CORS is no longer on this list: the allow-list is already configuration-driven, so a
+deployment sets its own origins without a rebuild.
 
 ---
 
@@ -416,9 +472,20 @@ Database: H2 in-memory, created and dropped with the process
 Start the backend first. If it is not up, the page reports it in a banner.
 
 ### Production
-Not supported. Beyond the security items above, the in-memory database means all data
-is lost on restart (`docs/project/PRD.md` L1, R1), and the frontend's API base URL is hard-coded to
-`localhost:8080` rather than read from an environment file.
+Not supported, but no longer for configuration reasons. Both halves now take their
+environment-specific values as input rather than compiling them in:
+
+```bash
+# backend - same jar, any host and any permitted origin
+java -jar tracker.jar --server.port=8081 \
+     --app.cors.allowed-origins=https://tracker.example.com
+
+# frontend - production build calls whichever host serves it
+npm run build
+```
+
+What still blocks production is the security list above and the in-memory database,
+which loses all data on restart (`docs/project/PRD.md` L1, R1).
 
 ---
 
@@ -429,7 +496,7 @@ is lost on restart (`docs/project/PRD.md` L1, R1), and the frontend's API base U
 | A1 | In-memory database | All data lost on restart |
 | A2 | No authentication | No per-user views, no authority rules |
 | A3 | Single table, no relationships | No classes, terms, subjects or ownership |
-| A4 | Hard-coded API base URL in the frontend | Cannot be pointed at another environment without a code change |
+| ~~A4~~ | ~~Hard-coded API base URL in the frontend~~ | **Resolved.** The base URL comes from `environment.apiBaseUrl`, and CORS origins from `app.cors.allowed-origins`. Neither half compiles the other's address in. |
 | A5 | No automated tests | Every change is re-verified by hand |
 | A6 | No mapping layer on responses | The entity is serialised directly; a new column is exposed unless explicitly hidden, as `version` is |
 | A7 | Submission is one-way | No route from `SUBMITTED` back to `IN_PROGRESS` |

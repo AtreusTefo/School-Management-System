@@ -23,25 +23,18 @@ import java.util.List;
  *                   not HTML pages.
  * @RequestMapping  = every URL in this class starts with "/api/assignments".
  *
- * @CrossOrigin is a SECURITY setting. Browsers block a page served from one
- * origin (http://localhost:4200, the Angular dev server) from calling an API
- * on a different origin (http://localhost:8080, Spring Boot) unless the API
- * explicitly allows it. This line grants that permission (CORS).
+ * CROSS-ORIGIN permission is NOT declared here. It used to be, as
+ * @CrossOrigin(origins = "http://localhost:4200"), which compiled the
+ * frontend's address into the backend and meant a rebuild whenever the
+ * interface moved. It now comes from configuration - see CorsConfig and
+ * `app.cors.allowed-origins` in application.properties.
  *
- * BOTH spellings of loopback are listed deliberately. "localhost" and
- * "127.0.0.1" are the same machine but NOT the same origin, so a page opened at
- * http://127.0.0.1:4200 was refused with 403 while the identical page at
- * http://localhost:4200 worked. Worse, the browser reports that refusal to
- * Angular as status 0 — indistinguishable from the backend being switched off —
- * which makes it a genuinely confusing failure to diagnose.
- *
- * The list stays explicit rather than becoming a wildcard: "*" would let any
- * site on the internet call this API from a visitor's browser. For a real
- * deployment these values belong in configuration, not compiled in.
+ * That also keeps this class honest: a controller's job is to receive a
+ * request and delegate. Deciding which sites may call the API is a
+ * cross-cutting security concern, not one endpoint's business.
  */
 @RestController
 @RequestMapping("/api/assignments")
-@CrossOrigin(origins = { "http://localhost:4200", "http://127.0.0.1:4200" })
 public class AssignmentController {
 
     // The controller DEPENDS ON the service below it (dependency injection).
