@@ -42,11 +42,52 @@
             <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
 
-        <!-- H2: the in-memory database. "runtime" = only needed while running. -->
+        <!-- SECURITY: authentication, role-based authorisation, BCrypt hashing. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+
+        <!-- SQL SERVER DRIVER: how Java talks to MSSQLSERVER01 over TCP.
+             Note this is JDBC, not Entity Framework - EF is a .NET technology and
+             cannot be used from Java. JPA/Hibernate fills the same role here, and
+             is equally "code first": the schema comes from the @Entity classes. -->
+        <dependency>
+            <groupId>com.microsoft.sqlserver</groupId>
+            <artifactId>mssql-jdbc</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- FLYWAY: versioned schema migrations. On a persistent database the
+             schema must be changed deliberately and repeatably, never inferred by
+             the ORM - see ddl-auto=validate in application.properties. -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-sqlserver</artifactId>
+        </dependency>
+
+        <!-- H2: no longer the application database. Kept for TESTS only, so the
+             suite runs fast and needs no SQL Server instance to be up. -->
         <dependency>
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>
-            <scope>runtime</scope>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- TEST: JUnit 5, Mockito, MockMvc, AssertJ. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-test</artifactId>
+            <scope>test</scope>
         </dependency>
     </dependencies>
 

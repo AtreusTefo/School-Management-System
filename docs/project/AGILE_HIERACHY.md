@@ -33,18 +33,28 @@ estimated in **story points** on the Fibonacci scale and prioritised by value.
 |---------|--------|
 | **Backend** | Java 25 (LTS), Spring Boot 3.5.16, embedded Tomcat, port 8080 |
 | **Persistence** | Spring Data JPA, Hibernate 6.6 |
-| **Database** | H2, in-memory (`jdbc:h2:mem:trackerdb`) |
+| **Database** | SQL Server 2019 Developer Edition, instance `MSSQLSERVER01`, database `School Management System`, TCP port 14333 |
+| **Schema management** | Flyway migrations; `ddl-auto=validate` so Hibernate may never alter the schema |
+| **Security** | Spring Security - session authentication, BCrypt hashing, CSRF tokens, role-based rules |
 | **Frontend** | Angular 18, standalone components, port 4200 |
-| **Validation** | Jakarta Bean Validation (`@Valid`, `@NotBlank`, `@Size`) |
+| **Validation** | Jakarta Bean Validation (`@Valid`, `@NotBlank`, `@Size`) plus database constraints |
 | **Build** | Maven Wrapper (`mvnw`) for the backend; npm / Angular CLI for the frontend |
 | **Source control** | Git, GitHub - `AtreusTefo/School-Management-System` |
 | **API documentation** | None. The contract is documented in `docs/project/PRD.md` section 5 |
 | **Error logging** | Spring Boot default console logging |
-| **Object mapping** | None. A small nested DTO is used for the create request |
-| **Testing** | None automated. Verification is scripted and run by hand |
+| **Object mapping** | None. Small nested DTOs are used for request bodies |
+| **Testing** | JUnit 5, Mockito, MockMvc, Spring Security Test - 29 tests against H2 |
 
-**Roles:** none. The system has no concept of a user; anyone reaching the page sees
-and controls the same shared list.
+**Roles:** `TEACHER` and `STUDENT`. A teacher sets work, may set it FOR a student,
+and may edit, delete or reopen any assignment. A student sees only their own work
+and may submit it.
+
+> **A note on Entity Framework.** An earlier instruction asked for Entity Framework
+> 6.4 with an `ApplicationDbContext`. EF is a .NET technology and cannot run on this
+> Java backend; that wording came from the inherited documentation describing an
+> unrelated ASP.NET application. JPA/Hibernate fills the same role and is equally
+> code-first - the schema derives from the `@Entity` classes - so the database
+> requirement was met without a rewrite.
 
 ---
 
@@ -120,25 +130,28 @@ APPLICATION: School Management System - Assignment Tracker
 │   └── FEAT-09: Accurate Project Documentation
 │       └── US-13: Read documentation that matches the running system
 │
-├── EPIC-05: Persistence                                     [Not started]
+├── EPIC-05: Persistence                                            [Done]
 │   └── FEAT-10: Durable Storage
 │       └── US-14: Keep assignments after a restart              (PRD R1)
 │
-├── EPIC-06: Accounts and Roles                              [Not started]
+├── EPIC-06: Accounts and Roles                                     [Done]
 │   └── FEAT-11: Identity
 │       ├── US-15: Sign in and see only my own assignments      (PRD R3)
 │       └── US-16: Restrict who may create an assignment        (PRD R3)
 │
-├── EPIC-07: Assignment Lifecycle                            [Not started]
+├── EPIC-07: Assignment Lifecycle                                   [Done]
 │   └── FEAT-12: Editing and Deadlines
 │       ├── US-17: Correct or remove an assignment              (PRD R5)
 │       ├── US-18: Set a due date and see overdue work          (PRD R4)
 │       └── US-19: Undo an accidental submission                (PRD R6)
 │
-└── EPIC-08: Automated Testing                               [Not started]
+└── EPIC-08: Automated Testing                                      [Done]
     └── FEAT-13: Regression Suite
         └── US-20: Run the verification suite automatically   (PRD NFR-9)
 ```
+
+All eight epics are delivered. Sprint 2 below records how, and what changed in the
+design along the way.
 
 ---
 
@@ -178,21 +191,26 @@ commit `80b3c9b` plus the data-integrity work of 28 July.
 A User Story is **Done** only when all of the following hold:
 
 - Code is committed and pushed to `main`.
-- `.\mvnw.cmd clean package` succeeds; `npm run build` succeeds.
-- The API surface has been exercised: `200` list, `200` create, `400` blank title,
-  `400` missing title, `400` over-long title, `200` submit, `409` resubmit, `404`
-  unknown id, `400` non-numeric id.
-- Concurrency holds: of at least 12 simultaneous submissions to one assignment,
-  exactly one returns `200`.
-- The application has been driven in a browser at `http://localhost:4200` - create and
-  submit both work, with no console errors.
-- Failure is visible: with the backend stopped, the page says the API is unreachable.
+- `.\mvnw.cmd clean package` succeeds, **including the test suite**; `npm run build`
+  succeeds.
+- The automated tests pass. They cover the API surface (`200` list and create; `400`
+  blank, missing and over-long title; `404` unknown id; `400` non-numeric id; `409`
+  resubmit), the role rules, the ownership scoping, and the full lifecycle.
+- Authority holds: an anonymous request is `401`, a write without a CSRF token is
+  `403`, and a student cannot create, edit or delete.
+- Data survives a restart, and the database rejects invalid data written directly to
+  it, bypassing the application.
+- The application has been driven in a browser at `http://localhost:4200` as **both**
+  roles, with no console errors.
+- Failure is visible: with the backend stopped, the page says so and offers Retry.
 - No error path returns a bare `500`.
 - Documentation affected by the change was updated in the same commit.
 
-> **Known gap:** these checks are scripted but run by hand. US-20 exists to make them
-> automatic and repeatable. Until then, "Done" depends on the developer actually
-> running them.
+> **The known gap is closed.** These checks used to be a script somebody had to
+> remember to run; US-20 turned them into 29 tests that run as part of the build.
+> Two limits remain honest: the suite runs against H2, so the SQL Server migrations
+> are not themselves covered, and browser behaviour still needs a real browser -
+> which is exactly where the CSRF defect was found.
 
 ### Story Point Scale (Fibonacci)
 
@@ -226,15 +244,14 @@ Delivered work first, then candidates. **Total delivered: 47 points.**
 | US-11 | Build the backend without installing Maven | Medium | 2 | Done |
 | US-12 | Start the frontend with a single command | Medium | 3 | Done |
 | US-13 | Documentation matching the running system | Medium | 2 | Done |
-| **Delivered** | | | **47** | |
-| US-14 | Keep assignments after a restart | High | 5 | Not started |
-| US-15 | Sign in and see only my own assignments | High | 13 | Not started |
-| US-16 | Restrict who may create an assignment | Medium | 3 | Not started |
-| US-17 | Correct or remove an assignment | Medium | 5 | Not started |
-| US-18 | Set a due date and see overdue work | Medium | 8 | Not started |
-| US-19 | Undo an accidental submission | Low | 3 | Not started |
-| US-20 | Run the verification suite automatically | High | 8 | Not started |
-| **Candidate** | | | **45** | |
+| US-14 | Keep assignments after a restart | High | 5 | Done |
+| US-15 | Sign in and see only my own assignments | High | 13 | Done |
+| US-16 | Restrict who may create an assignment | Medium | 3 | Done |
+| US-17 | Correct or remove an assignment | Medium | 5 | Done |
+| US-18 | Set a due date and see overdue work | Medium | 8 | Done |
+| US-19 | Undo an accidental submission | Low | 3 | Done |
+| US-20 | Run the verification suite automatically | High | 8 | Done |
+| **Delivered** | | | **92** | **all 20 stories** |
 
 ---
 
@@ -297,22 +314,71 @@ requires a system Maven; and `title` and `status` gained real column constraints
 
 ---
 
-### Sprint 2 - Proposed, Not Started
-**Sprint Goal (draft):** *Make data survive a restart and make the verification suite
-automatic.*
+### Sprint 2 - Durable Data, Real Accounts, a Full Lifecycle, and a Safety Net
+**Dates:** 29 July 2026
+**Sprint Goal:** *Move off the in-memory database, give the system a notion of who
+is using it, complete the assignment lifecycle, and make every guarantee testable
+without a human remembering to check.*
+**Delivered:** 45 story points
 
-| Story | Title | Points |
-|-------|-------|:------:|
-| US-14 | Keep assignments after a restart | 5 |
-| US-20 | Run the verification suite automatically | 8 |
-| **Total** | | **13** |
+| Story | Title | Points | Status |
+|-------|-------|:------:|:------:|
+| US-14 | Keep assignments after a restart | 5 | Done |
+| US-20 | Run the verification suite automatically | 8 | Done |
+| US-15 | Sign in and see only my own assignments | 13 | Done |
+| US-16 | Restrict who may create an assignment | 3 | Done |
+| US-17 | Correct or remove an assignment | 5 | Done |
+| US-18 | Set a due date and see overdue work | 8 | Done |
+| US-19 | Undo an accidental submission | 3 | Done |
+| **Total** | | **45** | |
 
-Rationale: US-14 blocks most other work - accounts, due dates and edit history are all
-meaningless while the database is wiped on every restart. US-20 protects the guarantees
-won in Sprint 1, which are currently only as reliable as someone remembering to re-run
-the checks by hand.
+**Sprint Review.**
 
-This Sprint has not been planned or started. It is a recommendation.
+*Persistence (EPIC-05).* The database is now SQL Server 2019 Developer Edition on
+instance `MSSQLSERVER01`, database `School Management System`. Schema changes go
+through Flyway migrations and `ddl-auto=validate`, so Hibernate may check the schema
+but never change it. Verified by creating an assignment, killing the JVM, restarting,
+and finding the row still present - the acceptance criterion US-14 was written for.
+
+*Accounts and roles (EPIC-06).* Two roles, session authentication, BCrypt hashing and
+CSRF protection. This also gave the schema its first FOREIGN KEY: `assignment.owner_id`
+references `app_user.id`, with no `ON DELETE CASCADE`, so the database refuses to
+delete an account that still owns work rather than silently destroying it.
+
+*Lifecycle (EPIC-07).* Edit, delete, due dates with a derived `OVERDUE` state, and
+teacher-only reopening. Overdue is computed on every read rather than stored: a
+stored flag is wrong the moment midnight passes.
+
+*Testing (EPIC-08).* 29 automated tests - 17 unit tests of the business rules with
+mocks, and 12 full-stack tests through MockMvc with real security. The nine checks
+that used to be a PowerShell script somebody had to remember are now part of
+`mvnw test`.
+
+**Three design corrections made during the Sprint,** each found by testing rather
+than by review:
+
+1. *A student could see nothing.* Ownership was first set to the creator, and only
+   teachers can create - so a student's list was always empty and the role was
+   decorative. Creating now accepts an optional `assignTo`, so a teacher sets work
+   FOR somebody.
+2. *A teacher could not fix their own typo.* With edit restricted to the owner, a
+   teacher who assigned work to a student lost the ability to correct it, while the
+   student gained the ability to rewrite the assignment they had been set. Editing
+   now follows the ROLE, not the row.
+3. *Sign-in failed in the browser but passed every API test.* Angular deliberately
+   refuses to attach its CSRF token to cross-origin requests, and in development the
+   API is on another port. A narrow interceptor now forwards the token to our own API
+   only. No API-level test could have caught this; it needed a real browser.
+
+**Sprint Retrospective**
+
+| | Notes |
+|-|-------|
+| Start | Testing in a real browser as well as against the API. Two of the three defects above were invisible to HTTP-level probes. |
+| Start | Writing migrations as separate batches on SQL Server. Adding a column and using it in one batch fails to compile, because SQL Server parses the whole batch first. |
+| Stop | Trusting a probe that passes. The CSRF "no token" check passed for the wrong reason - PowerShell's `-WebSession` silently resends headers, so the test was sending the token it claimed to omit. |
+| Continue | Making the database enforce its own rules. Every constraint was checked by writing bad data through `sqlcmd`, bypassing the application entirely. |
+| Continue | Fixing the cause rather than the symptom. The null-analysis warnings were removed by not overriding an annotated method, not by adding a suppression. |
 
 ---
 
@@ -650,21 +716,198 @@ This Sprint has not been planned or started. It is a recommendation.
 
 ---
 
-## Planned Epics
+## EPIC-05: Persistence
 
-Not started. Each maps to a `docs/project/PRD.md` section 7 item and needs Product Owner agreement
-before it becomes scope.
+> **Goal**: Stop losing everything on restart, so the rest of the system can mean
+> something.
 
-| Epic | Stories | Points | Depends on | PRD |
-|------|---------|:------:|------------|-----|
-| EPIC-05: Persistence | US-14 | 5 | - | R1 |
-| EPIC-06: Accounts and Roles | US-15, US-16 | 16 | EPIC-05 | R3 |
-| EPIC-07: Assignment Lifecycle | US-17, US-18, US-19 | 16 | EPIC-05, EPIC-06 | R4, R5, R6 |
-| EPIC-08: Automated Testing | US-20 | 8 | - | NFR-9 |
+### FEAT-10: Durable Storage
 
-**Sequencing note.** EPIC-05 blocks the rest: accounts, due dates and edit history are
-all meaningless while every restart wipes the database. EPIC-08 is independent and can
-run in parallel; it is the only item that protects the guarantees already delivered.
+#### US-14: Keep Assignments After a Restart
+> **Story Points**: 5 | **Sprint**: 2 | **Status**: Done
+
+**As a** user,
+**I want** my assignments to still be there tomorrow,
+**so that** the system is a record rather than a scratchpad.
+
+**Acceptance Criteria**
+- [x] The application database is SQL Server 2019 (`MSSQLSERVER01`), database
+      `School Management System`.
+- [x] Schema changes are Flyway migrations; `ddl-auto=validate` forbids Hibernate
+      from altering the schema itself.
+- [x] Data created before a restart is present after it.
+- [x] Restarting does not re-run seed data or duplicate rows.
+- [x] The `status` CHECK constraint survives the move - H2's native `ENUM` had no
+      SQL Server equivalent and had to be written explicitly.
+
+**Tasks**
+- TASK-49: Enable TCP on the named instance and pin a static port (14333)
+- TASK-50: Create the database and a scoped `tracker_app` login
+- TASK-51: Add `mssql-jdbc` and Flyway; switch `ddl-auto` to `validate`
+- TASK-52: Write V1 baseline with CHECK constraints for status and blank titles
+- TASK-53: Verify data survives a JVM restart
+
+**Example**
+> Create an assignment, kill the JVM, start it again: the row is still there, the
+> seed does not run a second time, and Flyway reports "up to date".
+
+---
+
+## EPIC-06: Accounts and Roles
+
+> **Goal**: Give the system a notion of who is using it, so "my work" can exist.
+
+### FEAT-11: Identity
+
+#### US-15: Sign In and See Only My Own Assignments
+> **Story Points**: 13 | **Sprint**: 2 | **Status**: Done
+
+**As a** student,
+**I want** to sign in and see the work set for me,
+**so that** I am not looking at the whole school's list.
+
+**Acceptance Criteria**
+- [x] Passwords are stored as BCrypt hashes, never as typed text.
+- [x] An anonymous request returns `401`, not a redirect to an HTML page.
+- [x] A student's list contains only assignments they own - scoped by the QUERY,
+      so other people's rows are never loaded or sent.
+- [x] Asking for somebody else's assignment returns `404`, not `403`.
+- [x] Writes require a CSRF token; the session rides in a cookie.
+- [x] The password hash never appears in any API response.
+
+**Tasks**
+- TASK-54: Create the `AppUser` entity, `Role` enum and repository
+- TASK-55: Add Spring Security with BCrypt and session authentication
+- TASK-56: Add `assignment.owner_id` as a real FOREIGN KEY (migration V2)
+- TASK-57: Scope the list query by owner for students
+- TASK-58: Return 404 rather than 403 where existence itself is sensitive
+
+**Example**
+> Signing in as `student` shows three assignments, all owned by `student`.
+> Signing in as `teacher` shows every assignment in the system.
+
+#### US-16: Restrict Who May Create an Assignment
+> **Story Points**: 3 | **Sprint**: 2 | **Status**: Done
+
+**As a** school,
+**I want** only teachers to set work,
+**so that** students cannot invent their own assignments.
+
+**Acceptance Criteria**
+- [x] A student's create attempt returns `403`.
+- [x] The rule lives in the service, so it holds for any caller, not just the UI.
+- [x] A teacher may set work FOR a named account via `assignTo`.
+- [x] Naming an account that does not exist returns `400`.
+
+**Tasks**
+- TASK-59: Enforce the TEACHER role in `createAssignment`
+- TASK-60: Add `assignTo` so work can be set for a student
+- TASK-61: Hide the create form from students in the UI as a courtesy
+
+---
+
+## EPIC-07: Assignment Lifecycle
+
+> **Goal**: Let a mistake be corrected and a deadline be expressed.
+
+### FEAT-12: Editing and Deadlines
+
+#### US-17: Correct or Remove an Assignment
+> **Story Points**: 5 | **Sprint**: 2 | **Status**: Done
+
+**Acceptance Criteria**
+- [x] `PUT /api/assignments/{id}` edits the title and due date.
+- [x] `DELETE /api/assignments/{id}` removes it, returning `204`.
+- [x] Editing and deleting are TEACHER-only, following the role rather than the row.
+- [x] A SUBMITTED assignment cannot be deleted until it is reopened.
+
+> **Design note.** This was first written as owner-only, which failed in two
+> directions at once: a teacher who set work for a student could no longer correct
+> it, and the student could rewrite the assignment they had been set.
+
+#### US-18: Set a Due Date and See Overdue Work
+> **Story Points**: 8 | **Sprint**: 2 | **Status**: Done
+
+**Acceptance Criteria**
+- [x] An assignment may carry a due date, or none - null is a legitimate state.
+- [x] Past due and not submitted is shown as `OVERDUE`.
+- [x] Submitted work is never overdue, however late it was.
+- [x] Due today is not yet overdue.
+- [x] The flag is DERIVED on read, not stored.
+
+> **Why derived.** A stored flag is wrong the moment midnight passes and would need
+> a scheduled job to stay honest. Computing it per read is always correct.
+
+#### US-19: Undo an Accidental Submission
+> **Story Points**: 3 | **Sprint**: 2 | **Status**: Done
+
+**Acceptance Criteria**
+- [x] `PUT /api/assignments/{id}/unsubmit` returns it to `IN_PROGRESS`.
+- [x] TEACHER only - a student cannot retract their own submission.
+- [x] Reopening something already `IN_PROGRESS` returns `409`.
+
+> **Not the mirror of submit.** Anyone who can see an assignment may hand it in, but
+> only a teacher may reopen one; otherwise "submitted" would mean nothing, since work
+> could be retracted the moment it was marked late.
+
+---
+
+## EPIC-08: Automated Testing
+
+> **Goal**: Make the guarantees hold without depending on somebody's memory.
+
+### FEAT-13: Regression Suite
+
+#### US-20: Run the Verification Suite Automatically
+> **Story Points**: 8 | **Sprint**: 2 | **Status**: Done
+
+**Acceptance Criteria**
+- [x] `mvnw test` runs the suite; `mvnw package` fails if any test fails.
+- [x] 29 tests: 17 unit tests of business rules, 12 full-stack tests through MockMvc.
+- [x] Coverage includes every status code in the error contract, the role rules, the
+      ownership scoping, the full lifecycle, and the overdue derivation.
+- [x] A regression test asserts the password hash never appears in a response.
+- [x] Tests run against H2 and need no SQL Server instance.
+
+**Tasks**
+- TASK-62: Add `spring-boot-starter-test` and `spring-security-test`
+- TASK-63: Add a `test` profile using H2 with Flyway disabled
+- TASK-64: Write unit tests for the rules, with the repository mocked
+- TASK-65: Write MockMvc tests covering security, validation and the lifecycle
+
+> **Honest limits.** The suite runs on H2, so the SQL Server migrations are not
+> themselves exercised - `ddl-auto=validate` is what catches drift between the
+> migrations and the entities. And browser behaviour still needs a browser: the CSRF
+> defect passed every API test and only appeared in Chrome.
+
+---
+
+## Epics Delivered in Sprint 2
+
+| Epic | Stories | Points | Depended on | PRD | Status |
+|------|---------|:------:|-------------|-----|--------|
+| EPIC-05: Persistence | US-14 | 5 | - | R1 | Done |
+| EPIC-06: Accounts and Roles | US-15, US-16 | 16 | EPIC-05 | R3 | Done |
+| EPIC-07: Assignment Lifecycle | US-17, US-18, US-19 | 16 | EPIC-05, EPIC-06 | R4, R5, R6 | Done |
+| EPIC-08: Automated Testing | US-20 | 8 | - | NFR-9 | Done |
+
+**The sequencing note held.** EPIC-05 was built first because it genuinely blocked the
+rest: accounts, due dates and edit history are all meaningless while every restart
+wipes the database. EPIC-08 ran alongside rather than last, and earned its place -
+the test suite caught the seed-ordering fault that only appeared once Flyway was
+disabled in the test profile.
+
+## Candidate Work
+
+Not started. These are options, not commitments.
+
+| Item | Why |
+|------|-----|
+| Password change and account self-service | Passwords are currently fixed at seed time |
+| More than two roles | An admin who can manage accounts |
+| Frontend component tests | Karma and Jasmine are installed but no specs exist yet |
+| Migration tests | The suite runs on H2, so the SQL Server migrations themselves are unverified by it |
+| Classes, terms and subjects | The schema still has no grouping above an assignment |
 
 ---
 
@@ -698,19 +941,19 @@ run in parallel; it is the only item that protects the guarantees already delive
 | US-12 | User Story | Start the frontend with a single command | FEAT-08 | 3 | Done |
 | FEAT-09 | Feature | Accurate Project Documentation | EPIC-04 | 2 | Done |
 | US-13 | User Story | Documentation matching the running system | FEAT-09 | 2 | Done |
-| EPIC-05 | Epic | Persistence | Application | 5 | Not started |
-| FEAT-10 | Feature | Durable Storage | EPIC-05 | 5 | Not started |
-| US-14 | User Story | Keep assignments after a restart | FEAT-10 | 5 | Not started |
-| EPIC-06 | Epic | Accounts and Roles | Application | 16 | Not started |
-| FEAT-11 | Feature | Identity | EPIC-06 | 16 | Not started |
-| US-15 | User Story | Sign in and see only my own assignments | FEAT-11 | 13 | Not started |
-| US-16 | User Story | Restrict who may create an assignment | FEAT-11 | 3 | Not started |
-| EPIC-07 | Epic | Assignment Lifecycle | Application | 16 | Not started |
-| FEAT-12 | Feature | Editing and Deadlines | EPIC-07 | 16 | Not started |
-| US-17 | User Story | Correct or remove an assignment | FEAT-12 | 5 | Not started |
-| US-18 | User Story | Set a due date and see overdue work | FEAT-12 | 8 | Not started |
-| US-19 | User Story | Undo an accidental submission | FEAT-12 | 3 | Not started |
-| EPIC-08 | Epic | Automated Testing | Application | 8 | Not started |
-| FEAT-13 | Feature | Regression Suite | EPIC-08 | 8 | Not started |
-| US-20 | User Story | Run the verification suite automatically | FEAT-13 | 8 | Not started |
-| **Totals** | | **20 User Stories, 48 Tasks** | | **92 pts** | **47 delivered** |
+| EPIC-05 | Epic | Persistence | Application | 5 | Done |
+| FEAT-10 | Feature | Durable Storage | EPIC-05 | 5 | Done |
+| US-14 | User Story | Keep assignments after a restart | FEAT-10 | 5 | Done |
+| EPIC-06 | Epic | Accounts and Roles | Application | 16 | Done |
+| FEAT-11 | Feature | Identity | EPIC-06 | 16 | Done |
+| US-15 | User Story | Sign in and see only my own assignments | FEAT-11 | 13 | Done |
+| US-16 | User Story | Restrict who may create an assignment | FEAT-11 | 3 | Done |
+| EPIC-07 | Epic | Assignment Lifecycle | Application | 16 | Done |
+| FEAT-12 | Feature | Editing and Deadlines | EPIC-07 | 16 | Done |
+| US-17 | User Story | Correct or remove an assignment | FEAT-12 | 5 | Done |
+| US-18 | User Story | Set a due date and see overdue work | FEAT-12 | 8 | Done |
+| US-19 | User Story | Undo an accidental submission | FEAT-12 | 3 | Done |
+| EPIC-08 | Epic | Automated Testing | Application | 8 | Done |
+| FEAT-13 | Feature | Regression Suite | EPIC-08 | 8 | Done |
+| US-20 | User Story | Run the verification suite automatically | FEAT-13 | 8 | Done |
+| **Totals** | | **20 User Stories, 65 Tasks** | | **92 pts** | **92 delivered** |

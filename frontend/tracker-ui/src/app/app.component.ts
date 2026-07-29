@@ -2,53 +2,134 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Assignment, AssignmentService } from './assignment.service';
+import {
+  Assignment, AssignmentService, CurrentUser
+} from './assignment.service';
 import { environment } from '../environments/environment';
 
 /**
  * THE COMPONENT
  * -------------
- * The controller of the UI. It asks the service for data, stores it, and
- * gives the template something to display. It reacts to user actions (clicks).
+ * The controller of the UI. It asks the service for data, stores it, and gives
+ * the template something to display. It reacts to user actions (clicks).
+ *
+ * It shows or hides controls by role, but it does NOT enforce anything. Every
+ * rule it reflects is also enforced by the server - hiding a button is a
+ * courtesy to the user, not a security measure, because anyone can call the API
+ * directly.
  */
 @Component({
   selector: 'app-root',
-  standalone: true,                 // modern Angular: no NgModule needed
-  imports: [CommonModule, FormsModule], // FormsModule enables [(ngModel)] on the form
+  standalone: true,
+  imports: [CommonModule, FormsModule],
   templateUrl: './app.component.html'
 })
 export class AppComponent implements OnInit {
 
-  // The list we display. Starts empty and fills once data arrives.
+  /** Who is signed in, or null when nobody is. Drives login screen vs list. */
+  user: CurrentUser | null = null;
+
+  /** True until the first "who am I?" answer arrives, so we do not flash the login form. */
+  checkingSession = true;
+
+  // Sign-in form
+  loginUsername = '';
+  loginPassword = '';
+
+  // The list we display
   assignments: Assignment[] = [];
 
-  // Bound to the text box in the "create" form via [(ngModel)].
+  // Create form
   newTitle = '';
+  newDueDate = '';
+  newAssignTo = '';
 
-  /**
-   * The last error message to show the user, or null when all is well.
-   *
-   * Previously every subscribe() passed only a success callback, so a failed
-   * request did NOTHING visible — the button click just appeared to be ignored.
-   * Holding the message here lets the template surface it.
-   */
+  // Inline edit state: the id being edited, or null
+  editingId: number | null = null;
+  editTitle = '';
+  editDueDate = '';
+
+  /** The last error to show the user, or null when all is well. */
   errorMessage: string | null = null;
 
-  // Angular injects our data service here.
   constructor(private service: AssignmentService) {}
 
   /**
-   * ngOnInit runs once when the component first loads.
-   * We use it to fetch the initial list — a good place for "load data on open".
+   * On startup: get a CSRF token, then ask whether we are already signed in.
+   *
+   * A 401 from /me is the normal "not signed in" answer, not a failure worth
+   * showing - so it is swallowed deliberately and only unexpected errors reach
+   * the banner.
    */
   ngOnInit(): void {
-    this.loadAssignments();
+    this.service.primeCsrf().subscribe({
+      next: () => this.checkSession(),
+      error: () => this.checkSession()
+    });
   }
 
-  /** Ask the service for the list and store the response. */
+  private checkSession(): void {
+    this.service.me().subscribe({
+      next: (user) => {
+        this.user = user;
+        this.checkingSession = false;
+        this.loadAssignments();
+      },
+      error: () => {
+        this.user = null;
+        this.checkingSession = false;
+      }
+    });
+  }
+
+  get isTeacher(): boolean {
+    return this.user?.role === 'TEACHER';
+  }
+
+  // ----- authentication ------------------------------------------------------
+
+  onLogin(): void {
+    const username = this.loginUsername.trim();
+    if (!username || !this.loginPassword) {
+      return;
+    }
+    this.service.login(username, this.loginPassword).subscribe({
+      next: (user) => {
+        this.user = user;
+        this.loginPassword = '';
+        this.errorMessage = null;
+        this.loadAssignments();
+      },
+      // Handled separately rather than through showError: a 401 here means the
+      // credentials were wrong, NOT that a session expired. Routing it through
+      // the generic handler produced "Your session has ended, please sign in
+      // again" on the login screen, which is both confusing and untrue.
+      error: (err: unknown) => {
+        const status = (err as { status?: number })?.status;
+        this.errorMessage = status === 401
+          ? 'Invalid username or password.'
+          : null;
+        if (this.errorMessage === null) {
+          this.showError(err, 'Could not sign in');
+        }
+      }
+    });
+  }
+
+  onLogout(): void {
+    this.service.logout().subscribe({
+      next: () => {
+        this.user = null;
+        this.assignments = [];
+        this.errorMessage = null;
+      },
+      error: (err) => this.showError(err, 'Could not sign out')
+    });
+  }
+
+  // ----- assignments ---------------------------------------------------------
+
   loadAssignments(): void {
-    // subscribe() takes TWO callbacks: one for data, one for failure.
-    // Supplying both is what stops errors disappearing silently.
     this.service.getAssignments().subscribe({
       next: (data) => {
         this.assignments = data;
@@ -58,54 +139,97 @@ export class AppComponent implements OnInit {
     });
   }
 
-  /** Called when the user submits the "Add assignment" form. */
   onCreate(): void {
-    // A small front-end guard so we don't send an obviously empty title.
-    // (The backend validates too — never trust the client alone.)
     const title = this.newTitle.trim();
     if (!title) {
       return;
     }
-
-    this.service.createAssignment(title).subscribe({
+    this.service.createAssignment(
+      title,
+      this.newDueDate || null,
+      this.newAssignTo.trim() || null
+    ).subscribe({
       next: () => {
-        this.newTitle = '';       // clear the input box
-        this.loadAssignments();   // refresh the table so the new row appears
+        this.newTitle = '';
+        this.newDueDate = '';
+        this.newAssignTo = '';
+        this.loadAssignments();
       },
       error: (err) => this.showError(err, 'Could not create the assignment')
     });
   }
 
-  /** Called when the user clicks a "Submit" button in the template. */
   onSubmit(id: number): void {
     this.service.submitAssignment(id).subscribe({
-      next: () => {
-        // After submitting, reload the list so the UI shows the new status.
-        this.loadAssignments();
-      },
+      next: () => this.loadAssignments(),
       error: (err) => this.showError(err, 'Could not submit the assignment')
     });
   }
 
-  /** Dismiss the error banner. */
+  onUnsubmit(id: number): void {
+    this.service.unsubmitAssignment(id).subscribe({
+      next: () => this.loadAssignments(),
+      error: (err) => this.showError(err, 'Could not reopen the assignment')
+    });
+  }
+
+  onDelete(a: Assignment): void {
+    if (!confirm(`Delete "${a.title}"? This cannot be undone.`)) {
+      return;
+    }
+    this.service.deleteAssignment(a.id).subscribe({
+      next: () => this.loadAssignments(),
+      error: (err) => this.showError(err, 'Could not delete the assignment')
+    });
+  }
+
+  // ----- inline editing ------------------------------------------------------
+
+  startEdit(a: Assignment): void {
+    this.editingId = a.id;
+    this.editTitle = a.title;
+    this.editDueDate = a.dueDate ?? '';
+  }
+
+  cancelEdit(): void {
+    this.editingId = null;
+  }
+
+  saveEdit(): void {
+    if (this.editingId === null) {
+      return;
+    }
+    const title = this.editTitle.trim();
+    if (!title) {
+      return;
+    }
+    this.service.updateAssignment(this.editingId, title, this.editDueDate || null)
+      .subscribe({
+        next: () => {
+          this.editingId = null;
+          this.loadAssignments();
+        },
+        error: (err) => this.showError(err, 'Could not save the change')
+      });
+  }
+
+  /**
+   * Only a teacher may edit or delete - the server enforces this too.
+   *
+   * Not owner-based: a teacher who sets work FOR a student would otherwise be
+   * unable to correct it, and a student would be able to rewrite the assignment
+   * they had been set. Editing follows the role, not the row.
+   */
+  canModify(_a: Assignment): boolean {
+    return this.isTeacher;
+  }
+
+  // ----- error handling ------------------------------------------------------
+
   clearError(): void {
     this.errorMessage = null;
   }
 
-  /**
-   * Retry after a failure: clear the banner and fetch the list again.
-   *
-   * WHY THIS EXISTS
-   * ---------------
-   * The list is fetched exactly once, when the page opens. If the backend
-   * happens to be down at that moment - most commonly because it is mid-restart -
-   * the table stays empty FOREVER, even after the backend comes back. The only
-   * recovery was a full page refresh, which nothing on the page suggested.
-   *
-   * A Retry button turns that dead end into a one-click recovery. loadAssignments()
-   * already clears the error on success and re-raises it on failure, so this stays
-   * honest if the backend is still down.
-   */
   retry(): void {
     this.errorMessage = null;
     this.loadAssignments();
@@ -114,28 +238,15 @@ export class AppComponent implements OnInit {
   /**
    * Turn a failed HTTP call into one sentence a human can read.
    *
-   * The backend's GlobalExceptionHandler sends a JSON body shaped like
-   * { status, error, message, path }, so when there IS a message we show it —
-   * that's far more useful than a status number. Two cases need care:
-   *   - status 0 means the request never reached the server at all,
-   *     which has SEVERAL possible causes (see below).
-   *   - otherwise fall back to the caller's generic description.
+   * The backend sends { status, error, message, path }, so when there IS a
+   * message we show it - far more useful than a status number.
    */
   private showError(err: unknown, fallback: string): void {
     if (err instanceof HttpErrorResponse) {
       if (err.status === 0) {
         // status 0 means the browser never got a response. It does NOT prove the
-        // backend is down — the request may also have been blocked before it left
-        // the browser (a CORS rejection looks identical from here, and so does a
-        // proxy or security tool intercepting loopback traffic).
-        //
-        // The previous wording asserted "Is the backend running?" as though that
-        // were the only explanation, which sent a reader hunting the wrong problem
-        // when the server was demonstrably up. List the real candidates instead,
-        // and point at the console, which is the only place the true reason shows.
-        // Name the API by its configured address rather than a literal, so the
-        // message stays true when the app is pointed at a different backend.
-        // In production apiBaseUrl is empty (same-origin), so describe it that way.
+        // backend is down - a CORS rejection or an intercepted request looks
+        // identical from here.
         const api = environment.apiBaseUrl || 'this site';
         this.errorMessage =
           `${fallback}: no response from the API at ${api}. ` +
@@ -144,7 +255,15 @@ export class AppComponent implements OnInit {
           `it names the actual cause.`;
         return;
       }
-      const serverMessage = err.error?.message;
+      if (err.status === 401) {
+        // The session expired underneath us. Say so plainly and show the login
+        // form again, rather than leaving a stale list on screen.
+        this.user = null;
+        this.assignments = [];
+        this.errorMessage = 'Your session has ended. Please sign in again.';
+        return;
+      }
+      const serverMessage = (err.error as { message?: string } | null)?.message;
       this.errorMessage = serverMessage
         ? `${fallback}: ${serverMessage}`
         : `${fallback} (HTTP ${err.status}).`;

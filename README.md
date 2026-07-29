@@ -4,9 +4,20 @@ A minimal full-stack prototype demonstrating a **layered Spring Boot backend**
 and an **Angular frontend**. Beginner-friendly, heavily commented.
 
 ## What it does
-- Lists assignments in a table (title + status)
-- **Create** a new assignment via a form (POST)
-- **Submit** an assignment, flipping its status to `SUBMITTED` (PUT)
+- **Sign in** as a teacher or a student
+- **Lists** assignments — a teacher sees all, a student sees only their own
+- **Create** work, optionally setting it *for* a named student (teachers only)
+- **Submit** an assignment, flipping its status to `SUBMITTED`
+- **Edit, delete and reopen** (teachers only; submitted work must be reopened first)
+- **Due dates**, with `OVERDUE` shown for work past its deadline
+
+Development accounts: `teacher` and `student`, both with password `password123`.
+
+## Requirements
+- **Java 25** (the current LTS) — Maven is not needed, the project ships `mvnw`
+- **Node.js 18+** for the frontend
+- **SQL Server** with a database named `School Management System` — see
+  [Database setup](#database-setup)
 
 ## Project layout
 ```
@@ -45,26 +56,93 @@ School Management System/
 
 ## How the layers connect (request flows DOWN, data flows UP)
 ```
-Angular  ──HTTP──►  Controller ──► Service ──► Repository ──► H2 Database
+Angular  ──HTTP──►  Controller ──► Service ──► Repository ──► SQL Server
 (browser)          (web layer)   (rules)     (data access)   (storage)
 ```
 Each layer only talks to the one directly beneath it.
 
+## Database setup
+
+The application uses **SQL Server**. On this machine that is instance
+`MSSQLSERVER01` (SQL Server 2019 Developer Edition), database
+`School Management System`, on TCP port **14333**.
+
+Two things had to be done once, as an administrator, before Java could connect:
+
+```powershell
+# 1. Enable TCP and pin a static port. Only Shared Memory was enabled by
+#    default, and the JDBC driver cannot use shared memory at all.
+$k = "HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\MSSQL15.MSSQLSERVER01\MSSQLServer\SuperSocketNetLib"
+Set-ItemProperty "$k\Tcp" -Name Enabled -Value 1
+Set-ItemProperty "$k\Tcp\IPAll" -Name TcpPort -Value "14333"
+Set-ItemProperty "$k\Tcp\IPAll" -Name TcpDynamicPorts -Value ""
+Restart-Service "MSSQL`$MSSQLSERVER01" -Force
+```
+
+The port is **pinned** because named instances otherwise use dynamic ports that
+change on every restart, which would break the connection string.
+
+```sql
+-- 2. Create the database and a login scoped to it.
+CREATE DATABASE [School Management System];
+GO
+CREATE LOGIN [tracker_app] WITH PASSWORD = 'Tracker!2026Dev', CHECK_POLICY = OFF;
+GO
+USE [School Management System];
+CREATE USER [tracker_app] FOR LOGIN [tracker_app];
+ALTER ROLE db_owner ADD MEMBER [tracker_app];
+```
+
+Tables are created by **Flyway migrations** on first start —
+`backend/src/main/resources/db/migration`. Hibernate runs with
+`ddl-auto=validate`, so it may check the schema but never alter it.
+
+Credentials are overridable without a rebuild:
+
+```bash
+DB_USERNAME=... DB_PASSWORD=... java -jar tracker.jar
+```
+
+> **A note on Entity Framework.** EF6 and `ApplicationDbContext` are .NET
+> technologies and cannot run on this Java backend. JPA/Hibernate fills the same
+> role and is equally code-first — the schema derives from the `@Entity` classes.
+
 ## API endpoints
-| Method | URL                              | Purpose                         |
-|--------|----------------------------------|---------------------------------|
-| GET    | `/api/assignments`               | List all assignments            |
-| POST   | `/api/assignments`               | Create one (body: `{"title":"..."}`) |
-| PUT    | `/api/assignments/{id}/submit`   | Mark one as SUBMITTED           |
+
+Every endpoint except `login` and `csrf` requires a session; every write also
+requires the `X-XSRF-TOKEN` header.
+
+| Method | URL | Purpose |
+|--------|-----|---------|
+| GET | `/api/auth/csrf` | Issue the CSRF cookie |
+| POST | `/api/auth/login` | Sign in (`{"username":"...","password":"..."}`) |
+| GET | `/api/auth/me` | Who am I? |
+| POST | `/api/auth/logout` | End the session |
+| GET | `/api/assignments` | List (scoped by role) |
+| POST | `/api/assignments` | Create — teachers only |
+| PUT | `/api/assignments/{id}` | Edit title / due date — teachers only |
+| DELETE | `/api/assignments/{id}` | Delete — teachers only, not while submitted |
+| PUT | `/api/assignments/{id}/submit` | Mark as SUBMITTED |
+| PUT | `/api/assignments/{id}/unsubmit` | Reopen — teachers only |
 
 ### Error responses
 Failures return the status code that matches the problem, plus a readable message:
 
-| Situation                          | Status | Example message                          |
-|------------------------------------|--------|------------------------------------------|
-| Blank or missing `title`            | 400    | `title: Title must not be blank`         |
-| Unknown assignment id               | 404    | `No assignment found with id = 999`      |
-| Submitting something already sent   | 409    | `Assignment 3 has already been submitted.` |
+| Situation | Status | Example message |
+|-----------|--------|-----------------|
+| Not signed in | 401 | — |
+| Wrong username or password | 401 | `Invalid username or password.` |
+| Missing or invalid CSRF token | 403 | — |
+| Blank or missing `title` | 400 | `title: Title must not be blank` |
+| Signed in but not permitted | 403 | `Only a teacher can create an assignment.` |
+| Unknown assignment id | 404 | `No assignment found with id = 999` |
+| Someone else's assignment | 404 | *deliberately the same as "unknown"* |
+| Submitting something already sent | 409 | `Assignment 3 has already been submitted.` |
+| Deleting submitted work | 409 | `Assignment 3 has been submitted and cannot be deleted.` |
+
+> Asking for another person's assignment returns **404, not 403**. Answering
+> "forbidden" would confirm the id exists and belongs to somebody, letting an
+> outsider map the data by probing ids.
 
 Every error body has the same shape, so the frontend only parses one thing:
 ```json
@@ -81,8 +159,20 @@ cd "School Management System/backend"
 ./mvnw spring-boot:run          # Windows: .\mvnw.cmd spring-boot:run
 ```
 - API runs at http://localhost:8080
-- Check it: open http://localhost:8080/api/assignments (should show JSON)
-- DB console: http://localhost:8080/h2-console (JDBC URL: `jdbc:h2:mem:trackerdb`)
+- Check it: `curl http://localhost:8080/api/assignments` returns `401` until you sign in
+
+## Run the tests
+
+```bash
+cd "School Management System/backend"
+./mvnw test
+```
+
+36 tests: 17 unit tests of the business rules, 12 full-stack tests through MockMvc
+with real security, and 7 covering concurrency and database integrity. They run
+against H2, so **no SQL Server instance is needed** to run the suite.
+
+`./mvnw package` runs them too, and fails the build if any test fails.
 
 **`JAVA_HOME` must point at a JDK 25.** The wrapper reads `JAVA_HOME` in
 preference to whatever `java` is on your `PATH`, so it is the setting that

@@ -130,6 +130,39 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * 403 FORBIDDEN — the caller is signed in but not permitted to do this.
+     *
+     * Distinct from 401, which means "I do not know who you are". Returning 401
+     * here would tell a signed-in user to log in again, which would not help and
+     * would be untrue.
+     *
+     * Note that some authority failures deliberately surface as 404 instead —
+     * see AssignmentService.requireVisible. Where merely confirming that a row
+     * exists would leak information, "not found" is the safer honest answer.
+     */
+    @ExceptionHandler(com.example.tracker.exception.AccessDeniedException.class)
+    public ResponseEntity<ApiError> handleAccessDenied(
+            com.example.tracker.exception.AccessDeniedException ex,
+            jakarta.servlet.http.HttpServletRequest request) {
+        return build(HttpStatus.FORBIDDEN, ex.getMessage(), request.getRequestURI());
+    }
+
+    /**
+     * 401 UNAUTHORIZED — the credentials offered at sign-in were not valid.
+     *
+     * The message never says WHICH part was wrong. Distinguishing "no such user"
+     * from "wrong password" would let an attacker enumerate valid usernames,
+     * splitting one hard guess into two easy ones.
+     */
+    @ExceptionHandler(org.springframework.security.core.AuthenticationException.class)
+    public ResponseEntity<ApiError> handleAuthenticationFailure(
+            org.springframework.security.core.AuthenticationException ex,
+            jakarta.servlet.http.HttpServletRequest request) {
+        return build(HttpStatus.UNAUTHORIZED,
+                "Invalid username or password.", request.getRequestURI());
+    }
+
+    /**
      * 400 BAD REQUEST — thrown by Spring when a @Valid @RequestBody fails its
      * annotations (e.g. @NotBlank on the title). We flatten the validation
      * failures into one readable sentence, e.g. "title: Title must not be blank".

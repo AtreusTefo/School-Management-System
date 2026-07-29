@@ -3,16 +3,18 @@
 ## Project Context
 - **Name:** School Management System - Assignment Tracker
 - **Repository:** https://github.com/AtreusTefo/School-Management-System
-- **Stack:** Java 25 (LTS), Spring Boot 3.5.16 (backend REST API) + Angular 18 standalone (frontend SPA) + H2 in-memory database
+- **Stack:** Java 25 (LTS), Spring Boot 3.5.16 (backend REST API) + Angular 18 standalone (frontend SPA) + SQL Server 2019 (`MSSQLSERVER01`, database `School Management System`, TCP 14333)
 - **Primary IDEs:** VS Code, Claude Code
 - **Main Goal:** A small, heavily commented full-stack application that tracks assignment submission state, built to demonstrate a strictly layered architecture. Both goals are real: the software must work, and the code must stay readable enough to teach from.
 
 ### Scope Guard - Read Before Adding Features
-The repository is named *School Management System*, but the delivered system is one slice of that idea: **assignment tracking**. There is exactly one entity (`Assignment`), three endpoints, and no concept of a user.
+The repository is named *School Management System*, but the delivered system is one slice of that idea: **assignment tracking**. Two entities (`Assignment`, `AppUser`), two roles (`TEACHER`, `STUDENT`), and ten endpoints.
 
-There are **no** teachers, students, admins, logins, grades, assessments, marks, audit logs, file uploads, or notifications. Documentation describing such features was inherited from an unrelated project and has been removed. Do not reintroduce it, and do not assume a feature exists because a document once mentioned it. Verify against the code.
+There are **no** grades, marks, assessments, audit logs, file uploads, notifications, classes, terms or subjects. Documentation describing such features was inherited from an unrelated project and has been removed. Do not reintroduce it, and do not assume a feature exists because a document once mentioned it. Verify against the code.
 
-Planned work is listed in `docs/project/PRD.md` section 7 and is explicitly **not agreed scope**.
+**Entity Framework is not usable here.** EF6 and `ApplicationDbContext` are .NET technologies; this backend is Java. JPA/Hibernate fills the same role and is equally code-first. If a document or instruction mentions EF, it is inherited from the unrelated ASP.NET project.
+
+Remaining candidate work is listed in `docs/project/PRD.md` section 7 under "Still open" and is explicitly **not agreed scope**.
 
 ## AI Behavior Guidelines
 - **No Emojis:** Do NOT use emojis in any documentation, comments, or commit messages. Keep text professional and plain-text based.
@@ -64,9 +66,12 @@ School Management System/
 - **Build backend:** `.\mvnw.cmd clean package -DskipTests` produces `backend/target/tracker-0.0.1-SNAPSHOT.jar`.
 - **Build frontend:** `npm run build` in `frontend/tracker-ui`.
 - **Type-check frontend:** `npx tsc --noEmit -p tsconfig.app.json`.
-- **Database console:** `http://localhost:8080/h2-console`, JDBC URL `jdbc:h2:mem:trackerdb`, user `sa`, no password.
+- **Run tests:** `.\mvnw.cmd test` - 36 tests, run against H2, no SQL Server needed.
+- **Database:** SQL Server, `tcp:localhost,14333`, database `School Management System`, login `tracker_app`. Query it with:
+  `sqlcmd -S "tcp:localhost,14333" -U tracker_app -P 'Tracker!2026Dev' -d "School Management System"`
+- **Development accounts:** `teacher` and `student`, both password `password123`, reset at every startup.
 
-Start the backend first. The frontend calls it directly at `http://localhost:8080` and shows a red banner if it cannot connect.
+Start the backend first. The frontend calls it directly at `http://localhost:8080` and shows a red banner with a Retry button if it cannot connect.
 
 ### Environment Gotchas on This Machine
 These cost real time. Check them before diagnosing further.
@@ -79,6 +84,11 @@ These cost real time. Check them before diagnosing further.
 - **Stop the backend before rebuilding.** Windows holds a lock on the running jar and `mvnw clean` fails to delete it.
 - **The editor may use a different TypeScript than the build.** `.vscode/settings.json` pins `typescript.tsdk` to the project copy; select "Use Workspace Version" once when prompted, or the editor will report errors the build does not.
 - **Do not round-trip UTF-8 files through PowerShell `Get-Content`/`Set-Content`.** It mangles the box-drawing characters in this file's directory tree. Edit Markdown with an editor or a tool that preserves encoding.
+- **SQL Server needs TCP explicitly enabled.** Only Shared Memory was on by default, and the JDBC driver cannot use shared memory - `sqlcmd` connects while Java cannot, which looks baffling. The port is pinned to 14333 because named instances otherwise use dynamic ports that change on every restart. Both changes need an elevated shell; see the README.
+- **Write SQL Server migrations as separate `GO` batches.** SQL Server compiles a whole batch before running any of it, so adding a column and using it in the same batch fails with "Invalid column name" even though the ALTER would have created it first.
+- **The Avast root certificate rotates.** When Maven starts failing with `PKIX path validation failed` on a build that worked yesterday, Avast has regenerated its interception root. Re-export it and re-import into the JDK truststore; the old alias must be deleted first.
+- **PowerShell's `-WebSession` persists headers between requests.** A probe that sets `X-XSRF-TOKEN` once will silently resend it forever, so a "no token" test passes for the wrong reason. Call `$session.Headers.Clear()` before asserting that a header is absent.
+- **Register Playwright dialog handlers before navigating.** Playwright dismisses dialogs by default, so a late `page.on('dialog', ...)` means `confirm()` returns false and the action under test never runs.
 
 ## Coding Standards & Patterns
 
@@ -125,15 +135,21 @@ Do not echo driver or stack-trace text to the client. Constraint-violation detai
 - **Use typed values for closed sets.** Status is an enum, stored with `EnumType.STRING` (never ordinal - positions shift when constants are reordered and silently reinterpret existing rows).
 - **One business operation, one transaction.** Annotate service write methods with `@Transactional`; the class default is `@Transactional(readOnly = true)`. A read-check-write sequence without a transaction is a race, not a rule.
 - **Guard concurrent edits with `@Version`.** Optimistic locking turns a lost update into a `409`. This was a real defect: before it existed, 3 of 12 simultaneous submissions were accepted when exactly 1 should have been.
-- **Keep the schema honest.** `ddl-auto=create-drop` against the in-memory database guarantees the schema matches the entities. On any persistent database use `validate` plus migrations (Flyway or Liquibase); never `update`, which only ever adds and will not tighten an existing column.
-- **Referential integrity:** the schema is a single table with no foreign keys, so there is currently nothing to enforce. When relationships arrive (see `docs/project/PRD.md` R3, R4), declare them with explicit foreign keys and deliberate `ON DELETE` semantics rather than relying on application cleanup.
+- **Keep the schema honest.** The application database uses `ddl-auto=validate` plus Flyway migrations - Hibernate may check the schema but never change it. Never use `update`, which only ever adds and will not tighten an existing column. The test profile uses `create-drop` against H2 because Flyway's migrations are SQL Server dialect.
+- **Referential integrity is real now.** `assignment.owner_id` is a foreign key to `app_user.id` with **`ON DELETE NO_ACTION`**, so the database refuses to delete an account that still owns work. Do not add `ON DELETE CASCADE`: destroying somebody's work as a side effect of removing their account must be an explicit decision in the service.
+- **A constraint that H2 gave for free may not survive a port.** H2's native `ENUM` column type had no SQL Server equivalent, so the "status must be one of two values" guarantee had to be rewritten as an explicit `CHECK` constraint. When changing database, re-verify each constraint rather than assuming it moved.
+- **Prove constraints by bypassing the application.** Write bad data directly with `sqlcmd` and confirm the database refuses it. A rule only enforced in Java is policy, not integrity.
 
 ### Testing Requirements
-There is no automated test suite yet - this is tracked as `docs/project/PRD.md` L4 and NFR-9. Until it exists, a change is verified by:
-- **API surface:** exercise all three endpoints plus every error path. Expected codes: `200` list, `200` create, `400` blank title, `400` missing title, `400` over-long title, `200` submit, `409` resubmit, `404` unknown id, `400` non-numeric id.
-- **Concurrency:** fire at least 12 simultaneous submissions at one assignment. Exactly one must return `200`; the rest must return `409`.
-- **Browser:** load `http://localhost:4200`, create an assignment, submit it, confirm the status changes and no console errors appear.
-- **Failure visibility:** stop the backend and confirm the page reports that the API is unreachable rather than doing nothing.
+There is an automated suite: `.\mvnw.cmd test` runs 36 tests, and `package` fails the build if any fail. Add to it rather than reverting to manual checks.
+
+- **Unit tests** (`AssignmentServiceTest`) - business rules with the repository mocked.
+- **Full-stack tests** (`AssignmentApiTest`) - MockMvc with real security; every status code in the error contract.
+- **Concurrency and integrity** (`ConcurrencyAndIntegrityTest`) - 12 simultaneous submissions must yield exactly one `200`; the database must refuse orphans, duplicates, invalid enum values and over-long titles.
+
+Two things the suite cannot cover, so check them by hand when relevant:
+- **The SQL Server migrations.** Tests run on H2, so migration SQL is unexercised; `ddl-auto=validate` is what catches drift between migrations and entities.
+- **Browser behaviour.** Drive `http://localhost:4200` as **both** roles. The CSRF defect passed every API test and only appeared in Chrome, because Angular refuses to attach its token cross-origin.
 
 Report results honestly, including failures. Do not describe a check as passing unless it was run.
 

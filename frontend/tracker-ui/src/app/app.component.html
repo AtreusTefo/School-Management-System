@@ -1,76 +1,136 @@
 <!-- THE TEMPLATE (the "view")
-     It displays the component's data and wires buttons to component methods. -->
+     It displays the component's data and wires controls to component methods.
+
+     Controls are shown or hidden by role and ownership. That is a courtesy, not
+     a security boundary: every rule reflected here is also enforced by the
+     server, because anyone can call the API directly. -->
 
 <h1>Assignment Tracker</h1>
 
 <!-- ===== ERROR BANNER =====
      Only rendered when the component has an errorMessage. Without this, a
-     failed request left the user staring at an unchanged screen with no clue
-     that anything had gone wrong. -->
+     failed request left the user staring at an unchanged screen. -->
 <div
   *ngIf="errorMessage"
   role="alert"
   style="border: 1px solid #b00; background: #fee; color: #900;
-         padding: 8px 12px; margin-bottom: 12px; max-width: 640px;">
+         padding: 8px 12px; margin-bottom: 12px; max-width: 700px;">
   {{ errorMessage }}
   <!-- Retry re-fetches the list. Without it, a failed initial load left an
-       empty table that never recovered, even after the backend came back -
-       the only fix was a full page refresh nothing on the page hinted at. -->
-  <button type="button" (click)="retry()" style="margin-left: 12px;">
-    Retry
-  </button>
-  <button type="button" (click)="clearError()" style="margin-left: 6px;">
-    Dismiss
-  </button>
+       empty table that never recovered, even after the backend came back. -->
+  <button type="button" (click)="retry()" style="margin-left: 12px;">Retry</button>
+  <button type="button" (click)="clearError()" style="margin-left: 6px;">Dismiss</button>
 </div>
 
-<!-- ===== CREATE ASSIGNMENT FORM ===== -->
-<!-- (ngSubmit) runs onCreate() when the form is submitted (Enter or the button).
-     [(ngModel)] is "two-way binding": whatever the user types is kept in sync
-     with the component's newTitle property, and vice-versa. -->
-<form (ngSubmit)="onCreate()">
-  <input
-    type="text"
-    name="newTitle"
-    [(ngModel)]="newTitle"
-    placeholder="New assignment title" />
+<!-- Nothing is drawn until we know whether a session exists, so the login form
+     does not flash on screen for an already-signed-in user. -->
+<p *ngIf="checkingSession">Checking your session...</p>
 
-  <!-- The button is disabled until the box has some non-space text. -->
-  <button type="submit" [disabled]="!newTitle.trim()">Add</button>
-</form>
+<!-- ===== SIGN IN ===== -->
+<div *ngIf="!checkingSession && !user">
+  <h2>Sign in</h2>
+  <form (ngSubmit)="onLogin()">
+    <div style="margin-bottom: 6px;">
+      <input type="text" name="loginUsername" [(ngModel)]="loginUsername"
+             placeholder="Username" autocomplete="username" />
+    </div>
+    <div style="margin-bottom: 6px;">
+      <input type="password" name="loginPassword" [(ngModel)]="loginPassword"
+             placeholder="Password" autocomplete="current-password" />
+    </div>
+    <button type="submit" [disabled]="!loginUsername.trim() || !loginPassword">
+      Sign in
+    </button>
+  </form>
+  <p style="color: #555; font-size: 0.9em; margin-top: 12px;">
+    Development accounts: <code>teacher</code> or <code>student</code>,
+    password <code>password123</code>.
+  </p>
+</div>
 
-<br />
+<!-- ===== SIGNED IN ===== -->
+<div *ngIf="user">
 
-<!-- ===== ASSIGNMENT TABLE ===== -->
-<table border="1" cellpadding="8">
-  <thead>
-    <tr>
-      <th>Title</th>
-      <th>Status</th>
-      <th>Action</th>
-    </tr>
-  </thead>
-  <tbody>
-    <!-- *ngFor loops over the "assignments" array in the component,
-         drawing one <tr> row per assignment. -->
-    <tr *ngFor="let a of assignments">
-      <td>{{ a.title }}</td>
-      <td>{{ a.status }}</td>
-      <td>
-        <!-- (click) calls the component's onSubmit() method, passing this row's id.
-             [disabled] greys out the button once it's already submitted, so the
-             user can't submit twice (matching our backend business rule). -->
-        <button
-          (click)="onSubmit(a.id)"
-          [disabled]="a.status === 'SUBMITTED'">
-          Submit
-        </button>
-      </td>
-    </tr>
+  <p>
+    Signed in as <strong>{{ user.username }}</strong> ({{ user.role }})
+    <button type="button" (click)="onLogout()" style="margin-left: 12px;">Sign out</button>
+  </p>
 
-    <!-- A friendly message when the list is empty. -->
-    <tr *ngIf="assignments.length === 0">
-      <td colspan="3">No assignments yet. Add one above.</td>
-    </tr>
-  </tbody>
-</table>
+  <!-- Only a teacher may set work, so only a teacher sees the form. The server
+       refuses a student's create attempt regardless. -->
+  <form *ngIf="isTeacher" (ngSubmit)="onCreate()" style="margin-bottom: 16px;">
+    <input type="text" name="newTitle" [(ngModel)]="newTitle"
+           placeholder="New assignment title" />
+    <input type="date" name="newDueDate" [(ngModel)]="newDueDate"
+           title="Due date (optional)" style="margin-left: 6px;" />
+    <input type="text" name="newAssignTo" [(ngModel)]="newAssignTo"
+           placeholder="Assign to (optional)" style="margin-left: 6px;" />
+    <button type="submit" [disabled]="!newTitle.trim()" style="margin-left: 6px;">Add</button>
+  </form>
+
+  <!-- ===== ASSIGNMENT TABLE ===== -->
+  <table border="1" cellpadding="8">
+    <thead>
+      <tr>
+        <th>Title</th>
+        <th>Owner</th>
+        <th>Due</th>
+        <th>Status</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr *ngFor="let a of assignments">
+
+        <!-- Inline edit replaces the row's fields in place, so the user keeps
+             their bearings instead of being sent to a separate screen. -->
+        <ng-container *ngIf="editingId === a.id; else readOnlyRow">
+          <td><input type="text" name="editTitle" [(ngModel)]="editTitle" /></td>
+          <td>{{ a.ownerUsername }}</td>
+          <td><input type="date" name="editDueDate" [(ngModel)]="editDueDate" /></td>
+          <td>{{ a.status }}</td>
+          <td>
+            <button type="button" (click)="saveEdit()" [disabled]="!editTitle.trim()">Save</button>
+            <button type="button" (click)="cancelEdit()" style="margin-left: 4px;">Cancel</button>
+          </td>
+        </ng-container>
+
+        <ng-template #readOnlyRow>
+          <td>{{ a.title }}</td>
+          <td>{{ a.ownerUsername }}</td>
+          <td>
+            {{ a.dueDate || '—' }}
+            <!-- Overdue is computed by the server on every read, so it is always
+                 correct for today rather than whenever a flag was last written. -->
+            <span *ngIf="a.overdue"
+                  style="color: #900; font-weight: bold; margin-left: 6px;">OVERDUE</span>
+          </td>
+          <td>{{ a.status }}</td>
+          <td>
+            <button type="button" (click)="onSubmit(a.id)"
+                    [disabled]="a.status === 'SUBMITTED'">Submit</button>
+
+            <!-- Reopening is a teacher's decision only: otherwise "submitted"
+                 would mean nothing, since work could be retracted once late. -->
+            <button *ngIf="isTeacher" type="button" (click)="onUnsubmit(a.id)"
+                    [disabled]="a.status === 'IN_PROGRESS'"
+                    style="margin-left: 4px;">Reopen</button>
+
+            <!-- Edit and delete stay with the owner, even for a teacher who can
+                 see every row. -->
+            <button *ngIf="canModify(a)" type="button" (click)="startEdit(a)"
+                    style="margin-left: 4px;">Edit</button>
+            <button *ngIf="canModify(a)" type="button" (click)="onDelete(a)"
+                    [disabled]="a.status === 'SUBMITTED'"
+                    title="A submitted assignment must be reopened before it can be deleted"
+                    style="margin-left: 4px;">Delete</button>
+          </td>
+        </ng-template>
+      </tr>
+
+      <tr *ngIf="assignments.length === 0">
+        <td colspan="5">No assignments yet.</td>
+      </tr>
+    </tbody>
+  </table>
+</div>

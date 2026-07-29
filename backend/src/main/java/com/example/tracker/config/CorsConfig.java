@@ -67,10 +67,23 @@ public class CorsConfig {
     public CorsFilter corsFilter() {
         CorsConfiguration config = new CorsConfiguration();
         config.setAllowedOrigins(allowedOrigins);
-        config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
-        // allowCredentials is deliberately left off: this API has no cookies or
-        // sessions, and enabling it would forbid a wildcard origin later anyway.
+
+        /*
+         * Credentials ARE allowed now, and must be.
+         *
+         * Sign-in uses a session cookie, and a browser will not send a cookie on a
+         * cross-origin request unless the server says it may. Without this the page
+         * on :4200 would authenticate successfully and then be anonymous again on
+         * the very next call to :8080.
+         *
+         * This is also exactly why the allow-list above can never become "*": the
+         * CORS specification forbids pairing a wildcard origin with credentials,
+         * and browsers reject the combination outright. Naming the origins is not
+         * merely tidier here - it is the only thing that works.
+         */
+        config.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/api/**", config);
