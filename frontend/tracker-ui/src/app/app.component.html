@@ -3,134 +3,390 @@
 
      Controls are shown or hidden by role and ownership. That is a courtesy, not
      a security boundary: every rule reflected here is also enforced by the
-     server, because anyone can call the API directly. -->
+     server, because anyone can call the API directly.
 
-<h1>Assignment Tracker</h1>
+     Appearance lives in src/styles.css, not in style="..." attributes here.
+     Inline styles cannot be reused, cannot respond to screen width, and mixed
+     structure with presentation so thoroughly that the markup was hard to read.
+     Each element carries class names that describe what it IS; the stylesheet
+     decides what that looks like. -->
 
-<!-- ===== ERROR BANNER =====
-     Only rendered when the component has an errorMessage. Without this, a
-     failed request left the user staring at an unchanged screen. -->
-<div
-  *ngIf="errorMessage"
-  role="alert"
-  style="border: 1px solid #b00; background: #fee; color: #900;
-         padding: 8px 12px; margin-bottom: 12px; max-width: 700px;">
-  {{ errorMessage }}
-  <!-- Retry re-fetches the list. Without it, a failed initial load left an
-       empty table that never recovered, even after the backend came back. -->
-  <button type="button" (click)="retry()" style="margin-left: 12px;">Retry</button>
-  <button type="button" (click)="clearError()" style="margin-left: 6px;">Dismiss</button>
-</div>
+<div class="app-shell">
 
-<!-- Nothing is drawn until we know whether a session exists, so the login form
-     does not flash on screen for an already-signed-in user. -->
-<p *ngIf="checkingSession">Checking your session...</p>
+  <!-- ===== APP BAR =====
+       Sticky, so who you are signed in as and the way out remain reachable once
+       the list is long enough to scroll. -->
+  <header class="appbar">
+    <div class="appbar__inner">
 
-<!-- ===== SIGN IN ===== -->
-<div *ngIf="!checkingSession && !user">
-  <h2>Sign in</h2>
-  <form (ngSubmit)="onLogin()">
-    <div style="margin-bottom: 6px;">
-      <input type="text" name="loginUsername" [(ngModel)]="loginUsername"
-             placeholder="Username" autocomplete="username" />
+      <div class="brand">
+        <span class="brand__mark" aria-hidden="true">
+          <!-- Icons are inline SVG rather than an icon font or an image file:
+               nothing extra to download, and they inherit the current text
+               colour, so they follow the theme without a second asset. -->
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2" stroke-linecap="round"
+               stroke-linejoin="round">
+            <path d="M9 11l3 3L22 4" />
+            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+          </svg>
+        </span>
+        <span class="brand__text">
+          <h1>Assignment Tracker</h1>
+          <span class="brand__sub">School Management System</span>
+        </span>
+      </div>
+
+      <div class="appbar__actions" *ngIf="user">
+        <div class="user-chip">
+          <span class="avatar" aria-hidden="true">{{ userInitial }}</span>
+          <span class="user-chip__text">
+            <span class="user-chip__name">{{ user.username }}</span>
+            <span class="badge badge--role">{{ user.role }}</span>
+          </span>
+        </div>
+        <button type="button" class="btn btn--ghost" (click)="onLogout()">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2" stroke-linecap="round"
+               stroke-linejoin="round" aria-hidden="true">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+            <path d="M16 17l5-5-5-5M21 12H9" />
+          </svg>
+          Sign out
+        </button>
+      </div>
+
     </div>
-    <div style="margin-bottom: 6px;">
-      <input type="password" name="loginPassword" [(ngModel)]="loginPassword"
-             placeholder="Password" autocomplete="current-password" />
+  </header>
+
+  <main class="container">
+
+    <!-- ===== ERROR BANNER =====
+         Only rendered when the component has an errorMessage. Without this, a
+         failed request left the user staring at an unchanged screen. -->
+    <div *ngIf="errorMessage" class="alert" role="alert">
+      <svg class="alert__icon" width="18" height="18" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" stroke-width="2" stroke-linecap="round"
+           stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="10" />
+        <path d="M12 8v5M12 16h.01" />
+      </svg>
+      <div class="alert__body">
+        <div class="alert__title">Something went wrong</div>
+        <div class="alert__text">{{ errorMessage }}</div>
+        <div class="alert__actions">
+          <!-- Retry re-fetches the list. Without it, a failed initial load left an
+               empty table that never recovered, even after the backend came back. -->
+          <button type="button" class="btn btn--sm" (click)="retry()">Retry</button>
+          <button type="button" class="btn btn--sm btn--ghost" (click)="clearError()">Dismiss</button>
+        </div>
+      </div>
     </div>
-    <button type="submit" [disabled]="!loginUsername.trim() || !loginPassword">
-      Sign in
-    </button>
-  </form>
-  <p style="color: #555; font-size: 0.9em; margin-top: 12px;">
-    Development accounts: <code>teacher</code> or <code>student</code>,
-    password <code>password123</code>.
-  </p>
-</div>
 
-<!-- ===== SIGNED IN ===== -->
-<div *ngIf="user">
+    <!-- Nothing is drawn until we know whether a session exists, so the login form
+         does not flash on screen for an already-signed-in user. -->
+    <div *ngIf="checkingSession" class="loading">
+      <span class="spinner" aria-hidden="true"></span>
+      <span>Checking your session...</span>
+    </div>
 
-  <p>
-    Signed in as <strong>{{ user.username }}</strong> ({{ user.role }})
-    <button type="button" (click)="onLogout()" style="margin-left: 12px;">Sign out</button>
-  </p>
+    <!-- ===== SIGN IN ===== -->
+    <section *ngIf="!checkingSession && !user" class="auth">
+      <div class="card auth__card">
+        <div class="card__body">
 
-  <!-- Only a teacher may set work, so only a teacher sees the form. The server
-       refuses a student's create attempt regardless. -->
-  <form *ngIf="isTeacher" (ngSubmit)="onCreate()" style="margin-bottom: 16px;">
-    <input type="text" name="newTitle" [(ngModel)]="newTitle"
-           placeholder="New assignment title" />
-    <input type="date" name="newDueDate" [(ngModel)]="newDueDate"
-           title="Due date (optional)" style="margin-left: 6px;" />
-    <input type="text" name="newAssignTo" [(ngModel)]="newAssignTo"
-           placeholder="Assign to (optional)" style="margin-left: 6px;" />
-    <button type="submit" [disabled]="!newTitle.trim()" style="margin-left: 6px;">Add</button>
-  </form>
+          <div class="auth__head">
+            <h2>Sign in</h2>
+            <p>Use your school account to continue.</p>
+          </div>
 
-  <!-- ===== ASSIGNMENT TABLE ===== -->
-  <table border="1" cellpadding="8">
-    <thead>
-      <tr>
-        <th>Title</th>
-        <th>Owner</th>
-        <th>Due</th>
-        <th>Status</th>
-        <th>Actions</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr *ngFor="let a of assignments">
+          <form (ngSubmit)="onLogin()" class="auth__fields">
+            <!-- A real <label> tied to the input by id, rather than a placeholder
+                 doing double duty. A placeholder disappears the moment typing
+                 starts, which leaves the user with no way to check what a filled
+                 field was for, and screen readers do not treat it as a name. -->
+            <div class="field">
+              <label class="field__label" for="loginUsername">Username</label>
+              <input id="loginUsername" class="input" type="text" name="loginUsername"
+                     [(ngModel)]="loginUsername" autocomplete="username"
+                     placeholder="teacher" />
+            </div>
 
-        <!-- Inline edit replaces the row's fields in place, so the user keeps
-             their bearings instead of being sent to a separate screen. -->
-        <ng-container *ngIf="editingId === a.id; else readOnlyRow">
-          <td><input type="text" name="editTitle" [(ngModel)]="editTitle" /></td>
-          <td>{{ a.ownerUsername }}</td>
-          <td><input type="date" name="editDueDate" [(ngModel)]="editDueDate" /></td>
-          <td>{{ a.status }}</td>
-          <td>
-            <button type="button" (click)="saveEdit()" [disabled]="!editTitle.trim()">Save</button>
-            <button type="button" (click)="cancelEdit()" style="margin-left: 4px;">Cancel</button>
-          </td>
-        </ng-container>
+            <div class="field">
+              <label class="field__label" for="loginPassword">Password</label>
+              <input id="loginPassword" class="input" type="password" name="loginPassword"
+                     [(ngModel)]="loginPassword" autocomplete="current-password"
+                     placeholder="Your password" />
+            </div>
 
-        <ng-template #readOnlyRow>
-          <td>{{ a.title }}</td>
-          <td>{{ a.ownerUsername }}</td>
-          <td>
-            {{ a.dueDate || '—' }}
-            <!-- Overdue is computed by the server on every read, so it is always
-                 correct for today rather than whenever a flag was last written. -->
-            <span *ngIf="a.overdue"
-                  style="color: #900; font-weight: bold; margin-left: 6px;">OVERDUE</span>
-          </td>
-          <td>{{ a.status }}</td>
-          <td>
-            <button type="button" (click)="onSubmit(a.id)"
-                    [disabled]="a.status === 'SUBMITTED'">Submit</button>
+            <button type="submit" class="btn btn--primary btn--block"
+                    [disabled]="!loginUsername.trim() || !loginPassword || signingIn">
+              <span *ngIf="signingIn" class="spinner" aria-hidden="true"></span>
+              {{ signingIn ? 'Signing in...' : 'Sign in' }}
+            </button>
+          </form>
 
-            <!-- Reopening is a teacher's decision only: otherwise "submitted"
-                 would mean nothing, since work could be retracted once late. -->
-            <button *ngIf="isTeacher" type="button" (click)="onUnsubmit(a.id)"
-                    [disabled]="a.status === 'IN_PROGRESS'"
-                    style="margin-left: 4px;">Reopen</button>
+          <div class="auth__hint">
+            <span class="auth__hint-title">Development accounts</span>
+            <code>teacher</code> or <code>student</code>, password
+            <code>password123</code>.
+          </div>
 
-            <!-- Edit and delete stay with the owner, even for a teacher who can
-                 see every row. -->
-            <button *ngIf="canModify(a)" type="button" (click)="startEdit(a)"
-                    style="margin-left: 4px;">Edit</button>
-            <button *ngIf="canModify(a)" type="button" (click)="onDelete(a)"
-                    [disabled]="a.status === 'SUBMITTED'"
-                    title="A submitted assignment must be reopened before it can be deleted"
-                    style="margin-left: 4px;">Delete</button>
-          </td>
-        </ng-template>
-      </tr>
+        </div>
+      </div>
+    </section>
 
-      <tr *ngIf="assignments.length === 0">
-        <td colspan="5">No assignments yet.</td>
-      </tr>
-    </tbody>
-  </table>
+    <!-- ===== SIGNED IN ===== -->
+    <ng-container *ngIf="user">
+
+      <!-- Counts are derived from the list already loaded, not fetched
+           separately, so they can never disagree with the rows beneath them. -->
+      <section class="stats" aria-label="Summary">
+        <div class="stat">
+          <div class="stat__label">Total</div>
+          <div class="stat__value">{{ assignments.length }}</div>
+        </div>
+        <div class="stat">
+          <div class="stat__label">In progress</div>
+          <div class="stat__value">{{ inProgressCount }}</div>
+        </div>
+        <div class="stat stat--done">
+          <div class="stat__label">Submitted</div>
+          <div class="stat__value">{{ submittedCount }}</div>
+        </div>
+        <div class="stat stat--overdue">
+          <div class="stat__label">Overdue</div>
+          <div class="stat__value">{{ overdueCount }}</div>
+        </div>
+      </section>
+
+      <div class="card">
+
+        <div class="card__header">
+          <div class="card__title">
+            <h2>Assignments</h2>
+            <span class="badge badge--neutral">{{ visibleAssignments.length }}</span>
+          </div>
+
+          <!-- Search and filter act on rows already in the browser. They change
+               what is LOOKED AT, never what is allowed to be seen - the server
+               still decides the scope of the list. -->
+          <div class="toolbar">
+            <div class="search">
+              <span class="search__icon" aria-hidden="true">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                     stroke-linejoin="round">
+                  <circle cx="11" cy="11" r="7" />
+                  <path d="M21 21l-4.3-4.3" />
+                </svg>
+              </span>
+              <label class="sr-only" for="search">Search assignments</label>
+              <input id="search" class="input" type="search" name="search"
+                     [(ngModel)]="searchTerm" (ngModelChange)="onFilterChange()"
+                     placeholder="Search title or owner" />
+            </div>
+
+            <!-- Real buttons, with aria-pressed carrying the selected state. The
+                 highlight alone tells a screen reader nothing. -->
+            <div class="segmented" role="group" aria-label="Filter by status">
+              <button type="button" class="segmented__btn"
+                      [attr.aria-pressed]="statusFilter === 'ALL'"
+                      (click)="setStatusFilter('ALL')">All</button>
+              <button type="button" class="segmented__btn"
+                      [attr.aria-pressed]="statusFilter === 'IN_PROGRESS'"
+                      (click)="setStatusFilter('IN_PROGRESS')">Open</button>
+              <button type="button" class="segmented__btn"
+                      [attr.aria-pressed]="statusFilter === 'SUBMITTED'"
+                      (click)="setStatusFilter('SUBMITTED')">Submitted</button>
+              <button type="button" class="segmented__btn"
+                      [attr.aria-pressed]="statusFilter === 'OVERDUE'"
+                      (click)="setStatusFilter('OVERDUE')">Overdue</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Only a teacher may set work, so only a teacher sees the form. The server
+             refuses a student's create attempt regardless. -->
+        <form *ngIf="isTeacher" (ngSubmit)="onCreate()" class="create-form">
+          <div class="field">
+            <label class="field__label" for="newTitle">New assignment</label>
+            <input id="newTitle" class="input" type="text" name="newTitle"
+                   [(ngModel)]="newTitle" placeholder="What needs to be done" />
+          </div>
+          <div class="field">
+            <label class="field__label" for="newDueDate">Due date</label>
+            <input id="newDueDate" class="input" type="date" name="newDueDate"
+                   [(ngModel)]="newDueDate" />
+          </div>
+          <div class="field">
+            <label class="field__label" for="newAssignTo">Assign to</label>
+            <input id="newAssignTo" class="input" type="text" name="newAssignTo"
+                   [(ngModel)]="newAssignTo" placeholder="Student username" />
+          </div>
+          <button type="submit" class="btn btn--primary" [disabled]="!newTitle.trim()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                 stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            Add
+          </button>
+        </form>
+
+        <p class="card__note" *ngIf="isTeacher">
+          Due date and student are optional. Leave "Assign to" blank to keep the
+          assignment under your own name.
+        </p>
+
+        <!-- ===== LOADING ===== -->
+        <div *ngIf="loadingList" class="loading">
+          <span class="spinner" aria-hidden="true"></span>
+          <span>Loading assignments...</span>
+        </div>
+
+        <!-- ===== EMPTY STATES =====
+             Two of them, because "there is nothing here" and "your filter hides
+             everything" call for different actions from the user. Showing the
+             same sentence for both sends someone hunting for missing data that
+             is in fact one click away. -->
+        <div *ngIf="!loadingList && visibleAssignments.length === 0" class="empty">
+          <svg class="empty__icon" width="40" height="40" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+               stroke-linejoin="round" aria-hidden="true">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+            <path d="M14 2v6h6M9 15h6M9 11h3" />
+          </svg>
+
+          <ng-container *ngIf="isFiltered; else nothingAtAll">
+            <div class="empty__title">No matching assignments</div>
+            <p class="empty__text">
+              {{ assignments.length }} assignment(s) are hidden by the current
+              search or filter.
+            </p>
+            <p class="empty__action">
+              <button type="button" class="btn btn--sm" (click)="clearFilters()">
+                Clear filters
+              </button>
+            </p>
+          </ng-container>
+
+          <ng-template #nothingAtAll>
+            <div class="empty__title">No assignments yet</div>
+            <p class="empty__text">
+              {{ isTeacher
+                 ? 'Use the form above to set the first piece of work.'
+                 : 'Nothing has been set for you yet.' }}
+            </p>
+          </ng-template>
+        </div>
+
+        <!-- ===== ASSIGNMENT TABLE ===== -->
+        <div class="table-wrap" *ngIf="!loadingList && visibleAssignments.length > 0">
+          <table class="table">
+            <thead>
+              <tr>
+                <th scope="col">Title</th>
+                <th scope="col">Owner</th>
+                <th scope="col">Due</th>
+                <th scope="col">Status</th>
+                <th scope="col" class="col-actions">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- trackBy keeps existing rows alive across a refresh instead of
+                   rebuilding every one of them; see trackById in the component. -->
+              <tr *ngFor="let a of visibleAssignments; trackBy: trackById"
+                  [class.is-editing]="editingId === a.id">
+
+                <!-- Inline edit replaces the row's fields in place, so the user keeps
+                     their bearings instead of being sent to a separate screen. -->
+                <ng-container *ngIf="editingId === a.id; else readOnlyRow">
+                  <td>
+                    <label class="sr-only" for="editTitle">Title</label>
+                    <input id="editTitle" class="input" type="text" name="editTitle"
+                           [(ngModel)]="editTitle" />
+                  </td>
+                  <td class="cell-muted">{{ a.ownerUsername }}</td>
+                  <td>
+                    <label class="sr-only" for="editDueDate">Due date</label>
+                    <input id="editDueDate" class="input" type="date" name="editDueDate"
+                           [(ngModel)]="editDueDate" />
+                  </td>
+                  <td>
+                    <span class="badge"
+                          [class.badge--done]="a.status === 'SUBMITTED'"
+                          [class.badge--progress]="a.status === 'IN_PROGRESS'">
+                      <span class="badge__dot" aria-hidden="true"></span>
+                      {{ statusLabel(a.status) }}
+                    </span>
+                  </td>
+                  <td class="col-actions">
+                    <div class="row-actions">
+                      <button type="button" class="btn btn--sm btn--primary"
+                              (click)="saveEdit()" [disabled]="!editTitle.trim()">Save</button>
+                      <button type="button" class="btn btn--sm btn--ghost"
+                              (click)="cancelEdit()">Cancel</button>
+                    </div>
+                  </td>
+                </ng-container>
+
+                <ng-template #readOnlyRow>
+                  <td class="cell-title">{{ a.title }}</td>
+                  <td class="cell-muted">{{ a.ownerUsername }}</td>
+                  <td>
+                    <span class="cell-due">
+                      <span [class.cell-muted]="!a.dueDate">{{ formatDate(a.dueDate) }}</span>
+                      <!-- Overdue is computed by the server on every read, so it is always
+                           correct for today rather than whenever a flag was last written. -->
+                      <span *ngIf="a.overdue" class="badge badge--overdue">Overdue</span>
+                    </span>
+                  </td>
+                  <td>
+                    <!-- The badge pairs a coloured dot with a written word. Colour
+                         on its own would carry no meaning for a colour-blind
+                         reader, or in a printout. -->
+                    <span class="badge"
+                          [class.badge--done]="a.status === 'SUBMITTED'"
+                          [class.badge--progress]="a.status === 'IN_PROGRESS'">
+                      <span class="badge__dot" aria-hidden="true"></span>
+                      {{ statusLabel(a.status) }}
+                    </span>
+                  </td>
+                  <td class="col-actions">
+                    <div class="row-actions">
+                      <button type="button" class="btn btn--sm btn--primary"
+                              (click)="onSubmit(a.id)"
+                              [disabled]="a.status === 'SUBMITTED'"
+                              [attr.aria-label]="'Submit ' + a.title">Submit</button>
+
+                      <!-- Reopening is a teacher's decision only: otherwise "submitted"
+                           would mean nothing, since work could be retracted once late. -->
+                      <button *ngIf="isTeacher" type="button" class="btn btn--sm"
+                              (click)="onUnsubmit(a.id)"
+                              [disabled]="a.status === 'IN_PROGRESS'"
+                              [attr.aria-label]="'Reopen ' + a.title">Reopen</button>
+
+                      <!-- Edit and delete stay with the owner, even for a teacher who can
+                           see every row. -->
+                      <button *ngIf="canModify(a)" type="button" class="btn btn--sm"
+                              (click)="startEdit(a)"
+                              [attr.aria-label]="'Edit ' + a.title">Edit</button>
+                      <button *ngIf="canModify(a)" type="button" class="btn btn--sm btn--danger"
+                              (click)="onDelete(a)"
+                              [disabled]="a.status === 'SUBMITTED'"
+                              title="A submitted assignment must be reopened before it can be deleted"
+                              [attr.aria-label]="'Delete ' + a.title">Delete</button>
+                    </div>
+                  </td>
+                </ng-template>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+    </ng-container>
+
+  </main>
 </div>

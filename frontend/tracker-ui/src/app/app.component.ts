@@ -36,8 +36,34 @@ export class AppComponent implements OnInit {
   loginUsername = '';
   loginPassword = '';
 
-  // The list we display
+  /**
+   * True while a request is in flight, so the interface can say so.
+   *
+   * Kept as separate flags rather than one shared "busy", because each blocks a
+   * different part of the screen: loadingList replaces the table, signingIn
+   * disables the sign-in button, and checkingSession above holds back the whole
+   * page. A single flag would make signing in blank out the list, and a slow
+   * refresh disable a form the user was not waiting on.
+   */
+  loadingList = false;
+  signingIn = false;
+
+  /** Everything the server returned. */
   assignments: Assignment[] = [];
+
+  /**
+   * The subset currently on screen, after the search box and the status filter.
+   *
+   * Held as a field and recomputed by applyFilters() rather than exposed as a
+   * getter. A getter returning a new array runs on every change-detection pass
+   * and hands *ngFor a fresh object each time, which makes Angular tear down and
+   * rebuild rows that did not change.
+   */
+  visibleAssignments: Assignment[] = [];
+
+  /** Search text and status filter. Both are client-side views of loaded data. */
+  searchTerm = '';
+  statusFilter: 'ALL' | 'IN_PROGRESS' | 'SUBMITTED' | 'OVERDUE' = 'ALL';
 
   // Create form
   newTitle = '';
@@ -86,6 +112,113 @@ export class AppComponent implements OnInit {
     return this.user?.role === 'TEACHER';
   }
 
+  // ----- presentation helpers -------------------------------------------------
+  // These exist only to keep the template readable. Nothing here decides
+  // anything; they turn values the server sent into something displayable.
+
+  /** The letter shown in the avatar circle. */
+  get userInitial(): string {
+    return this.user ? this.user.username.charAt(0).toUpperCase() : '?';
+  }
+
+  get submittedCount(): number {
+    return this.assignments.filter(a => a.status === 'SUBMITTED').length;
+  }
+
+  get inProgressCount(): number {
+    return this.assignments.filter(a => a.status === 'IN_PROGRESS').length;
+  }
+
+  get overdueCount(): number {
+    return this.assignments.filter(a => a.overdue).length;
+  }
+
+  /** True when a filter is hiding rows, so the empty state can say which. */
+  get isFiltered(): boolean {
+    return this.statusFilter !== 'ALL' || this.searchTerm.trim() !== '';
+  }
+
+  /** SUBMITTED reads as shouting in a table cell; the badge says "Submitted". */
+  statusLabel(status: Assignment['status']): string {
+    return status === 'SUBMITTED' ? 'Submitted' : 'In progress';
+  }
+
+  /**
+   * Render an ISO date as "12 Aug 2026".
+   *
+   * Deliberately not `new Date(iso)`. A bare yyyy-MM-dd is parsed by the browser
+   * as UTC midnight, so anyone west of Greenwich sees the previous day - a due
+   * date of the 12th displayed as the 11th. Splitting the string keeps the date
+   * exactly as the server meant it, with no timezone involved at all.
+   */
+  formatDate(iso: string | null): string {
+    if (!iso) {
+      return 'No due date';
+    }
+    const parts = iso.split('-');
+    if (parts.length !== 3) {
+      return iso;
+    }
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const monthIndex = Number(parts[1]) - 1;
+    const month = months[monthIndex] ?? parts[1];
+    return `${Number(parts[2])} ${month} ${parts[0]}`;
+  }
+
+  /**
+   * Identity for *ngFor. Without it Angular compares the objects themselves, and
+   * because every refresh fetches new objects it would discard and rebuild every
+   * row - losing focus and scroll position on each poll.
+   */
+  trackById(_index: number, a: Assignment): number {
+    return a.id;
+  }
+
+  // ----- filtering ------------------------------------------------------------
+
+  /** Called by the search box and the status buttons. */
+  onFilterChange(): void {
+    this.applyFilters();
+  }
+
+  setStatusFilter(filter: typeof this.statusFilter): void {
+    this.statusFilter = filter;
+    this.applyFilters();
+  }
+
+  clearFilters(): void {
+    this.searchTerm = '';
+    this.statusFilter = 'ALL';
+    this.applyFilters();
+  }
+
+  /**
+   * Narrow the loaded list down to what the user asked to see.
+   *
+   * This filters data already in the browser; it does not ask the server for a
+   * different set. That keeps the endpoint's meaning intact - the API still
+   * decides what this person is ALLOWED to see, and the filter only decides what
+   * they are currently LOOKING at. A filter must never be mistaken for access
+   * control.
+   */
+  private applyFilters(): void {
+    const term = this.searchTerm.trim().toLowerCase();
+
+    this.visibleAssignments = this.assignments.filter(a => {
+      const matchesStatus =
+        this.statusFilter === 'ALL' ? true :
+        this.statusFilter === 'OVERDUE' ? a.overdue :
+        a.status === this.statusFilter;
+
+      const matchesTerm = term === '' ||
+        a.title.toLowerCase().includes(term) ||
+        a.ownerUsername.toLowerCase().includes(term);
+
+      return matchesStatus && matchesTerm;
+    });
+  }
+
   // ----- authentication ------------------------------------------------------
 
   onLogin(): void {
@@ -93,8 +226,10 @@ export class AppComponent implements OnInit {
     if (!username || !this.loginPassword) {
       return;
     }
+    this.signingIn = true;
     this.service.login(username, this.loginPassword).subscribe({
       next: (user) => {
+        this.signingIn = false;
         this.user = user;
         this.loginPassword = '';
         this.errorMessage = null;
@@ -105,6 +240,7 @@ export class AppComponent implements OnInit {
       // the generic handler produced "Your session has ended, please sign in
       // again" on the login screen, which is both confusing and untrue.
       error: (err: unknown) => {
+        this.signingIn = false;
         const status = (err as { status?: number })?.status;
         this.errorMessage = status === 401
           ? 'Invalid username or password.'
@@ -121,6 +257,8 @@ export class AppComponent implements OnInit {
       next: () => {
         this.user = null;
         this.assignments = [];
+        this.visibleAssignments = [];
+        this.clearFilters();
         this.errorMessage = null;
       },
       error: (err) => this.showError(err, 'Could not sign out')
@@ -130,12 +268,20 @@ export class AppComponent implements OnInit {
   // ----- assignments ---------------------------------------------------------
 
   loadAssignments(): void {
+    this.loadingList = true;
     this.service.getAssignments().subscribe({
       next: (data) => {
+        this.loadingList = false;
         this.assignments = data;
+        // Re-apply the current search and status filter to the new data, so a
+        // refresh does not silently reset the view the user had set up.
+        this.applyFilters();
         this.errorMessage = null;
       },
-      error: (err) => this.showError(err, 'Could not load assignments')
+      error: (err) => {
+        this.loadingList = false;
+        this.showError(err, 'Could not load assignments');
+      }
     });
   }
 
@@ -260,6 +406,7 @@ export class AppComponent implements OnInit {
         // form again, rather than leaving a stale list on screen.
         this.user = null;
         this.assignments = [];
+        this.visibleAssignments = [];
         this.errorMessage = 'Your session has ended. Please sign in again.';
         return;
       }
