@@ -234,14 +234,14 @@
       <section class="stats" aria-label="Summary">
         <div class="stat">
           <div class="stat__label">Total</div>
-          <div class="stat__value">{{ assignments.length }}</div>
+          <div class="stat__value">{{ submissions.length }}</div>
         </div>
         <div class="stat">
           <div class="stat__label">In progress</div>
           <div class="stat__value">{{ inProgressCount }}</div>
         </div>
         <div class="stat stat--done">
-          <div class="stat__label">Submitted</div>
+          <div class="stat__label">Handed in</div>
           <div class="stat__value">{{ submittedCount }}</div>
         </div>
         <div class="stat stat--overdue">
@@ -250,12 +250,46 @@
         </div>
       </section>
 
+      <!-- ===== MY TIMETABLE =====
+           For a student this panel IS the answer to two of the requirements:
+           the subjects they are taught, and the several teachers who teach them.
+           Both come from the one course list rather than separate requests,
+           because they are the same rows read from different columns. -->
+      <div class="card" *ngIf="courses.length > 0">
+        <div class="card__header">
+          <div class="card__title">
+            <h2>{{ isTeacher ? 'What I teach' : 'What I am taught' }}</h2>
+            <span class="badge badge--neutral">{{ courses.length }}</span>
+          </div>
+        </div>
+        <div class="card__body">
+          <p class="card__note">
+            <strong>{{ mySubjects.length }}</strong>
+            subject{{ mySubjects.length === 1 ? '' : 's' }}:
+            {{ mySubjects.join(', ') }}
+            <ng-container *ngIf="!isTeacher">
+              &nbsp;&middot;&nbsp;
+              <strong>{{ myTeachers.length }}</strong>
+              teacher{{ myTeachers.length === 1 ? '' : 's' }}:
+              {{ myTeachers.join(', ') }}
+            </ng-container>
+          </p>
+          <ul class="course-list">
+            <li *ngFor="let c of courses" class="course-list__item">
+              <span class="badge badge--neutral">{{ c.subjectCode }}</span>
+              <span>{{ c.subjectName }} &mdash; {{ c.className }}</span>
+              <span class="muted" *ngIf="!isTeacher">taught by {{ c.teacherUsername }}</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
       <div class="card">
 
         <div class="card__header">
           <div class="card__title">
-            <h2>Assignments</h2>
-            <span class="badge badge--neutral">{{ visibleAssignments.length }}</span>
+            <h2>{{ isTeacher ? 'Marking queue' : 'My work' }}</h2>
+            <span class="badge badge--neutral">{{ visibleSubmissions.length }}</span>
           </div>
 
           <!-- There is no search box here any more: DataTables draws its own,
@@ -286,42 +320,25 @@
           </div>
         </div>
 
-        <!-- Only a teacher may set work, so only a teacher sees the form. The server
-             refuses a student's create attempt regardless. -->
-        <form *ngIf="isTeacher" (ngSubmit)="onCreate()" class="create-form">
-          <div class="field">
-            <label class="field__label" for="newTitle">New assignment</label>
-            <input id="newTitle" class="input" type="text" name="newTitle"
-                   [(ngModel)]="newTitle" placeholder="What needs to be done" />
-          </div>
-          <div class="field">
-            <label class="field__label" for="newDueDate">Due date</label>
-            <input id="newDueDate" class="input" type="date" name="newDueDate"
-                   [(ngModel)]="newDueDate" />
-          </div>
-          <div class="field">
-            <label class="field__label" for="newAssignTo">Assign to</label>
-            <input id="newAssignTo" class="input" type="text" name="newAssignTo"
-                   [(ngModel)]="newAssignTo" placeholder="Student username" />
-          </div>
-          <button type="submit" class="btn btn--primary" [disabled]="!newTitle.trim()">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-                 stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                 stroke-linejoin="round" aria-hidden="true">
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-            Add
-          </button>
-        </form>
+        <p class="card__note" *ngIf="!isTeacher">
+          Upload a PDF against a piece of work, then hand it in. You can replace
+          the file as often as you like until you do &mdash; after that, ask your
+          teacher to reopen it.
+        </p>
 
         <p class="card__note" *ngIf="isTeacher">
-          Due date and student are optional. Leave "Assign to" blank to keep the
-          assignment under your own name.
+          Every student's work across the courses you teach. Download a PDF to
+          mark it; reopen a submission to let a student correct it.
           <!-- Only a teacher sees this, and the server refuses a student's attempt
                regardless - the same courtesy-not-a-boundary rule as everywhere. -->
           <button type="button" class="link-btn" (click)="openCreateUser()"
                   *ngIf="!showCreateUser">Add a student account</button>
         </p>
+
+        <div *ngIf="uploading" class="loading">
+          <span class="spinner" aria-hidden="true"></span>
+          <span>Uploading...</span>
+        </div>
 
         <!-- ===== CREATE A STUDENT ACCOUNT (US-23) ===== -->
         <div *ngIf="isTeacher && showCreateUser" class="subform">
@@ -365,44 +382,287 @@
         <!-- ===== LOADING ===== -->
         <div *ngIf="loadingList" class="loading">
           <span class="spinner" aria-hidden="true"></span>
-          <span>Loading assignments...</span>
+          <span>Loading...</span>
         </div>
 
         <!-- ===== EMPTY STATE =====
-             Only for the case where the account genuinely has no assignments.
+             Only for the case where the account genuinely has no work.
              "Your search matched nothing" is DataTables' job now, and it says so
              inside the table itself - see the language options in the table
              component. Showing the same sentence for both would send someone
              hunting for missing data that is in fact one click away. -->
-        <div *ngIf="!loadingList && assignments.length === 0" class="empty">
+        <div *ngIf="!loadingList && submissions.length === 0" class="empty">
           <svg class="empty__icon" width="40" height="40" viewBox="0 0 24 24" fill="none"
                stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
                stroke-linejoin="round" aria-hidden="true">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
             <path d="M14 2v6h6M9 15h6M9 11h3" />
           </svg>
-          <div class="empty__title">No assignments yet</div>
+          <div class="empty__title">Nothing here yet</div>
           <p class="empty__text">
             {{ isTeacher
-               ? 'Use the form above to set the first piece of work.'
-               : 'Nothing has been set for you yet.' }}
+               ? 'Set work for one of your classes and it will appear here, one row per student.'
+               : 'Nothing has been set for your classes yet.' }}
           </p>
         </div>
 
-        <!-- ===== ASSIGNMENT TABLE =====
+        <!-- ===== SUBMISSION TABLE =====
              DataTables draws this, not Angular. All this template does is hand
              over the rows and listen for what the user asked to do with one.
-             See AssignmentTableComponent for why ownership is split that way. -->
-        <app-assignment-table
-          *ngIf="!loadingList && assignments.length > 0"
-          [assignments]="visibleAssignments"
+             See SubmissionTableComponent for why ownership is split that way. -->
+        <app-submission-table
+          *ngIf="!loadingList && submissions.length > 0"
+          [submissions]="visibleSubmissions"
           [isTeacher]="isTeacher"
-          (submitAssignment)="onSubmit($event)"
-          (unsubmitAssignment)="onUnsubmit($event)"
-          (deleteAssignment)="onDelete($event)"
-          (saveAssignment)="onSaveEdit($event)">
-        </app-assignment-table>
+          (submitWork)="onSubmitWork($event)"
+          (unsubmitWork)="onUnsubmitWork($event)"
+          (downloadFile)="onDownload($event)"
+          (fileChosen)="onFileChosen($event)">
+        </app-submission-table>
 
+      </div>
+
+      <!-- ===== WORK I HAVE SET (teachers) =====
+           Separate from the marking queue above because it answers a different
+           question. That table is "how is each student getting on"; this one is
+           "what have I set, and to whom" - which is where creating, correcting
+           and deleting belong. One row per assignment, not per student. -->
+      <div class="card" *ngIf="isTeacher">
+        <div class="card__header">
+          <div class="card__title">
+            <h2>Work I have set</h2>
+            <span class="badge badge--neutral">{{ assignments.length }}</span>
+          </div>
+          <div class="toolbar">
+            <button type="button" class="btn btn--primary" (click)="openSetWork()"
+                    *ngIf="!showSetWork" [disabled]="courses.length === 0">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+                   stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                   stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+              Set work
+            </button>
+            <button type="button" class="btn btn--ghost" (click)="openTimetable()"
+                    *ngIf="!showTimetable">Timetable</button>
+          </div>
+        </div>
+
+        <div *ngIf="timetableNotice" class="notice notice--inline" role="status">
+          {{ timetableNotice }}
+        </div>
+
+        <p class="card__note" *ngIf="courses.length === 0">
+          You do not teach any courses yet. Open <strong>Timetable</strong> to add a
+          subject, a class, and the course that joins them.
+        </p>
+
+        <!-- ===== SET WORK ===== -->
+        <div *ngIf="showSetWork" class="subform">
+          <div class="subform__head">
+            <h3>Set new work</h3>
+            <button type="button" class="btn btn--sm btn--ghost"
+                    (click)="closeSetWork()">Close</button>
+          </div>
+
+          <form (ngSubmit)="onSetWork()">
+            <div class="create-form">
+              <div class="field">
+                <label class="field__label" for="newTitle">Title</label>
+                <input id="newTitle" class="input" type="text" name="newTitle"
+                       [(ngModel)]="newTitle" placeholder="What needs to be done" />
+              </div>
+              <div class="field">
+                <label class="field__label" for="newDueDate">Due date</label>
+                <input id="newDueDate" class="input" type="date" name="newDueDate"
+                       [(ngModel)]="newDueDate" />
+              </div>
+            </div>
+
+            <div class="field">
+              <label class="field__label" for="newDescription">Instructions</label>
+              <input id="newDescription" class="input" type="text" name="newDescription"
+                     [(ngModel)]="newDescription"
+                     placeholder="Optional - what the students need to do" />
+            </div>
+
+            <!-- Checkboxes rather than a single dropdown, because setting the
+                 same task for several classes at once is the point. Each ticked
+                 course becomes its own assignment with its own register. -->
+            <fieldset class="field">
+              <legend class="field__label">Which classes?</legend>
+              <div class="course-picker">
+                <label *ngFor="let c of courses" class="course-picker__option">
+                  <input type="checkbox"
+                         [checked]="isCourseSelected(c.id)"
+                         (change)="toggleCourse(c.id)" />
+                  <span>{{ c.subjectName }} &mdash; {{ c.className }}</span>
+                </label>
+              </div>
+              <span class="field__hint">
+                Every student enrolled in the class gets their own copy to hand in.
+              </span>
+            </fieldset>
+
+            <button type="submit" class="btn btn--primary" [disabled]="!canSetWork">
+              Set work for {{ selectedCourseIds.size }}
+              class{{ selectedCourseIds.size === 1 ? '' : 'es' }}
+            </button>
+          </form>
+        </div>
+
+        <!-- ===== TIMETABLE ADMIN ===== -->
+        <div *ngIf="showTimetable" class="subform">
+          <div class="subform__head">
+            <h3>Timetable</h3>
+            <button type="button" class="btn btn--sm btn--ghost"
+                    (click)="closeTimetable()">Close</button>
+          </div>
+
+          <form (ngSubmit)="onCreateSubject()" class="create-form">
+            <div class="field">
+              <label class="field__label" for="newSubjectCode">Subject code</label>
+              <input id="newSubjectCode" class="input" type="text" name="newSubjectCode"
+                     [(ngModel)]="newSubjectCode" placeholder="e.g. GEOG" />
+            </div>
+            <div class="field">
+              <label class="field__label" for="newSubjectName">Subject name</label>
+              <input id="newSubjectName" class="input" type="text" name="newSubjectName"
+                     [(ngModel)]="newSubjectName" placeholder="e.g. Geography" />
+            </div>
+            <button type="submit" class="btn btn--sm">Add subject</button>
+          </form>
+
+          <form (ngSubmit)="onCreateClass()" class="create-form">
+            <div class="field">
+              <label class="field__label" for="newClassName">Class name</label>
+              <input id="newClassName" class="input" type="text" name="newClassName"
+                     [(ngModel)]="newClassName" placeholder="e.g. Grade 11A" />
+            </div>
+            <button type="submit" class="btn btn--sm">Add class</button>
+          </form>
+
+          <form (ngSubmit)="onCreateCourse()" class="create-form">
+            <div class="field">
+              <label class="field__label" for="courseSubject">I teach</label>
+              <select id="courseSubject" class="input" name="courseSubject"
+                      [(ngModel)]="courseSubjectId">
+                <option [ngValue]="null">Choose a subject</option>
+                <option *ngFor="let s of subjects" [ngValue]="s.id">{{ s.name }}</option>
+              </select>
+            </div>
+            <div class="field">
+              <label class="field__label" for="courseClass">to</label>
+              <select id="courseClass" class="input" name="courseClass"
+                      [(ngModel)]="courseClassId">
+                <option [ngValue]="null">Choose a class</option>
+                <option *ngFor="let c of classes" [ngValue]="c.id">{{ c.name }}</option>
+              </select>
+            </div>
+            <button type="submit" class="btn btn--sm btn--primary"
+                    [disabled]="courseSubjectId === null || courseClassId === null">
+              Add course
+            </button>
+          </form>
+
+          <form (ngSubmit)="onEnrol()" class="create-form">
+            <div class="field">
+              <label class="field__label" for="enrolClass">Enrol into</label>
+              <select id="enrolClass" class="input" name="enrolClass"
+                      [(ngModel)]="enrolClassId">
+                <option [ngValue]="null">Choose a class</option>
+                <option *ngFor="let c of classes" [ngValue]="c.id">
+                  {{ c.name }} ({{ c.studentCount }})
+                </option>
+              </select>
+            </div>
+            <div class="field">
+              <label class="field__label" for="enrolUsername">Student</label>
+              <input id="enrolUsername" class="input" type="text" name="enrolUsername"
+                     [(ngModel)]="enrolUsername" placeholder="Username" />
+              <!-- The server refuses a teacher here, and so does the database:
+                   only a STUDENT can be enrolled, enforced by a composite foreign
+                   key rather than by this form being careful. -->
+              <span class="field__hint">Only a student account can be enrolled.</span>
+            </div>
+            <button type="submit" class="btn btn--sm"
+                    [disabled]="enrolClassId === null || !enrolUsername.trim()">
+              Enrol
+            </button>
+          </form>
+        </div>
+
+        <!-- One row per assignment, with progress. Plain Angular rather than
+             DataTables: this list is short by nature, and a second DataTables
+             instance on the same page buys sorting nobody asked for. -->
+        <div class="card__body" *ngIf="assignments.length > 0">
+          <table class="table table--plain">
+            <thead>
+              <tr>
+                <th>Title</th>
+                <th>Subject</th>
+                <th>Class</th>
+                <th>Due</th>
+                <th>Handed in</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <ng-container *ngFor="let a of assignments">
+                <tr *ngIf="editingAssignmentId !== a.id">
+                  <td>{{ a.title }}</td>
+                  <td>{{ a.subjectName }}</td>
+                  <td>{{ a.className }}</td>
+                  <td>
+                    <span *ngIf="a.dueDate; else noDue"
+                          [class.badge--overdue]="a.pastDue">{{ a.dueDate }}</span>
+                    <ng-template #noDue><span class="muted">none</span></ng-template>
+                  </td>
+                  <td>{{ a.submittedCount }} of {{ a.studentCount }}</td>
+                  <td class="col-actions">
+                    <div class="row-actions">
+                      <button type="button" class="btn btn--sm"
+                              (click)="startEditAssignment(a)">Edit</button>
+                      <button type="button" class="btn btn--sm btn--danger"
+                              (click)="onDeleteAssignment(a)"
+                              title="Work that has been handed in must be reopened first">
+                        Delete
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+                <tr *ngIf="editingAssignmentId === a.id">
+                  <td colspan="6">
+                    <div class="create-form">
+                      <div class="field">
+                        <label class="field__label" [attr.for]="'editTitle' + a.id">Title</label>
+                        <input [id]="'editTitle' + a.id" class="input" type="text"
+                               name="editTitle" [(ngModel)]="editTitle" />
+                      </div>
+                      <div class="field">
+                        <label class="field__label" [attr.for]="'editDue' + a.id">Due</label>
+                        <input [id]="'editDue' + a.id" class="input" type="date"
+                               name="editDueDate" [(ngModel)]="editDueDate" />
+                      </div>
+                      <div class="field">
+                        <label class="field__label" [attr.for]="'editDesc' + a.id">Instructions</label>
+                        <input [id]="'editDesc' + a.id" class="input" type="text"
+                               name="editDescription" [(ngModel)]="editDescription" />
+                      </div>
+                      <div class="row-actions">
+                        <button type="button" class="btn btn--sm btn--primary"
+                                [disabled]="!editTitle.trim()"
+                                (click)="saveEditAssignment(a.id)">Save</button>
+                        <button type="button" class="btn btn--sm btn--ghost"
+                                (click)="cancelEditAssignment()">Cancel</button>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              </ng-container>
+            </tbody>
+          </table>
+        </div>
       </div>
       </ng-container>
     </ng-container>

@@ -280,14 +280,36 @@ takes two deliberate acts.
 **~~R6 · Un-submit.~~ Delivered.** Teacher-only, deliberately not the mirror of
 submit: if students could retract their own work, "submitted" would mean nothing.
 
+**~~R7 · Password change and account self-service.~~ Delivered** in Sprint 3. A
+teacher can create a student account with a temporary password; the account can do
+nothing but change it until it has.
+
+**~~R8 · Classes and subjects.~~ Delivered** on 4 August 2026, and larger than the
+original line suggested. `Subject`, `SchoolClass`, `Enrolment` and `Course` now
+exist, and `Assignment` split into `Assignment` + `Submission` to make it possible.
+Four requirements fell out of the one `Course` table:
+
+| Requirement | Carried by |
+|---|---|
+| A student is taught by several teachers | `Course` rows attached to their class |
+| A student is taught several subjects | the same rows |
+| A teacher takes several classes and subjects | the same rows, grouped by teacher |
+| One piece of work reaches a whole class | `Assignment` fans out to one `Submission` per enrolled student |
+
+**Terms are still not delivered** and were never started; the original line bundled
+them with classes and subjects, and only the latter two were built.
+
+**~~R9 · Run the test suite in CI on every push.~~ Delivered** in Sprint 3.
+
 ### Still open
 
 | | Item |
 |---|---|
-| **R7** | Password change and account self-service — credentials are fixed at seed time |
-| **R8** | Classes, terms and subjects — there is still no grouping above an assignment |
-| **R9** | Run the test suite in CI on every push (the remaining half of NFR-9) |
 | **R10** | Tests that exercise the SQL Server migrations, not just the entities |
+| **R11** | Terms — no academic calendar above a course |
+| **R12** | Students enrolled *after* work is set do not receive it retroactively |
+| **R13** | Frontend unit tests — the Angular half is verified by type-check, build and manual browser use only |
+| **R14** | Marks and grading — a teacher can download a PDF to mark, but the system records no result |
 
 ## 8. Known limitations
 
@@ -298,13 +320,15 @@ Accepted for this release, recorded so they are chosen rather than discovered.
 | ~~**L1**~~ | ~~Data is in-memory~~ | **Resolved.** The database is SQL Server 2019 (`MSSQLSERVER01`, database `School Management System`), with Flyway migrations and `ddl-auto=validate`. Verified by restarting the JVM and finding the data intact. |
 | ~~**L2**~~ | ~~No authentication~~ | **Resolved.** Session authentication with BCrypt hashing, CSRF protection, and two roles. An anonymous request receives `401`. |
 | ~~**L3**~~ | ~~Status is an untyped string~~ | **Resolved.** Status is now a typed enum with a database-level constraint on the column. |
-| ~~**L4**~~ | ~~No automated tests~~ | **Resolved.** 29 tests run as part of the build - 17 unit tests of the business rules, 12 full-stack tests through MockMvc with real security. |
+| ~~**L4**~~ | ~~No automated tests~~ | **Resolved.** 69 tests run as part of the build - 17 unit tests of the business rules, 22 full-stack tests through MockMvc with real security, 18 covering concurrency and database integrity, 12 covering account self-service. |
 | ~~**L5**~~ | ~~Localhost-only CORS~~ | **Resolved.** Permitted origins come from `app.cors.allowed-origins`, and the frontend's API address from its environment file, so either half can be pointed elsewhere without a code change. |
 | **L6** | The list does not refresh on its own | Two people working at once can act on stale data. Handled safely — the server returns `409` and the interface explains it — but it is a recovery, not a prevention. |
-| ~~**L7**~~ | ~~Single shared list~~ | **Partly resolved.** The list is now scoped per account: a student sees only their own work. Classes, terms and subjects still do not exist. |
-| ~~**L8**~~ | ~~No relationships between tables~~ | **Resolved.** `assignment.owner_id` is a real foreign key to `app_user.id`, with no `ON DELETE CASCADE`, so the database refuses to delete an account that still owns assignments. |
-| **L9** | Development credentials are seeded | `teacher` and `student` both use `password123`, reset at every startup. Fine locally, unacceptable anywhere else. |
-| **L10** | Tests run against H2, not SQL Server | The Flyway migrations themselves are not covered by the suite. `ddl-auto=validate` is what catches drift between migrations and entities. |
+| ~~**L7**~~ | ~~Single shared list~~ | **Resolved.** Scoping now runs through the timetable: a student sees the work set for the classes they are enrolled in, a teacher sees the courses they take. Terms still do not exist (R11). |
+| ~~**L8**~~ | ~~No relationships between tables~~ | **Resolved,** and considerably further than this line anticipated. Nine tables with eleven foreign keys, four of them **composite** `(id, role)` keys that make "only a student can be enrolled" and "only a teacher can teach" facts about the data rather than checks in Java. No `ON DELETE CASCADE` anywhere. |
+| **L9** | Development credentials are seeded | Five accounts all use `password123`, reset at every startup. Fine locally, unacceptable anywhere else. |
+| **L10** | Tests run against H2, not SQL Server | Two consequences. The Flyway migrations are never executed by the suite. And JPA cannot express a composite foreign key whose second column is pinned to a literal, so H2 gets the `CHECK` plus a single-column key — enough to refuse a row claiming a role it may not hold, but not enough to refuse one claiming `STUDENT` for a teacher's id. Both halves are verified by hand with `sqlcmd`; `ddl-auto=validate` catches drift between migrations and entities. |
+| **L11** | Uploaded PDFs are stored in the database | Chosen for transactional consistency — a file on disk plus a row pointing at it is two writes that can leave orphans either way. The cost is honest: a larger database and slower backups. Correct at 10 MB per assignment; wrong at video scale. |
+| **L12** | The PDF check is a magic-number check, not a virus scan | The first five bytes must be `%PDF-`, so a renamed executable is refused. A well-formed but malicious PDF is not detected, and this system does not claim to. |
 
 ## 9. Acceptance criteria
 

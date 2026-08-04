@@ -1035,3 +1035,104 @@ table.dataTable .input { min-width: 140px; }
   table.dataTable > thead > tr > th,
   table.dataTable > tbody > tr > td { padding-left: 14px; padding-right: 14px; }
 }
+
+/* ============================================================================
+   COURSES, SUBMISSIONS AND THE TIMETABLE
+   Added when the model grew from "an assignment belongs to one person" to
+   subjects taught to classes by teachers. Uses the same tokens as everything
+   above, so a theme change still reaches all of it from one place.
+   ========================================================================= */
+
+/* Secondary text inside a table cell: "none", a file size, a teacher's name.
+   A class rather than a colour written at each call site, so "less important"
+   means one thing everywhere and can be adjusted in one place. */
+.muted {
+  color: var(--text-muted);
+  font-size: 0.9em;
+}
+
+/* The read-only list of courses a person is involved in. */
+.course-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.course-list__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--surface-sunk);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 0.92rem;
+}
+
+/* Ticking several classes is how one piece of work reaches more than one of
+   them, so the options are laid out to be scanned and multi-selected rather
+   than hidden inside a dropdown that suggests a single choice. */
+.course-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.course-picker__option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 11px;
+  background: var(--surface-sunk);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 0.92rem;
+}
+
+.course-picker__option:hover {
+  border-color: var(--border-strong);
+}
+
+.course-picker__option input {
+  accent-color: var(--brand);
+}
+
+/* A plain table Angular draws itself - the teacher's own list of work set.
+   Deliberately NOT a second DataTables instance: the list is short by nature,
+   and a second one would add sorting nobody asked for and a second search box
+   competing with the first. */
+.table--plain {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+
+.table--plain th,
+.table--plain td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.table--plain th {
+  font-weight: 600;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.table--plain tr:last-child td {
+  border-bottom: none;
+}
+
+/* The plain table can overflow on a narrow screen; let it scroll inside its own
+   card rather than pushing the whole page sideways. */
+.card__body:has(.table--plain) {
+  overflow-x: auto;
+}

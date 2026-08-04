@@ -206,11 +206,19 @@ class AccountSelfServiceTest {
         }
 
         @Test
-        @DisplayName("cannot submit an assignment")
+        @DisplayName("cannot hand work in")
         void cannotSubmit() throws Exception {
             givenPendingAccount("pending2");
 
-            mvc.perform(put("/api/assignments/1/submit")
+            /*
+             * 403 rather than 404, even though submission 1 may not belong to
+             * this account - and the ORDER of the two guards is why. The pending
+             * check runs before anything is looked up, so a pending account is
+             * told its own status rather than being sent to work out that the
+             * row is missing. Getting this backwards would leak whether a
+             * submission exists to an account that is not allowed to ask.
+             */
+            mvc.perform(put("/api/submissions/1/submit")
                             .with(as("pending2")).with(csrf()))
                .andExpect(status().isForbidden());
         }

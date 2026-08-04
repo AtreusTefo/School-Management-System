@@ -200,19 +200,44 @@ Spring Data generates the implementation at runtime, supplying `findAll`, `findB
 
 ### 2.4 Model Layer and Database Schema
 
-#### Entity
+#### The shape of the model
 
-```java
-@Entity
-class Assignment {
-    @Id @GeneratedValue(strategy = IDENTITY)      Long id;
-    @NotBlank @Size(max = 200)
-    @Column(nullable = false, length = 200)       String title;
-    @NotNull @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)        AssignmentStatus status;
-    @Version @JsonIgnore                          Long version;
-}
 ```
+                    Subject          SchoolClass
+                       |                 |  |
+                       +-----+-----------+  |
+                             |              |
+              AppUser ---- Course        Enrolment ---- AppUser
+             (TEACHER)       |                          (STUDENT)
+                             |
+                        Assignment
+                             |
+                        Submission ---- AppUser (STUDENT)
+                             |
+                       SubmissionFile
+```
+
+**A student never points at a course directly.** They are enrolled in a class, the
+class has courses, and their teachers and subjects follow from that. Wiring students
+to courses individually would mean re-wiring thirty rows every time a class gained a
+subject, and the register and the timetable would drift apart the first time somebody
+forgot.
+
+#### The central split: Assignment and Submission
+
+`Assignment` used to mean two things at once - the work a teacher set, and one
+student's progress on it. It carried both a `status` and an `owner_id`, which forced
+every assignment to belong to exactly one person and made "set this for the whole
+class" impossible to express.
+
+| Table | Means | Cardinality |
+|---|---|---|
+| `assignment` | what was set | one row, however many students receive it |
+| `submission` | one student's state, and their PDF | one row per enrolled student |
+
+The signal that this was the right split: **`status` never made sense on
+`assignment`.** "Is this submitted?" has no single answer for a class of thirty, and
+the old model was quietly answering it for a class of one.
 
 #### The schema, as the database actually holds it
 
@@ -221,15 +246,80 @@ app_user.id             bigint         NOT NULL   PK, identity
 app_user.username       nvarchar(50)   NOT NULL   UNIQUE
 app_user.password_hash  nvarchar(100)  NOT NULL   BCrypt, never exposed
 app_user.role           nvarchar(20)   NOT NULL   CHECK in ('STUDENT','TEACHER')
+app_user.(id, role)                               UNIQUE  <- makes role guards possible
+app_user.must_change_password bit      NOT NULL   default 0
 app_user.version        bigint         NULL       optimistic lock counter
 
-assignment.id           bigint         NOT NULL   PK, identity
-assignment.version      bigint         NULL       optimistic lock counter
+subject.code            nvarchar(20)   NOT NULL   UNIQUE, CHECK not blank
+subject.name            nvarchar(100)  NOT NULL   UNIQUE, CHECK not blank
+
+school_class.name       nvarchar(50)   NOT NULL   UNIQUE, CHECK not blank
+
+enrolment.student_id    bigint         NOT NULL   \ composite FK -> app_user(id, role)
+enrolment.student_role  nvarchar(20)   NOT NULL   / CHECK = 'STUDENT'
+enrolment.class_id      bigint         NOT NULL   FK -> school_class(id)
+enrolment.(student_id, class_id)                  UNIQUE
+
+course.subject_id       bigint         NOT NULL   FK -> subject(id)
+course.class_id         bigint         NOT NULL   FK -> school_class(id)
+course.teacher_id       bigint         NOT NULL   \ composite FK -> app_user(id, role)
+course.teacher_role     nvarchar(20)   NOT NULL   / CHECK = 'TEACHER'
+course.(subject_id, class_id, teacher_id)         UNIQUE  (co-teaching allowed)
+
 assignment.title        nvarchar(200)  NOT NULL   CHECK len(trim(title)) > 0
-assignment.status       nvarchar(20)   NOT NULL   CHECK in ('IN_PROGRESS','SUBMITTED')
-assignment.owner_id     bigint         NOT NULL   FK -> app_user(id), ON DELETE NO_ACTION
+assignment.description  nvarchar(2000) NULL
+assignment.course_id    bigint         NOT NULL   FK -> course(id)
+assignment.created_by_id   bigint      NOT NULL   \ composite FK -> app_user(id, role)
+assignment.created_by_role nvarchar(20) NOT NULL  / CHECK = 'TEACHER'
 assignment.due_date     date           NULL       null means "no deadline"
+
+submission.assignment_id bigint        NOT NULL   FK -> assignment(id), NO ACTION
+submission.student_id   bigint         NOT NULL   \ composite FK -> app_user(id, role)
+submission.student_role nvarchar(20)   NOT NULL   / CHECK = 'STUDENT'
+submission.status       nvarchar(20)   NOT NULL   CHECK in ('IN_PROGRESS','SUBMITTED')
+submission.submitted_at datetimeoffset(6) NULL    CHECK: agrees with status
+submission.(assignment_id, student_id)            UNIQUE  <- the fan-out's safety net
+
+submission_file.submission_id bigint   NOT NULL   FK -> submission(id), UNIQUE
+submission_file.filename     nvarchar(255)  NOT NULL  CHECK not blank
+submission_file.content_type nvarchar(100)  NOT NULL  CHECK = 'application/pdf'
+submission_file.size_bytes   bigint         NOT NULL  CHECK > 0 AND <= 10485760
+submission_file.sha256       nvarchar(64)   NOT NULL  CHECK len = 64
+submission_file.content      varbinary(max) NOT NULL
+submission_file.uploaded_at  datetimeoffset(6) NOT NULL
 ```
+
+#### The role guard: how a composite key makes a rule a fact
+
+"Only a student can be enrolled" and "only a teacher can teach" are not checks in a
+service. They are enforced by the schema, using a standard relational technique:
+
+1. `app_user` carries `UNIQUE (id, role)`
+2. the referencing table stores both `student_id` **and** `student_role`
+3. `CHECK (student_role = 'STUDENT')` pins the value
+4. `FOREIGN KEY (student_id, student_role) REFERENCES app_user (id, role)` pins it to
+   the user's **real** role
+
+**Neither half is sufficient alone.** The `CHECK` would allow a row claiming `STUDENT`
+for a teacher's id; the foreign key would allow it to claim any role. Together, the
+only value satisfying both is that user's genuine role, and it must be `STUDENT`.
+
+One consequence, worth knowing before it surprises somebody: **a user's role cannot be
+changed while any row depends on it.** Promoting an enrolled student to teacher is
+refused by the database. That is the guarantee working - the alternative is a
+"teacher" still listed on a class register as a pupil.
+
+`submission.submitted_at` carries a second kind of guarantee - **intra-row
+consistency**. `status` and `submitted_at` describe the same event, so they can
+contradict each other, so a `CHECK` refuses the contradiction:
+
+```sql
+CHECK ((status = 'SUBMITTED'   AND submitted_at IS NOT NULL)
+    OR (status = 'IN_PROGRESS' AND submitted_at IS NULL))
+```
+
+Without it, every reader would have to decide which of the two fields to believe, and
+they would not all decide the same way.
 
 **The `status` CHECK constraint is not decoration - it replaced something that was
 lost in the move.** On H2 the column was a native `enum ('IN_PROGRESS','SUBMITTED')`,
@@ -240,27 +330,44 @@ across the migration rather than silently weakening it.
 
 #### Referential integrity
 
-`assignment.owner_id` is the system's first foreign key, and it is declared with
-**`ON DELETE NO_ACTION`** rather than a cascade. Deleting an account that still owns
-assignments is refused by the database. Destroying somebody's work as a side effect of
-removing their account should be an explicit decision taken in the service, not
-something the schema does quietly.
+Eleven foreign keys, **none of them cascading**. Deleting anything that still has
+children is refused by the database. Destroying somebody's work as a side effect of
+removing an account, a class or an assignment should be an explicit decision taken in
+the service, not something the schema does quietly - so `AssignmentService.delete`
+removes the child submissions itself, after refusing outright if any have been handed
+in. A cascade would make that refusal bypassable by anyone deleting the parent another
+way.
 
-Verified by writing directly through `sqlcmd`, bypassing the application entirely:
+Verified by writing directly through `sqlcmd`, bypassing the application entirely.
+All 20 attempts were refused:
 
-| Attempt | Result |
+| Attempt | Refused by |
 |---|---|
-| Assignment with `owner_id = 99999` | Rejected - `fk_assignment_owner` |
-| Assignment with `owner_id = NULL` | Rejected - NOT NULL |
-| Delete an account that owns work | Rejected - REFERENCE constraint |
-| `status = 'banana'` | Rejected - `ck_assignment_status` |
-| `role = 'PRINCIPAL'` | Rejected - `ck_app_user_role` |
-| Duplicate username | Rejected - `uq_app_user_username` |
-| Whitespace-only title | Rejected - `ck_assignment_title_not_blank` |
-| 300-character title | Rejected - would be truncated |
+| Enrol a teacher, honestly labelled `TEACHER` | `ck_enrolment_student_role` |
+| Enrol a teacher, **claiming** to be `STUDENT` | `fk_enrolment_student` (composite) |
+| Record a student as teaching a course | `fk_course_teacher` (composite) |
+| **Promote an enrolled student to teacher** | `fk_enrolment_student` (composite) |
+| Enrol the same student in a class twice | `uq_enrolment_student_class` |
+| Two submissions for one student and assignment | `uq_submission_assignment_student` |
+| `SUBMITTED` with no timestamp | `ck_submission_status_time` |
+| `IN_PROGRESS` carrying a timestamp | `ck_submission_status_time` |
+| `status = 'banana'` | `ck_submission_status` |
+| Coursework that is not `application/pdf` | `ck_submission_file_pdf` |
+| An empty file, or one over 10 MB | `ck_submission_file_size` |
+| A checksum that is not 64 characters | `ck_submission_file_sha256` |
+| Assignment on a course that does not exist | `fk_assignment_course` |
+| Assignment claiming a `STUDENT` set it | `ck_assignment_created_by_role` |
+| Delete a class that still has a register | `fk_enrolment_class` |
+| Delete a student who still has work | `fk_enrolment_student` |
+| Blank subject name, duplicate subject code | `CHECK` / `UNIQUE` |
+| 300-character title | column length - would be truncated |
 
 That last row matters more than it looks: silent truncation would be the worst
 outcome, because the row would be saved and the data quietly wrong.
+
+The fourth row is the one worth pausing on. It is not a rule anybody wrote as a rule -
+it falls out of the composite key, and it is the difference between a role that is
+checked and a role that is *true*.
 
 **Why the constraints are duplicated in Java and in the schema.** Bean validation
 (`@NotBlank`, `@Size`) refuses a bad object inside this application. The column

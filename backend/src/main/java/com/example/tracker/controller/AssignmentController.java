@@ -1,9 +1,12 @@
 package com.example.tracker.controller;
 
-import com.example.tracker.model.Assignment;
+import com.example.tracker.dto.AssignmentView;
+import com.example.tracker.dto.SubmissionView;
 import com.example.tracker.service.AssignmentService;
+import com.example.tracker.service.SubmissionService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Size;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
@@ -14,118 +17,110 @@ import java.util.List;
 /**
  * CONTROLLER (PRESENTATION) LAYER
  * -------------------------------
- * The "front door" of the backend. Its ONLY job is to:
- *   - receive HTTP requests from the outside world (our Angular app),
- *   - hand the work to the service,
- *   - return the result as JSON.
+ * The "front door" for setting work. Its ONLY job is to receive HTTP requests,
+ * hand the work to a service, and return the result as JSON.
  *
  * It contains NO business rules and NO database code. In particular it does not
- * decide who may do what: every authority rule lives in AssignmentService, so it
- * still holds for any other caller.
+ * decide who may do what: every authority rule lives in the service, so it holds
+ * for any other caller - a test, a scheduled job, a future endpoint.
  *
- * @RestController = handles web requests and returns data (JSON), not HTML.
- * @RequestMapping = every URL in this class starts with "/api/assignments".
- *
- * CROSS-ORIGIN permission is NOT declared here. It used to be, as
+ * CROSS-ORIGIN permission is not declared here. It used to be, as
  * @CrossOrigin(origins = "http://localhost:4200"), which compiled the frontend's
- * address into the backend and meant a rebuild whenever the interface moved. It
- * now comes from configuration - see CorsConfig and `app.cors.allowed-origins`.
+ * address into the backend. It now comes from configuration - see CorsConfig.
  */
 @RestController
 @RequestMapping("/api/assignments")
 public class AssignmentController {
 
-    private final AssignmentService service;
+    private final AssignmentService assignments;
+    private final SubmissionService submissions;
 
-    public AssignmentController(AssignmentService service) {
-        this.service = service;
+    public AssignmentController(AssignmentService assignments, SubmissionService submissions) {
+        this.assignments = assignments;
+        this.submissions = submissions;
     }
 
-    /**
-     * GET /api/assignments
-     * The list the SIGNED-IN person is allowed to see - everything for a
-     * teacher, only their own for a student. The scoping happens in the service.
-     */
+    /** GET /api/assignments - what the signed-in person can see, with progress counts. */
     @GetMapping
-    public List<Assignment> getAllAssignments() {
-        return service.getAllAssignments();
+    public List<AssignmentView> list() {
+        return assignments.listAssignments();
     }
 
     /**
      * POST /api/assignments
      *
-     * @Valid switches ON the annotations declared inside the request DTO.
-     * Without it those annotations are decoration and Spring ignores them
-     * entirely - which is why a blank title once sailed past the web layer and
-     * surfaced as a 500.
+     * Returns a LIST, because one request can set the same work for several
+     * courses at once and each produces its own assignment.
+     *
+     * @Valid switches ON the annotations inside the request body class. Without
+     * it those annotations are decoration and Spring ignores them entirely -
+     * which is why a blank title once sailed past the web layer and surfaced as
+     * a 500.
      */
     @PostMapping
-    public Assignment createAssignment(@Valid @RequestBody CreateAssignmentRequest request) {
-        return service.createAssignment(
-                request.getTitle(), request.getDueDate(), request.getAssignTo());
+    public List<AssignmentView> create(@Valid @RequestBody CreateAssignmentRequest request) {
+        return assignments.createAssignment(
+                request.getTitle(), request.getDescription(),
+                request.getDueDate(), request.getCourseIds());
     }
 
-    /** PUT /api/assignments/{id} - correct the title or due date (US-17). */
+    /** PUT /api/assignments/{id} - correct the title, description or due date. */
     @PutMapping("/{id}")
-    public Assignment updateAssignment(@PathVariable Long id,
-                                       @Valid @RequestBody UpdateAssignmentRequest request) {
-        return service.updateAssignment(id, request.getTitle(), request.getDueDate());
+    public AssignmentView update(@PathVariable Long id,
+                                 @Valid @RequestBody UpdateAssignmentRequest request) {
+        return assignments.updateAssignment(
+                id, request.getTitle(), request.getDescription(), request.getDueDate());
     }
 
     /**
-     * DELETE /api/assignments/{id} - remove it (US-17).
+     * DELETE /api/assignments/{id}
      * 204 No Content: the deletion succeeded and there is nothing to return.
      */
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void deleteAssignment(@PathVariable Long id) {
-        service.deleteAssignment(id);
-    }
-
-    /** PUT /api/assignments/{id}/submit - mark it handed in. */
-    @PutMapping("/{id}/submit")
-    public Assignment submitAssignment(@PathVariable Long id) {
-        return service.submitAssignment(id);
-    }
-
-    /** PUT /api/assignments/{id}/unsubmit - reopen it, teacher only (US-19). */
-    @PutMapping("/{id}/unsubmit")
-    public Assignment unsubmitAssignment(@PathVariable Long id) {
-        return service.unsubmitAssignment(id);
+    public void delete(@PathVariable Long id) {
+        assignments.deleteAssignment(id);
     }
 
     /**
-     * The shape of the JSON accepted when creating an assignment.
+     * GET /api/assignments/{id}/submissions - the marking list.
      *
-     * Keeping this separate from the Assignment entity means the client can
-     * never set an id, a status or an owner - the service decides all three.
+     * Every student's state for this assignment, so a teacher can see who has
+     * handed in and reach each PDF. Teacher-only, and only for a course they
+     * teach; the service enforces both.
+     */
+    @GetMapping("/{id}/submissions")
+    public List<SubmissionView> submissionsFor(@PathVariable Long id) {
+        return submissions.listForAssignment(id);
+    }
+
+    /**
+     * The shape of the JSON accepted when setting work.
+     *
+     * Keeping this separate from the Assignment entity means a client can never
+     * set an id, a creator or a course's teacher - the service decides all
+     * three from the session.
      */
     static class CreateAssignmentRequest {
 
-        /**
-         * @NotBlank rejects null, "" and "   " (whitespace only).
-         *
-         * The service ALSO checks the title. That duplication is deliberate:
-         * this annotation guards the web edge, while the service guard protects
-         * the business rule no matter who calls it.
-         */
+        /** @NotBlank rejects null, "" and "   " (whitespace only). */
         @NotBlank(message = "Title must not be blank")
         @Size(max = 200, message = "Title must be at most 200 characters")
         private String title;
+
+        @Size(max = 2000, message = "Description must be at most 2000 characters")
+        private String description;
 
         /** Optional. Null means "no deadline", which is a legitimate state. */
         private LocalDate dueDate;
 
         /**
-         * Optional: the account this work is set FOR. Omit it and the teacher
-         * keeps the assignment themselves.
-         *
-         * Note this is a USERNAME, not an id. A client naming a row by its
-         * primary key invites probing for ids that exist; a name is what the
-         * teacher actually knows, and the service still refuses one that does
-         * not resolve.
+         * Which courses to set this work for. A list, because setting the same
+         * task for three classes is one action for the teacher even though it is
+         * three assignments in the data.
          */
-        private String assignTo;
+        @NotEmpty(message = "Choose at least one course")
+        private List<Long> courseIds;
 
         public String getTitle() {
             return title;
@@ -133,6 +128,14 @@ public class AssignmentController {
 
         public void setTitle(String title) {
             this.title = title;
+        }
+
+        public String getDescription() {
+            return description;
+        }
+
+        public void setDescription(String description) {
+            this.description = description;
         }
 
         public LocalDate getDueDate() {
@@ -143,21 +146,24 @@ public class AssignmentController {
             this.dueDate = dueDate;
         }
 
-        public String getAssignTo() {
-            return assignTo;
+        public List<Long> getCourseIds() {
+            return courseIds;
         }
 
-        public void setAssignTo(String assignTo) {
-            this.assignTo = assignTo;
+        public void setCourseIds(List<Long> courseIds) {
+            this.courseIds = courseIds;
         }
     }
 
-    /** The shape accepted when editing. Same fields; status is never editable. */
+    /** The shape accepted when editing. The course is deliberately not editable. */
     static class UpdateAssignmentRequest {
 
         @NotBlank(message = "Title must not be blank")
         @Size(max = 200, message = "Title must be at most 200 characters")
         private String title;
+
+        @Size(max = 2000, message = "Description must be at most 2000 characters")
+        private String description;
 
         private LocalDate dueDate;
 
@@ -167,6 +173,14 @@ public class AssignmentController {
 
         public void setTitle(String title) {
             this.title = title;
+        }
+
+        public String getDescription() {
+            return description;
+        }
+
+        public void setDescription(String description) {
+            this.description = description;
         }
 
         public LocalDate getDueDate() {

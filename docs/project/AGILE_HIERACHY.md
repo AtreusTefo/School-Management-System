@@ -1371,7 +1371,85 @@ Every epic from the source map, and where it went. Nothing was dropped silently.
 |------|-----|
 | An `ADMIN` role | Nothing currently needs oversight across accounts; two roles cover the delivered behaviour |
 | Frontend component tests | Karma and Jasmine are installed but no specs exist |
-| Classes, terms and subjects | The schema has no grouping above an assignment, and adding one is a data-model change, not a feature |
+| ~~Classes, terms and subjects~~ | **Classes and subjects delivered** in Sprint 4 as EPIC-14. Terms remain outstanding (PRD R11). |
+| Marks and grading | A teacher can download a PDF to mark, but no result is recorded. The inherited hierarchy's EPIC-03 (Assessment) describes this; it is a decision, not an oversight. |
+
+---
+
+## Sprint 4 - The Timetable and Handing Work In
+
+**Dates:** 4 August 2026
+**Sprint Goal:** *Make the relationships a school actually has representable, and let
+work be handed in as a document rather than a flag.*
+
+### Why this was a data-model change, not a feature
+
+Four requirements arrived together, and none of them could be built on the existing
+schema:
+
+- a student taught by more than one teacher
+- a student taught more than one subject
+- a teacher setting one piece of work for a whole class
+- a teacher taking more than one class or subject
+
+The blocker was that `assignment` carried an `owner_id`, so an assignment belonged to
+exactly one person. Thirty students meant thirty rows with the same title and nothing
+in the schema saying they were the same piece of work.
+
+**The split.** `Assignment` (what was set) separated from `Submission` (one student's
+state, and their PDF). The signal that this was right: `status` never made sense on
+`assignment` - "is this submitted?" has no single answer for a class of thirty, and
+the old model was quietly answering it for a class of one.
+
+**The collapse.** All four requirements then fell out of one `Course` table - subject,
+class, teacher - read from different directions. None needed its own column or flag.
+
+### Epics Delivered in Sprint 4
+
+| Epic | Stories | Points | Depended on | PRD | Status |
+|------|---------|:------:|-------------|-----|--------|
+| EPIC-14: The Timetable | US-31, US-32, US-33 | 21 | EPIC-06 | R8 | Done |
+| EPIC-15: Handing Work In | US-34, US-35, US-36 | 21 | EPIC-14 | R8 | Done |
+
+### US-36: Make role rules facts about the data
+> **Story Points**: 8 | **Sprint**: 4 | **Status**: Done
+
+**As a** school,
+**I want** "only a student can be enrolled" and "only a teacher can teach" to be true
+of the data itself,
+**so that** the rules survive any writer, not just this application.
+
+**Acceptance Criteria**
+- [x] `app_user` carries `UNIQUE (id, role)`.
+- [x] Four composite foreign keys reference `(id, role)`, each with a `CHECK` pinning
+      the role that table requires.
+- [x] A teacher cannot be enrolled, even by claiming to be a student.
+- [x] A student cannot be recorded as teaching a course.
+- [x] Verified with `sqlcmd`, bypassing the application: 20 of 20 attempts refused.
+
+> **Design note.** Neither half of the mechanism is sufficient alone. The `CHECK`
+> would let a row claim `STUDENT` for a teacher's id; the foreign key would let it
+> claim any role. Together the only satisfying value is that user's real role.
+>
+> A consequence worth stating: a user's role can no longer be changed while rows
+> depend on it. That is the constraint working, not an obstacle - the alternative is
+> a "teacher" still on a class register as a pupil.
+
+**Tasks**
+- TASK-96: Add `uq_app_user_id_role`
+- TASK-97: Add role columns and composite foreign keys to four tables
+- TASK-98: Mirror the portable `CHECK` constraints onto the entities with `@Check`,
+  so the H2 test schema carries them too
+- TASK-99: Prove all of it with `sqlcmd`, going around the application
+
+### What went wrong, and what caught it
+
+| Problem | Caught by | Fix |
+|---|---|---|
+| `submitted_at` declared `DATETIME2`, mapped from `Instant` | `ddl-auto=validate` refusing to start | `V5__timestamp_columns_with_offset.sql` - a new migration, because V4 had already been applied and Flyway checksums exist precisely to prevent editing it |
+| Maven reported "nothing to compile" against changed sources | Noticing the build was too fast to be real | `clean` before trusting a compile result |
+| A browser test clicked a disabled Upload button and hung | Reading the failure rather than relaxing the assertion | The button is disabled *because* the work was handed in - the rule working. Selector narrowed to `:not([disabled])` |
+| A browser assertion expected exactly 3 subjects, found 4 | The extra one was the legacy `General` subject V4 preserved | Assert "more than one", which is the actual requirement |
 
 ---
 
@@ -1443,4 +1521,22 @@ Every epic from the source map, and where it went. Nothing was dropped silently.
 | US-29 | User Story | Run the suite on every push | FEAT-19 | 3 | Done |
 | US-30 | User Story | Exercise the SQL Server migrations | FEAT-19 | 8 | Not started |
 | **Subtotal** | | **5 Epics, 6 Features, 10 User Stories, 30 Tasks** | | **37 pts** | **29 delivered** |
-| **Totals** | | **13 Epics, 19 Features, 30 User Stories, 95 Tasks** | | **129 pts** | **121 delivered, US-30 outstanding** |
+
+### Sprint 4 - The Timetable and Handing Work In
+
+| ID | Type | Title | Parent | Points | Status |
+|----|------|-------|--------|--------|--------|
+| EPIC-14 | Epic | The Timetable | Application | 21 | Done |
+| FEAT-20 | Feature | Subjects, Classes and Courses | EPIC-14 | 13 | Done |
+| US-31 | User Story | Be taught several subjects by several teachers | FEAT-20 | 8 | Done |
+| US-32 | User Story | Enrol students in a class | FEAT-20 | 5 | Done |
+| FEAT-21 | Feature | Class-Wide Assignment | EPIC-14 | 8 | Done |
+| US-33 | User Story | Set one piece of work for a whole class, or several | FEAT-21 | 8 | Done |
+| EPIC-15 | Epic | Handing Work In | Application | 21 | Done |
+| FEAT-22 | Feature | PDF Upload and Download | EPIC-15 | 13 | Done |
+| US-34 | User Story | Upload a PDF and hand it in | FEAT-22 | 8 | Done |
+| US-35 | User Story | Download a student's PDF to mark it | FEAT-22 | 5 | Done |
+| FEAT-23 | Feature | Integrity of the New Model | EPIC-15 | 8 | Done |
+| US-36 | User Story | Make role rules facts about the data, not checks in Java | FEAT-23 | 8 | Done |
+| **Subtotal** | | **2 Epics, 4 Features, 6 User Stories, 24 Tasks** | | **42 pts** | **42 delivered** |
+| **Totals** | | **15 Epics, 23 Features, 36 User Stories, 119 Tasks** | | **171 pts** | **163 delivered, US-30 outstanding** |

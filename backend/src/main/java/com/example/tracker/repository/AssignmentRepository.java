@@ -2,7 +2,9 @@ package com.example.tracker.repository;
 
 import com.example.tracker.model.AppUser;
 import com.example.tracker.model.Assignment;
+import com.example.tracker.model.Course;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -16,24 +18,41 @@ import java.util.List;
  * generates a full implementation at runtime with findAll, findById, save,
  * count and deleteById.
  *
- * The two methods below are DERIVED QUERIES - Spring reads the method name and
- * writes the SQL. "findByOwnerOrderByIdAsc" becomes
- * "SELECT ... WHERE owner_id = ? ORDER BY id ASC".
- *
- * The scoping query belongs here rather than as a filter in the service, and
- * certainly not in the frontend: restricting rows in the QUERY means another
- * person's data is never loaded, never serialised, and never sent. Fetching
- * everything and hiding some of it in the UI is not access control.
+ * WHAT CHANGED WHEN ASSIGNMENT SPLIT IN TWO
+ * -----------------------------------------
+ * The old findByOwnerOrderByIdAsc is gone, and its absence is the point. An
+ * assignment no longer HAS an owner - it has a course, and the students who
+ * receive it are whoever is enrolled in that course's class. "Which assignments
+ * are mine?" is now a question about submissions, and is answered by
+ * SubmissionRepository.
  */
 @Repository
 public interface AssignmentRepository extends JpaRepository<Assignment, Long> {
 
-    /** Everything, oldest first - what a teacher sees. */
+    /** Everything, oldest first. */
     List<Assignment> findAllByOrderByIdAsc();
 
-    /** Only this person's assignments - what a student sees. */
-    List<Assignment> findByOwnerOrderByIdAsc(AppUser owner);
+    List<Assignment> findByCourseOrderByIdAsc(Course course);
 
-    /** Used by the seed guard to decide whether the table is already populated. */
-    boolean existsByOwner(AppUser owner);
+    /** Everything set for any of a list of courses - a teacher's whole workload. */
+    List<Assignment> findByCourseInOrderByIdAsc(List<Course> courses);
+
+    boolean existsByCourse(Course course);
+
+    boolean existsByCreatedBy(AppUser createdBy);
+
+    /**
+     * The assignments visible to one student, through their class enrolments.
+     *
+     * A student sees an assignment because they are in the class it was set for,
+     * not because a row names them. Written as JPQL because the path crosses
+     * Assignment to Course to Enrolment, which no derived method name can say.
+     */
+    @Query("""
+            SELECT a FROM Assignment a
+            WHERE a.course.schoolClass IN (
+                SELECT e.schoolClass FROM Enrolment e WHERE e.student = :student)
+            ORDER BY a.id ASC
+            """)
+    List<Assignment> findForStudent(AppUser student);
 }

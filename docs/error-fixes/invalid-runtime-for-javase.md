@@ -1,6 +1,9 @@
 # Invalid runtime for JavaSE-nn: the path points to a missing or inaccessible folder
 
 **Date:** 4 August 2026
+**Updated:** 4 August 2026 - the original fix recurred on the other machine, in the
+opposite direction. See "Why the previous solution failed" below before applying
+anything here.
 **Component:** VS Code, Language Support for Java by Red Hat
 **Severity:** Editor only. The Maven build was never affected.
 
@@ -118,6 +121,99 @@ that are actually present, and to warn that the path is machine-specific.
 **Not yet confirmed at the time of writing:** that the notifications stop after a
 reload. Step 3 had not been performed - the fix is verified as correct configuration,
 not yet as an observed absence of the error.
+
+## Why the previous solution failed
+
+The fix above was applied on the machine whose user profile is `hp`, and it hard-coded
+that machine's JDK path into `.vscode/settings.json` - a file that is committed to git.
+Pulling it onto the original `Developer.03` machine produced the same error again with
+the paths exactly reversed:
+
+```
+Invalid runtime for JavaSE-25: The path points to a missing or inaccessible folder
+(C:\Program Files\Eclipse Adoptium\jdk-25.0.4.7-hotspot).
+```
+
+| Path | On the `hp` machine | On the `Developer.03` machine |
+|---|---|---|
+| `C:\Program Files\Eclipse Adoptium\jdk-25.0.4.7-hotspot` | Present | **Missing** |
+| `C:\Users\Developer.03\Java\jdk-25.0.4+7` | Missing | **Present** (`JAVA_HOME`) |
+
+The original diagnosis was therefore correct but incomplete. It identified that the
+paths belonged to a different machine, and then fixed that by writing a different
+machine-specific path into the same shared file. The defect is not which path is
+written - it is that a machine-specific path is committed at all. Whoever fixes it
+last hands the error to everybody else on their next pull.
+
+Note also that `CLAUDE.md`'s "Environment Gotchas" is accurate for the `Developer.03`
+machine: JDK 11 (`C:\Program Files\Microsoft\jdk-11.0.12.7-hotspot`) and JDK 17
+(`C:\Users\Developer.03\Java\jdk-17.0.19+10`) are both installed there. The earlier
+claim that they "were never installed on this machine" was true only of the `hp`
+machine.
+
+### Revised solution
+
+Two parts. The first restores the editor now; the second is what stops the recurrence.
+
+**1. Point the entry at this machine's JDK 25.** In `.vscode/settings.json`:
+
+```json
+"java.configuration.runtimes": [
+    {
+        "name": "JavaSE-25",
+        "path": "C:\\Users\\Developer.03\\Java\\jdk-25.0.4+7",
+        "default": true
+    }
+]
+```
+
+**`${env:JAVA_HOME}` does not work here, and was tried.** VS Code does not expand
+variables in this setting, and the language server reported the placeholder back
+verbatim: `Invalid runtime for JavaSE-25 ... (${env:JAVA_HOME})`. The path must be
+literal.
+
+**2. Move the block out of version control.** `java.configuration.runtimes` is
+machine state, not project configuration, so it does not belong in a shared file. Cut
+it from `.vscode/settings.json` into your VS Code **user** settings
+(`%APPDATA%\Code\User\settings.json`), where each developer keeps their own. The
+workspace file then retains only settings that are genuinely identical everywhere -
+`typescript.tsdk`, `java.compile.nullAnalysis.mode` - and neither machine can break
+the other again.
+
+Until step 2 is done, expect this error to return on every pull that crosses machines.
+
+### Revised testing steps
+
+1. Confirm which paths exist on the machine reporting the error:
+
+   ```powershell
+   "JAVA_HOME = $env:JAVA_HOME"
+   Test-Path "C:\Users\Developer.03\Java\jdk-25.0.4+7"                 # True here
+   Test-Path "C:\Program Files\Eclipse Adoptium\jdk-25.0.4.7-hotspot"  # False here
+   ```
+
+2. Confirm the edited file is valid JSON and its runtime resolves. Output was
+   `JSON valid` / `runtimes configured: 1` / `JavaSE-25 -> exists=True`:
+
+   ```powershell
+   $raw = Get-Content ".vscode\settings.json" -Raw -Encoding UTF8
+   $stripped = ($raw -split "`n" | ForEach-Object { $_ -replace '^\s*//.*$','' }) -join "`n"
+   $o = $stripped | ConvertFrom-Json
+   $o.'java.configuration.runtimes' | ForEach-Object { $_.name + " -> " + (Test-Path $_.path) }
+   ```
+
+3. **Reload the VS Code window** (`Developer: Reload Window`). The language server
+   reads this setting at startup only.
+
+4. Confirm the build was never implicated - 48 tests as of Sprint 3:
+
+   ```powershell
+   cd backend ; .\mvnw.cmd test     # Tests run: 48, Failures: 0 / BUILD SUCCESS
+   ```
+
+**Verified:** steps 1, 2 and 4 were run and gave the output shown. Step 3 requires a
+window reload and had not been observed at the time of writing, so the absence of the
+notification is not yet confirmed - the same caveat the original fix carried.
 
 ## Troubleshooting
 

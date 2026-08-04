@@ -17,122 +17,100 @@ import jakarta.persistence.Version;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+import org.hibernate.annotations.Check;
 
 import java.time.LocalDate;
 
 /**
- * MODEL LAYER
- * -----------
- * This class is an "Entity". It is a plain Java object that ALSO describes
- * a database table. Each field becomes a column; each object becomes a row.
+ * A piece of work a teacher has set.
  *
- * @Entity tells Spring/JPA: "Persist objects of this class in the database."
+ * WHAT THIS CLASS USED TO BE, AND WHY IT CHANGED
+ * ----------------------------------------------
+ * It used to mean two things at once: the work itself, and one student's
+ * progress on it. It carried both a `status` and an `owner`, which forced every
+ * assignment to belong to exactly one person.
  *
- * WHERE INTEGRITY IS ENFORCED
- * ---------------------------
- * The rules below are declared in TWO places on purpose:
+ * That collapse is what made "set this for the whole class" impossible to
+ * express. Thirty students meant thirty assignment rows with the same title, and
+ * correcting a typo meant correcting it thirty times - with nothing in the
+ * schema saying they were the same piece of work, so nothing could keep them
+ * consistent.
  *
- *   @NotBlank / @Size   are BEAN VALIDATION. Hibernate runs them before it
- *                       writes, so a bad object is refused in Java.
- *   @Column(...)        becomes real DDL — NOT NULL, a length limit, and (for
- *                       the enum) a CHECK constraint. The DATABASE refuses the
- *                       row even if something bypasses this application.
+ * The two ideas are now two tables:
  *
- * Application-level checks alone are not data integrity; they are a policy that
- * holds only while every writer goes through this code. The column constraints
- * are what make the rule true of the data itself.
+ *   Assignment  what was set. One row, however many students receive it.
+ *   Submission  one student's state for it, and their uploaded PDF.
+ *
+ * The signal that this was the right split: `status` never made sense here.
+ * "Is this assignment submitted?" has no single answer for a class of thirty,
+ * and the old model was quietly answering it for a class of one.
  */
 @Entity
+@Check(name = "ck_assignment_title_not_blank", constraints = "LTRIM(RTRIM(title)) <> ''")
 public class Assignment {
 
-    /**
-     * @Id marks the primary key (the unique identifier for each row).
-     * @GeneratedValue means the database auto-assigns the number (1, 2, 3...),
-     * so we never set the id ourselves.
-     */
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    /**
-     * The name of the assignment, e.g. "Math Homework 1".
-     *
-     * nullable = false and length = 200 are carried into the table definition,
-     * so a NULL or over-long title is impossible at the storage layer, not just
-     * discouraged at the web layer.
-     */
     @NotBlank(message = "Title must not be blank")
     @Size(max = 200, message = "Title must be at most 200 characters")
     @Column(nullable = false, length = 200)
     private String title;
 
     /**
-     * The current state. Stored as text (EnumType.STRING) rather than as the
-     * enum's position, because positions shift the moment somebody reorders or
-     * inserts a constant — which would silently reinterpret every existing row.
-     * Storing the name keeps old rows meaningful and readable in the database.
+     * Instructions for the work. Optional, because a title-only assignment is a
+     * legitimate thing to set - and a mandatory description would produce a
+     * column full of full stops, which is worse than an honest null.
      */
-    @NotNull
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
-    private AssignmentStatus status;
+    @Size(max = 2000, message = "Description must be at most 2000 characters")
+    @Column(length = 2000)
+    private String description;
 
     /**
-     * OPTIMISTIC LOCKING — the guard against two people changing the same row
-     * at the same time.
+     * Which subject, class and teacher this belongs to.
      *
-     * Hibernate increments this on every update and adds "AND version = ?" to
-     * the UPDATE. If another transaction got there first, the row no longer
-     * matches, zero rows update, and Hibernate raises an optimistic-lock
-     * failure that the web layer reports as 409 Conflict.
-     *
-     * Without it, two concurrent submissions both read IN_PROGRESS, both pass
-     * the "already submitted?" check, and both write — the second silently
-     * overwriting the first. That is a lost update, and it was reproducible
-     * before this field existed.
-     *
-     * @JsonIgnore keeps it out of the API response, since the published
-     * contract is {id, title, status} and no client needs this value today.
-     */
-    @Version
-    @JsonIgnore
-    private Long version;
-
-    /**
-     * Who this assignment belongs to. The system's FIRST foreign key.
-     *
-     * Until now the schema was a single table, so there was nothing for
-     * referential integrity to enforce. This column changes that, and it is
-     * declared as a real FK rather than "a number we promise points at a user":
-     *
-     *   - nullable = false      every assignment has an owner; there are no orphans
-     *   - @ForeignKey(...)      a named constraint, so the database refuses an
-     *                           owner_id that matches no row - even from sqlctl,
-     *                           a script, or another application entirely
-     *
-     * Deletion semantics are deliberate and are handled in the service rather
-     * than by ON DELETE CASCADE. Silently destroying somebody's assignments as a
-     * side effect of removing an account is a decision, not a default.
-     *
-     * FetchType.EAGER is right here only because an assignment is never loaded
-     * without needing its owner for an authority check. On a larger model this
-     * would be LAZY.
-     *
-     * @JsonIgnore keeps the whole user object out of the response; the API
-     * exposes just the owner's name through getOwnerUsername() below, so the
-     * published contract does not leak account internals.
+     * The single most important field here: it is what turns an assignment from
+     * a free-floating row into work set for a specific group studying a specific
+     * subject. The class the work reaches follows from the course, so a change
+     * of register is picked up automatically rather than needing every
+     * assignment to be re-issued.
      */
     @NotNull
     @ManyToOne(fetch = FetchType.EAGER, optional = false)
     @JoinColumn(
-            name = "owner_id",
+            name = "course_id",
             nullable = false,
-            foreignKey = @ForeignKey(name = "fk_assignment_owner"))
-    @JsonIgnore
-    private AppUser owner;
+            foreignKey = @ForeignKey(name = "fk_assignment_course"))
+    private Course course;
 
     /**
-     * A due date, or null when the assignment has no deadline.
+     * The teacher who actually set this.
+     *
+     * Not the same question as course.teacher, which is why it is stored
+     * separately rather than derived. A course can be co-taught; "who teaches
+     * Grade 10A maths" may have two answers, while "who set this particular
+     * assignment" has exactly one and should stay answerable after the timetable
+     * changes.
+     */
+    @NotNull
+    @ManyToOne(fetch = FetchType.EAGER, optional = false)
+    @JoinColumn(
+            name = "created_by_id",
+            nullable = false,
+            foreignKey = @ForeignKey(name = "fk_assignment_created_by"))
+    @JsonIgnore
+    private AppUser createdBy;
+
+    /** Role-pinned by composite foreign key, exactly as in Course. */
+    @NotNull
+    @Enumerated(EnumType.STRING)
+    @Column(name = "created_by_role", nullable = false, length = 20)
+    @JsonIgnore
+    private Role createdByRole;
+
+    /**
+     * A due date, or null when there is no deadline.
      *
      * LocalDate rather than a timestamp: "due on the 5th" is a calendar fact,
      * not an instant, and storing it as an instant drags time zones into a
@@ -141,34 +119,26 @@ public class Assignment {
     @Column(name = "due_date")
     private LocalDate dueDate;
 
-    // JPA REQUIRES a no-argument constructor to build objects from DB rows.
-    public Assignment() {
+    @Version
+    @JsonIgnore
+    private Long version;
+
+    protected Assignment() {
+        // JPA needs a no-argument constructor to rebuild rows.
     }
 
-    /**
-     * Every assignment is created owned. There is deliberately no constructor
-     * that omits the owner, so an ownerless assignment cannot be built by
-     * accident and then fail at the database.
-     */
-    public Assignment(String title, AssignmentStatus status, AppUser owner) {
+    public Assignment(String title, String description, Course course,
+                      AppUser createdBy, LocalDate dueDate) {
         this.title = title;
-        this.status = status;
-        this.owner = owner;
-    }
-
-    public Assignment(String title, AssignmentStatus status, AppUser owner, LocalDate dueDate) {
-        this(title, status, owner);
+        this.description = description;
+        this.course = course;
+        this.createdBy = createdBy;
+        this.createdByRole = createdBy == null ? null : createdBy.getRole();
         this.dueDate = dueDate;
     }
 
-    // ----- Getters and Setters -----
-    // These let other layers (and JPA) read/write the private fields.
     public Long getId() {
         return id;
-    }
-
-    public void setId(Long id) {
-        this.id = id;
     }
 
     public String getTitle() {
@@ -179,24 +149,24 @@ public class Assignment {
         this.title = title;
     }
 
-    public AssignmentStatus getStatus() {
-        return status;
+    public String getDescription() {
+        return description;
     }
 
-    public void setStatus(AssignmentStatus status) {
-        this.status = status;
+    public void setDescription(String description) {
+        this.description = description;
     }
 
-    public Long getVersion() {
-        return version;
+    public Course getCourse() {
+        return course;
     }
 
-    public AppUser getOwner() {
-        return owner;
+    public AppUser getCreatedBy() {
+        return createdBy;
     }
 
-    public void setOwner(AppUser owner) {
-        this.owner = owner;
+    public Role getCreatedByRole() {
+        return createdByRole;
     }
 
     public LocalDate getDueDate() {
@@ -207,32 +177,24 @@ public class Assignment {
         this.dueDate = dueDate;
     }
 
-    /**
-     * The owner's name, for the API response.
-     *
-     * The owner object itself is @JsonIgnore'd, so this exposes exactly the one
-     * field a client needs and nothing else - no id, no role, and certainly no
-     * password hash. Widening what the API reveals then stays a deliberate act.
-     */
-    public String getOwnerUsername() {
-        return owner == null ? null : owner.getUsername();
+    public Long getVersion() {
+        return version;
     }
 
     /**
-     * Whether this assignment is past its due date and still not handed in.
+     * Whether the deadline has passed.
      *
-     * DERIVED, NOT STORED. @Transient means there is no such column, and that is
-     * the point: a stored "overdue" flag is wrong the moment midnight passes,
-     * and would need a scheduled job to keep it honest. Computing it on read is
-     * always correct because it is answered against today's date, every time.
+     * Note what this deliberately does NOT say: whether anything is late. That
+     * depends on each student's submission and is answered on Submission, where
+     * the information actually is. An assignment being past due is a fact about
+     * the calendar; being overdue is a fact about a person.
      *
-     * A SUBMITTED assignment is never overdue, however late it was - handing work
-     * in late is still handing it in.
+     * Derived rather than stored, for the same reason as always: a stored flag
+     * is wrong the moment midnight passes and would need a scheduled job to stay
+     * honest. Computed on read, it is correct every time it is asked.
      */
     @Transient
-    public boolean isOverdue() {
-        return dueDate != null
-                && status != AssignmentStatus.SUBMITTED
-                && dueDate.isBefore(LocalDate.now());
+    public boolean isPastDue() {
+        return dueDate != null && dueDate.isBefore(LocalDate.now());
     }
 }

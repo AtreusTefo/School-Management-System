@@ -33,13 +33,31 @@
     // and raised one error per absent path. The build was never affected: the
     // Maven Wrapper reads JAVA_HOME and knows nothing about this registry.
     //
-    // The path below is machine-specific by nature. If you clone this project
-    // elsewhere, correct it to your own JDK 25 - `echo $env:JAVA_HOME` gives it -
-    // rather than adding entries for JDKs this project has no use for.
+    // THIS PATH IS MACHINE-SPECIFIC AND THIS FILE IS COMMITTED TO GIT.
+    // That combination has now broken the editor twice, once in each direction:
+    // whoever fixes it for their own machine commits a path the other machine
+    // does not have, and the next pull hands the error to the other developer.
+    // The build is never affected either way - the Maven Wrapper reads JAVA_HOME
+    // and knows nothing about this registry.
+    //
+    // A literal path is required. ${env:JAVA_HOME} was tried here and does NOT
+    // work: VS Code does not expand variables in this setting, and the language
+    // server reported the placeholder back verbatim -
+    // "Invalid runtime for JavaSE-25 ... (${env:JAVA_HOME})".
+    //
+    // So correct the path to your own JDK 25 if you clone this project -
+    // `echo $env:JAVA_HOME` gives it - rather than adding entries for JDKs this
+    // project has no use for.
+    //
+    // THE DURABLE FIX IS TO STOP SHARING THIS BLOCK. Moving
+    // java.configuration.runtimes into your VS Code USER settings
+    // (%APPDATA%\Code\User\settings.json) keeps the machine-specific part out of
+    // git entirely, while this file keeps the settings that are identical
+    // everywhere. See docs/error-fixes/invalid-runtime-for-javase.md.
     "java.configuration.runtimes": [
         {
             "name": "JavaSE-25",
-            "path": "C:\\Program Files\\Eclipse Adoptium\\jdk-25.0.4.7-hotspot",
+            "path": "C:\\Users\\Developer.03\\Java\\jdk-25.0.4+7",
             "default": true
         }
     ]

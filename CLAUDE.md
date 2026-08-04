@@ -8,9 +8,20 @@
 - **Main Goal:** A small, heavily commented full-stack application that tracks assignment submission state, built to demonstrate a strictly layered architecture. Both goals are real: the software must work, and the code must stay readable enough to teach from.
 
 ### Scope Guard - Read Before Adding Features
-The repository is named *School Management System*, but the delivered system is one slice of that idea: **assignment tracking**. Two entities (`Assignment`, `AppUser`), two roles (`TEACHER`, `STUDENT`), and ten endpoints.
+The repository is named *School Management System*, but the delivered system is one slice of that idea: **assignment tracking with PDF hand-in**. Nine entities (`AppUser`, `Subject`, `SchoolClass`, `Enrolment`, `Course`, `Assignment`, `Submission`, `SubmissionFile`, plus the `Role`/`AssignmentStatus` enums), two roles (`TEACHER`, `STUDENT`).
 
-There are **no** grades, marks, assessments, audit logs, file uploads, notifications, classes, terms or subjects. Documentation describing such features was inherited from an unrelated project and has been removed. Do not reintroduce it, and do not assume a feature exists because a document once mentioned it. Verify against the code.
+There are **no** grades, marks, assessments, performance levels, audit logs, notifications, terms or timetable periods. Documentation describing such features was inherited from an unrelated ASP.NET project; do not reintroduce it, and do not assume a feature exists because a document once mentioned it. Verify against the code.
+
+**Subjects, classes and file uploads DO exist now** (added 4 August 2026). Earlier revisions of this file said they did not, and that was true when written - the model has since grown to carry them, because four requirements were unrepresentable without them:
+
+| Requirement | What carries it |
+|---|---|
+| A student is taught by several teachers | `Course` rows for their class |
+| A student is taught several subjects | the same rows |
+| A teacher teaches several classes and subjects | the same rows, grouped by teacher |
+| One piece of work reaches a whole class | `Assignment` fans out to one `Submission` per enrolled student |
+
+The central design point: **`Assignment` and `Submission` are separate tables.** An assignment is what a teacher set; a submission is one student's state for it, and holds their PDF. They used to be one table with an `owner_id`, which is what made a class-wide assignment impossible to express.
 
 **Entity Framework is not usable here.** EF6 and `ApplicationDbContext` are .NET technologies; this backend is Java. JPA/Hibernate fills the same role and is equally code-first. If a document or instruction mentions EF, it is inherited from the unrelated ASP.NET project.
 
@@ -42,19 +53,25 @@ School Management System/
 │   ├── pom.xml
 │   └── src/
 │       ├── main/java/com/example/tracker/
-│       │   ├── TrackerApplication.java  # Entry point + seed runners (accounts, then assignments)
-│       │   ├── controller/     # AssignmentController, AuthController - HTTP only
-│       │   ├── service/        # AssignmentService, AppUserService - business rules
-│       │   ├── repository/     # AssignmentRepository, AppUserRepository (Spring Data JPA)
-│       │   ├── model/          # Assignment, AssignmentStatus, AppUser, Role
+│       │   ├── TrackerApplication.java  # Entry point + seed runners: accounts, then
+│       │   │                            #   timetable, then assignments (@Order matters)
+│       │   ├── controller/     # AssignmentController, SubmissionController,
+│       │   │                   #   SchoolController, AuthController, UserController
+│       │   ├── service/        # AssignmentService (fan-out), SubmissionService (PDF),
+│       │   │                   #   SchoolService (timetable), AppUserService
+│       │   ├── repository/     # One per entity (Spring Data JPA)
+│       │   ├── model/          # AppUser, Role, Subject, SchoolClass, Enrolment, Course,
+│       │   │                   #   Assignment, Submission, SubmissionFile, AssignmentStatus
+│       │   ├── dto/            # Records the API publishes - see SubjectView for why
 │       │   ├── config/         # SecurityConfig (auth, CSRF), CorsConfig (allowed origins)
 │       │   ├── security/       # AppUserDetailsService - loads accounts for Spring Security
-│       │   └── exception/      # AssignmentNotFoundException, AccessDeniedException,
-│       │                       #   GlobalExceptionHandler - exception to HTTP status
+│       │   └── exception/      # AssignmentNotFoundException, ResourceNotFoundException,
+│       │                       #   AccessDeniedException, GlobalExceptionHandler
 │       ├── main/resources/
 │       │   ├── application.properties
-│       │   └── db/migration/   # Flyway, SQL Server dialect - V1__baseline_assignment.sql,
-│       │                       #   V2__accounts_and_ownership.sql
+│       │   └── db/migration/   # Flyway, SQL Server dialect - V1 baseline, V2 accounts and
+│       │                       #   ownership, V3 must-change-password, V4 subjects/classes/
+│       │                       #   courses/submissions, V5 timestamp column types
 │       └── test/
 │           ├── java/com/example/tracker/
 │           │   ├── AssignmentApiTest.java            # MockMvc, real security
@@ -83,7 +100,7 @@ School Management System/
 - **Build backend:** `.\mvnw.cmd clean package -DskipTests` produces `backend/target/tracker-0.0.1-SNAPSHOT.jar`.
 - **Build frontend:** `npm run build` in `frontend/tracker-ui`.
 - **Type-check frontend:** `npx tsc --noEmit -p tsconfig.app.json`.
-- **Run tests:** `.\mvnw.cmd test` - 36 tests, run against H2, no SQL Server needed.
+- **Run tests:** `.\mvnw.cmd test` - 69 tests, run against H2, no SQL Server needed.
 - **Database:** SQL Server, database `School Management System`, login `tracker_app`. The connection string in `application.properties` uses port 14333; confirm your instance actually listens there before assuming a failure is the application's fault. Query it with:
   `sqlcmd -S "tcp:localhost,14333" -U tracker_app -P 'Tracker!2026Dev' -d "School Management System"`
 - **Development accounts:** `teacher` and `student`, both password `password123`, reset at every startup.
@@ -182,6 +199,10 @@ Do not echo driver or stack-trace text to the client. Constraint-violation detai
 - **Referential integrity is real now.** `assignment.owner_id` is a foreign key to `app_user.id` with **`ON DELETE NO_ACTION`**, so the database refuses to delete an account that still owns work. Do not add `ON DELETE CASCADE`: destroying somebody's work as a side effect of removing their account must be an explicit decision in the service.
 - **A constraint that H2 gave for free may not survive a port.** H2's native `ENUM` column type had no SQL Server equivalent, so the "status must be one of two values" guarantee had to be rewritten as an explicit `CHECK` constraint. When changing database, re-verify each constraint rather than assuming it moved.
 - **Prove constraints by bypassing the application.** Write bad data directly with `sqlcmd` and confirm the database refuses it. A rule only enforced in Java is policy, not integrity.
+- **Role rules are enforced by COMPOSITE foreign keys, not by Java alone.** `app_user` carries `UNIQUE (id, role)`; `enrolment`, `course`, `submission` and `assignment` each store the referenced user's role alongside their id, `CHECK` it against the literal the row requires, and point a two-column foreign key at `app_user (id, role)`. The `CHECK` alone would let a row claim STUDENT for a teacher; the foreign key alone would let it claim any role. Together the only value satisfying both is that user's real role. A consequence worth knowing before it surprises you: **a user's role cannot be changed while any row depends on it** - that is the guarantee working, not a bug.
+- **JPA cannot express those composite keys, so the H2 test schema is weaker than production.** Tests get the `CHECK` plus a single-column foreign key, which still refuses a row claiming a role it may not hold. What only SQL Server refuses is a row claiming STUDENT for a teacher's id. Verify that half with `sqlcmd`.
+- **Hibernate maps `java.time.Instant` to `datetimeoffset`, not `datetime2`.** Declaring a timestamp column as `DATETIME2` in a migration and mapping it from `Instant` fails at startup with `Schema-validation: wrong column type`. This is `ddl-auto=validate` doing its job - the alternative is times that silently lose their offset. Fixed in `V5__timestamp_columns_with_offset.sql`.
+- **Never edit an applied migration.** Flyway stores a checksum of every one precisely so an applied migration cannot be changed underneath a database that has run it. A correction gets its own version, even when the mistake is minutes old.
 
 ### Testing Requirements
 There is an automated suite: `.\mvnw.cmd test` runs 36 tests, and `package` fails the build if any fail. Add to it rather than reverting to manual checks.

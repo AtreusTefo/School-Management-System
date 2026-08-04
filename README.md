@@ -5,37 +5,58 @@ and an **Angular frontend**. Beginner-friendly, heavily commented.
 
 ## What it does
 - **Sign in** as a teacher or a student
-- **Lists** assignments — a teacher sees all, a student sees only their own
-- **Create** work, optionally setting it *for* a named student (teachers only)
-- **Submit** an assignment, flipping its status to `SUBMITTED`
-- **Edit, delete and reopen** (teachers only; submitted work must be reopened first)
+- **Subjects, classes and courses** — a course is one subject taught to one class
+  by one teacher. A teacher can take several subjects and several classes, so a
+  student is taught several subjects by several teachers
+- **Set work for a whole class at once**, or for several classes in one action —
+  every enrolled student gets their own copy to hand in
+- **Upload a PDF** against a piece of work, replace it freely, then **hand it in**
+- **Download the PDF to mark it** — the teachers who take that course, nobody else
+- **Reopen** handed-in work so a student can correct it (teachers only)
+- **Edit and delete** work that was set — refused once anybody has handed in
 - **Due dates**, with `OVERDUE` shown for work past its deadline
 - **Sort, search and filter** the list, with a summary of what is outstanding
 - **Change your own password**, and **create student accounts** (teachers only) that
   must have their temporary password replaced at first sign-in
 
-Development accounts: `teacher` and `student`, both with password `password123`.
+Development accounts, all with password `password123`:
+
+| Account | Role | Involved in |
+|---------|------|-------------|
+| `teacher` | TEACHER | Mathematics for 10A **and** 10B, History for 10A |
+| `teacher2` | TEACHER | Science for 10A |
+| `student` | STUDENT | Grade 10A |
+| `student2` | STUDENT | Grade 10A |
+| `student3` | STUDENT | Grade 10B |
+
+That roster is the smallest one in which every relationship is visible: `student`
+is taught three subjects by two teachers, and `teacher` runs two classes. Seed
+data that cannot exercise the model is seed data that hides defects.
 
 ### A five-minute walkthrough
 
 Start the backend, then the frontend, and open http://localhost:4200.
 
-1. Sign in as **`teacher`**. Four assignments; the summary counts outstanding,
-   submitted and overdue. "Science Lab Report" is already overdue on purpose.
-2. Click the **Title**, **Due** or **Status** headings to sort. Click again to
-   reverse, a third time to return to the original order. Assignments with no due
-   date always sort last — "no deadline" is a real state, not a missing value.
-3. Type in the search box and use the **All / Open / Submitted / Overdue** buttons.
-   They compose, and the empty state distinguishes "nothing matches your filter"
-   from "nothing here yet".
-4. Click **Add a student account**, create one with a temporary password, and note
-   the message: they must change it at first sign-in.
-5. **Sign out**, then sign in as the account you just made. The application is
-   replaced by *Choose your password* — there is no Cancel, and no other screen is
-   reachable. The server returns `403` for anything else, so this holds even if the
-   browser is bypassed.
-6. Set a new password. The list appears immediately.
-7. Visit http://localhost:8080/swagger-ui.html to see the same API described and
+1. Sign in as **`student`**. *What I am taught* names the subjects and the
+   teachers — several of each, from one course list rather than a special query.
+2. Pick a row, click **Upload**, choose any PDF. The file name, size and a
+   SHA-256 checksum appear. Try a `.txt` renamed to `.pdf`: it is refused, because
+   the server reads the first five bytes rather than trusting the name.
+3. **Hand in** is disabled until a file is there — "submitted" with nothing
+   attached would be a claim with no evidence. Click it once a PDF is uploaded;
+   the row becomes HANDED IN and **Upload** goes dead, so the marked document
+   cannot change afterwards.
+4. **Sign out** and sign in as **`teacher`**. The marking queue shows every
+   student's work across their courses — and only theirs. **Download** the PDF.
+5. Click **Set work**, tick *both* Mathematics classes, and set it. One action,
+   two assignments, one row per enrolled student: "Set for 2 classes, reaching 3
+   students."
+6. Try to delete work somebody has handed in. Refused with `409` — reopen it
+   first, so deletion is two deliberate acts rather than one careless click.
+7. Click **Timetable** to add a subject, a class or a course, and to enrol a
+   student. Enrolling a *teacher* is refused by the database itself, not just by
+   the form — see [Data integrity](#data-integrity-is-enforced-by-the-database).
+8. Visit http://localhost:8080/swagger-ui.html to see the same API described and
    callable.
 
 ## Requirements
@@ -51,16 +72,26 @@ School Management System/
 │   ├── pom.xml
 │   └── src/main/
 │       ├── java/com/example/tracker/
-│       │   ├── TrackerApplication.java     # startup + sample data
-│       │   ├── model/       Assignment.java        # MODEL layer
-│       │   ├── repository/  AssignmentRepository.java  # DATA ACCESS layer
-│       │   ├── service/     AssignmentService.java     # BUSINESS layer
-│       │   └── controller/  AssignmentController.java  # PRESENTATION layer
-│       └── resources/application.properties
+│       │   ├── TrackerApplication.java  # startup + seed: accounts, timetable, work
+│       │   ├── model/          # MODEL layer - the nine entities
+│       │   │   ├── AppUser.java, Role.java
+│       │   │   ├── Subject.java, SchoolClass.java, Enrolment.java, Course.java
+│       │   │   └── Assignment.java, Submission.java, SubmissionFile.java
+│       │   ├── repository/     # DATA ACCESS layer - one interface per entity
+│       │   ├── service/        # BUSINESS layer
+│       │   │   ├── AssignmentService.java   # sets work, fans out to the class
+│       │   │   ├── SubmissionService.java   # PDF upload, hand-in, download
+│       │   │   ├── SchoolService.java       # subjects, classes, enrolment, courses
+│       │   │   └── AppUserService.java      # who is calling, passwords
+│       │   ├── controller/     # PRESENTATION layer - HTTP only, no rules
+│       │   ├── dto/            # the records the API publishes, never entities
 │       │   └── exception/
 │       │       ├── AssignmentNotFoundException.java  # signals "no such id"
+│       │       ├── ResourceNotFoundException.java    # subjects, classes, courses
 │       │       └── GlobalExceptionHandler.java       # exception -> HTTP status
-│       └── resources/application.properties
+│       └── resources/
+│           ├── application.properties
+│           └── db/migration/   # Flyway, SQL Server dialect, V1 to V5
 └── frontend/
     ├── tracker-ui/                 # ← THE RUNNABLE ANGULAR PROJECT (ng serve here)
     │   └── src/                    #   working copy of the files below
@@ -68,9 +99,11 @@ School Management System/
         ├── main.ts
         ├── index.html
         └── app/
-            ├── assignment.service.ts   # talks to the API
-            ├── app.component.ts        # UI logic
-            └── app.component.html      # the table + create form
+            ├── assignment.service.ts        # the only place that knows API URLs
+            ├── csrf.interceptor.ts          # attaches X-XSRF-TOKEN cross-origin
+            ├── submission-table.component.ts # DataTables owns this table
+            ├── app.component.ts             # UI logic
+            └── app.component.html           # the tables, forms and banners
 ```
 
 > **Heads-up on the two `src` folders.** `frontend/tracker-ui/src/` is what
@@ -132,6 +165,67 @@ DB_USERNAME=... DB_PASSWORD=... java -jar tracker.jar
 > technologies and cannot run on this Java backend. JPA/Hibernate fills the same
 > role and is equally code-first — the schema derives from the `@Entity` classes.
 
+## Data integrity is enforced by the database
+
+A rule written only in Java is a **promise** — it holds while every writer goes
+through this application. The same rule written into the schema is a **fact**.
+Everything below was proven by writing bad data with `sqlcmd`, going around the
+application entirely; all 20 attempts were refused.
+
+### The role guard, and how it works
+
+"Only a student can be enrolled" and "only a teacher can teach" are not checks in
+a service. They are enforced by **composite foreign keys**:
+
+```sql
+-- app_user carries a unique pair
+ALTER TABLE app_user ADD CONSTRAINT uq_app_user_id_role UNIQUE (id, role);
+
+-- and every table that references a user pins the role it requires
+CONSTRAINT ck_enrolment_student_role CHECK (student_role = 'STUDENT'),
+CONSTRAINT fk_enrolment_student
+    FOREIGN KEY (student_id, student_role) REFERENCES app_user (id, role)
+```
+
+Neither half is sufficient alone. The `CHECK` would let a row claim `STUDENT` for
+a teacher's id; the foreign key would let it claim any role. Together, the only
+value satisfying both is that user's **real** role — and it must be `STUDENT`.
+
+One consequence is worth knowing before it surprises you: **a user's role cannot
+be changed while any row depends on it.** Promoting an enrolled student to
+teacher is refused. That is the guarantee working — the alternative is a
+"teacher" still sitting on a class register as a pupil.
+
+### What else the schema refuses
+
+| Attempted, bypassing the application | Refused by |
+|---|---|
+| Enrolling a teacher, or claiming they are a student | `CHECK` + composite FK |
+| Recording a student as teaching a course | composite FK |
+| Enrolling the same student in a class twice | `uq_enrolment_student_class` |
+| Two submissions for one student and one assignment | `uq_submission_assignment_student` |
+| `SUBMITTED` with no timestamp, or `IN_PROGRESS` with one | `ck_submission_status_time` |
+| A status outside the two valid values | `ck_submission_status` |
+| Coursework that is not `application/pdf` | `ck_submission_file_pdf` |
+| An empty file, or one over 10 MB | `ck_submission_file_size` |
+| A checksum that is not 64 characters | `ck_submission_file_sha256` |
+| An assignment pointing at a course that does not exist | `fk_assignment_course` |
+| Deleting a class that still has a register | `fk_enrolment_class` |
+| Deleting a student who still has work | `fk_enrolment_student` |
+| A blank subject name, or a duplicate subject code | `CHECK` / `UNIQUE` |
+| A 300-character title | column length — **not** silent truncation |
+
+**Consistency** is separate again: `@Transactional` service methods plus a
+`@Version` column on every mutable entity. Twelve simultaneous hand-ins on one
+submission yield **exactly one** acceptance; the rest get `409`. Setting work for
+three classes writes one assignment and one submission per enrolled student in a
+single transaction, so it cannot half-succeed and leave half a class without work.
+
+Uploaded PDFs are stored **in the database**, not on disk. That is a consistency
+decision rather than a storage preference: a file on disk plus a row pointing at
+it is two writes that must be made atomic by hand, and every failure in between
+leaves either a row naming a missing file or bytes nobody has a row for.
+
 ## API endpoints
 
 Every endpoint except `login` and `csrf` requires a session; every write also
@@ -145,12 +239,26 @@ requires the `X-XSRF-TOKEN` header.
 | POST | `/api/auth/logout` | End the session |
 | PUT | `/api/auth/password` | Change your own password |
 | POST | `/api/users` | Create a student account — teachers only |
-| GET | `/api/assignments` | List (scoped by role) |
-| POST | `/api/assignments` | Create — teachers only |
-| PUT | `/api/assignments/{id}` | Edit title / due date — teachers only |
-| DELETE | `/api/assignments/{id}` | Delete — teachers only, not while submitted |
-| PUT | `/api/assignments/{id}/submit` | Mark as SUBMITTED |
-| PUT | `/api/assignments/{id}/unsubmit` | Reopen — teachers only |
+| GET | `/api/subjects` | List subjects |
+| POST | `/api/subjects` | Add a subject — teachers only |
+| GET | `/api/classes` | List classes with their sizes |
+| POST | `/api/classes` | Add a class — teachers only |
+| GET | `/api/classes/{id}/students` | The register — teachers only |
+| POST | `/api/classes/{id}/students` | Enrol a student — teachers only |
+| DELETE | `/api/classes/{id}/students/{username}` | Withdraw a student — teachers only |
+| GET | `/api/courses` | Courses you teach, or are taught (scoped by role) |
+| GET | `/api/courses/all` | Every course — teachers only |
+| POST | `/api/courses` | Record that a teacher takes a subject for a class |
+| GET | `/api/assignments` | Work that was set (scoped by role) |
+| POST | `/api/assignments` | Set work for one or more courses — teachers only |
+| PUT | `/api/assignments/{id}` | Edit title / description / due date — teachers only |
+| DELETE | `/api/assignments/{id}` | Delete — refused once anybody has handed in |
+| GET | `/api/assignments/{id}/submissions` | The marking list for one assignment |
+| GET | `/api/submissions` | Your own work, or your marking queue |
+| POST | `/api/submissions/{id}/file` | Upload or replace the PDF (multipart) |
+| GET | `/api/submissions/{id}/file` | Download the PDF |
+| PUT | `/api/submissions/{id}/submit` | Hand it in — requires an uploaded PDF |
+| PUT | `/api/submissions/{id}/unsubmit` | Reopen — teachers only |
 
 Browse and try all of these at **http://localhost:8080/swagger-ui.html** while the
 backend is running. The description is generated from the controllers, so it cannot
@@ -200,12 +308,23 @@ cd "School Management System/backend"
 ./mvnw test
 ```
 
-48 tests: 17 unit tests of the business rules, 12 full-stack tests through MockMvc
-with real security, 7 covering concurrency and database integrity, and 12 covering
-account self-service. They run against H2, so **no SQL Server instance is needed**
-to run the suite.
+69 tests: 17 unit tests of the business rules, 22 full-stack tests through MockMvc
+with real security (including multipart upload and download), 18 covering
+concurrency and database integrity, and 12 covering account self-service. They run
+against H2, so **no SQL Server instance is needed** to run the suite.
 
 `./mvnw package` runs them too, and fails the build if any test fails.
+
+> **Two things this suite cannot prove, stated plainly.** It runs on H2, built
+> from the entity annotations, so (a) the Flyway migrations are never executed,
+> and (b) JPA cannot express the composite `(id, role)` foreign keys — H2 gets
+> the `CHECK` and a single-column key instead. H2 will still refuse a row that
+> claims a role it may not hold; what only SQL Server refuses is a row claiming
+> `STUDENT` for a *teacher's* id. Both gaps are checked by hand with `sqlcmd` and
+> recorded as `docs/project/PRD.md` L10 and R10. `ddl-auto=validate` is what
+> catches drift between the migrations and the entities — it earned its keep
+> here, refusing to start when a timestamp column was declared `DATETIME2` while
+> Hibernate expected `DATETIMEOFFSET`.
 
 **`JAVA_HOME` must point at a JDK 25.** The wrapper reads `JAVA_HOME` in
 preference to whatever `java` is on your `PATH`, so it is the setting that

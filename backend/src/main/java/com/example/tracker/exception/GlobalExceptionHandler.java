@@ -72,6 +72,20 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * 404 NOT FOUND — the client named a subject, class, course or submission
+     * that does not exist.
+     *
+     * Separate from the assignment case above because the two are thrown for
+     * different reasons; see ResourceNotFoundException for why keeping them
+     * apart is worth one extra class.
+     */
+    @ExceptionHandler(ResourceNotFoundException.class)
+    public ResponseEntity<ApiError> handleResourceNotFound(
+            ResourceNotFoundException ex, jakarta.servlet.http.HttpServletRequest request) {
+        return build(HttpStatus.NOT_FOUND, ex.getMessage(), request.getRequestURI());
+    }
+
+    /**
      * 409 CONFLICT — the request made sense, but it clashes with the CURRENT
      * state of the data. Example: submitting an assignment that is already
      * SUBMITTED. (409 is the standard code for "you can't do that *right now*".)
@@ -108,7 +122,7 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiError> handleConcurrentModification(
             OptimisticLockingFailureException ex, jakarta.servlet.http.HttpServletRequest request) {
         return build(HttpStatus.CONFLICT,
-                "This assignment was changed by someone else. Reload and try again.",
+                "This record was changed by someone else. Reload and try again.",
                 request.getRequestURI());
     }
 
@@ -125,7 +139,31 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiError> handleDataIntegrityViolation(
             DataIntegrityViolationException ex, jakarta.servlet.http.HttpServletRequest request) {
         return build(HttpStatus.BAD_REQUEST,
-                "The assignment could not be saved because it violates a data constraint.",
+                "The record could not be saved because it violates a data constraint.",
+                request.getRequestURI());
+    }
+
+    /**
+     * 413 PAYLOAD TOO LARGE — the uploaded file exceeded the configured limit.
+     *
+     * Thrown by Spring's multipart parser BEFORE any of our code runs, which is
+     * the point: an oversized upload is rejected while it is still arriving,
+     * rather than being buffered into memory and then refused. Without this
+     * handler it would surface as a bare 500, telling the student nothing about
+     * what to do differently.
+     *
+     * The service checks the size again once it has the bytes, and the schema
+     * checks it a third time. That is not redundancy for its own sake - this
+     * limit is a container setting, the service's is a business rule, and the
+     * column's is a fact about the data. All three can be true at once and only
+     * the last one survives a writer that bypasses the application.
+     */
+    @ExceptionHandler(org.springframework.web.multipart.MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiError> handleUploadTooLarge(
+            org.springframework.web.multipart.MaxUploadSizeExceededException ex,
+            jakarta.servlet.http.HttpServletRequest request) {
+        return build(HttpStatus.PAYLOAD_TOO_LARGE,
+                "That file is too large. The limit is 10 MB.",
                 request.getRequestURI());
     }
 

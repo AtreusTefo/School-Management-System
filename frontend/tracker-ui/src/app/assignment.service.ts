@@ -4,12 +4,12 @@ import { Observable } from 'rxjs';
 import { environment } from '../environments/environment';
 
 /**
- * The states an assignment can be in. This list mirrors the backend's
- * AssignmentStatus enum exactly.
+ * The states a student's work can be in. Mirrors the backend AssignmentStatus
+ * enum exactly.
  *
- * Declaring it as a union rather than `string` means a typo like 'SUBMITED'
- * is a compile error here, instead of a comparison that quietly never matches
- * and leaves a button enabled forever.
+ * Declaring it as a union rather than `string` means a typo like 'SUBMITED' is a
+ * compile error here, instead of a comparison that quietly never matches and
+ * leaves a button enabled forever.
  */
 export type AssignmentStatus = 'IN_PROGRESS' | 'SUBMITTED';
 
@@ -17,19 +17,86 @@ export type AssignmentStatus = 'IN_PROGRESS' | 'SUBMITTED';
 export type Role = 'STUDENT' | 'TEACHER';
 
 /**
- * One assignment, as the API sends it.
+ * One subject taught to one class by one teacher.
  *
- * `overdue` is computed by the server on every read rather than stored. A flag
- * held in the database would be wrong the moment midnight passed; asking the
- * server means the answer is always relative to today.
+ * A student's list of these IS the answer to "which subjects am I taught, and by
+ * whom" - the two are the same data read from different columns, which is why
+ * neither needs its own request.
+ */
+export interface Course {
+  id: number;
+  subjectId: number;
+  subjectCode: string;
+  subjectName: string;
+  classId: number;
+  className: string;
+  teacherUsername: string;
+  label: string;
+}
+
+export interface Subject {
+  id: number;
+  code: string;
+  name: string;
+}
+
+export interface SchoolClass {
+  id: number;
+  name: string;
+  studentCount: number;
+}
+
+/**
+ * A piece of work a teacher set, with progress counts.
+ *
+ * studentCount and submittedCount are what a class-wide assignment needs and a
+ * single-owner one never did: "17 of 30 handed in" is the question a teacher
+ * actually has, and it cannot be answered from the assignment alone.
  */
 export interface Assignment {
   id: number;
   title: string;
-  status: AssignmentStatus;
-  ownerUsername: string;
+  description: string | null;
   dueDate: string | null;   // ISO yyyy-MM-dd, or null when there is no deadline
+  pastDue: boolean;
+  courseId: number;
+  subjectName: string;
+  className: string;
+  teacherUsername: string;
+  createdByUsername: string;
+  studentCount: number;
+  submittedCount: number;
+}
+
+/**
+ * One student's state for one assignment - the row both roles act on.
+ *
+ * `overdue` is computed by the server on every read rather than stored. A flag
+ * held in the database would be wrong the moment midnight passed; asking the
+ * server means the answer is always relative to today.
+ *
+ * The file's name, size and checksum are here; its CONTENT is not, and has no
+ * field it could occupy. The bytes leave the server only through the download
+ * endpoint, which checks who is asking first.
+ */
+export interface Submission {
+  id: number;
+  assignmentId: number;
+  assignmentTitle: string;
+  description: string | null;
+  subjectName: string;
+  className: string;
+  teacherUsername: string;
+  studentUsername: string;
+  status: AssignmentStatus;
+  dueDate: string | null;
   overdue: boolean;
+  submittedAt: string | null;
+  hasFile: boolean;
+  fileName: string | null;
+  fileSizeBytes: number | null;
+  fileSha256: string | null;
+  fileUploadedAt: string | null;
 }
 
 /**
@@ -52,8 +119,8 @@ export interface CurrentUser {
  * THE DATA SERVICE
  * ----------------
  * This is the ONLY place that knows the backend's URLs. Components ask this
- * service for data; they never call HTTP directly. (Same idea as keeping DB
- * access inside the repository on the backend.)
+ * service for data; they never call HttpClient directly. (Same idea as keeping
+ * database access inside the repository on the backend.)
  *
  * WHY EVERY CALL SETS withCredentials
  * Sign-in produces a session cookie. A browser will NOT attach a cookie to a
@@ -62,15 +129,14 @@ export interface CurrentUser {
  * cross-origin. Without this the app would sign in successfully and then be
  * anonymous again on the very next request.
  *
- * The CSRF token needs no code at all: Angular's HttpClient reads the
- * XSRF-TOKEN cookie and echoes it back as X-XSRF-TOKEN automatically, which is
- * exactly the pair the backend expects.
+ * The CSRF token is handled by csrf.interceptor.ts, because Angular's built-in
+ * XSRF support deliberately refuses to attach the token cross-origin.
  */
 @Injectable({ providedIn: 'root' })
 export class AssignmentService {
 
   /**
-   * The address of our Spring Boot controller, built from configuration.
+   * The address of our Spring Boot API, built from configuration.
    *
    * environment.apiBaseUrl supplies the host, and Angular swaps the environment
    * file per build configuration (see angular.json). In development it is
@@ -78,7 +144,6 @@ export class AssignmentService {
    * relative so the site calls whichever host served it.
    */
   private readonly api = environment.apiBaseUrl;
-  private readonly baseUrl = `${environment.apiBaseUrl}/api/assignments`;
   private readonly opts = { withCredentials: true };
 
   constructor(private http: HttpClient) {}
@@ -88,8 +153,8 @@ export class AssignmentService {
   /**
    * Ask the server to issue the XSRF-TOKEN cookie.
    *
-   * Must be called before the first write. Angular can only echo a token back
-   * once one exists, and the very first sign-in POST is itself a write.
+   * Must be called before the first write. The interceptor can only echo a token
+   * back once one exists, and the very first sign-in POST is itself a write.
    */
   primeCsrf(): Observable<void> {
     return this.http.get<void>(`${this.api}/api/auth/csrf`, this.opts);
@@ -127,38 +192,133 @@ export class AssignmentService {
       `${this.api}/api/users`, { username, temporaryPassword }, this.opts);
   }
 
+  // ----- the timetable -------------------------------------------------------
+
+  /** The courses the caller is involved in. Scope is decided by the server. */
+  getCourses(): Observable<Course[]> {
+    return this.http.get<Course[]>(`${this.api}/api/courses`, this.opts);
+  }
+
+  getSubjects(): Observable<Subject[]> {
+    return this.http.get<Subject[]>(`${this.api}/api/subjects`, this.opts);
+  }
+
+  getClasses(): Observable<SchoolClass[]> {
+    return this.http.get<SchoolClass[]>(`${this.api}/api/classes`, this.opts);
+  }
+
+  createSubject(code: string, name: string): Observable<Subject> {
+    return this.http.post<Subject>(`${this.api}/api/subjects`, { code, name }, this.opts);
+  }
+
+  createClass(name: string): Observable<SchoolClass> {
+    return this.http.post<SchoolClass>(`${this.api}/api/classes`, { name }, this.opts);
+  }
+
+  createCourse(subjectId: number, classId: number, teacherUsername: string | null)
+      : Observable<Course> {
+    return this.http.post<Course>(
+      `${this.api}/api/courses`, { subjectId, classId, teacherUsername }, this.opts);
+  }
+
+  /** The register for a class. Teacher only. */
+  getClassStudents(classId: number): Observable<string[]> {
+    return this.http.get<string[]>(
+      `${this.api}/api/classes/${classId}/students`, this.opts);
+  }
+
+  enrolStudent(classId: number, username: string): Observable<void> {
+    return this.http.post<void>(
+      `${this.api}/api/classes/${classId}/students`, { username }, this.opts);
+  }
+
+  withdrawStudent(classId: number, username: string): Observable<void> {
+    return this.http.delete<void>(
+      `${this.api}/api/classes/${classId}/students/${encodeURIComponent(username)}`,
+      this.opts);
+  }
+
   // ----- assignments ---------------------------------------------------------
 
-  /** The list the signed-in person may see. The server decides the scope. */
   getAssignments(): Observable<Assignment[]> {
-    return this.http.get<Assignment[]>(this.baseUrl, this.opts);
+    return this.http.get<Assignment[]>(`${this.api}/api/assignments`, this.opts);
   }
 
-  /** Teacher only. `assignTo` names the student it is set for; omit to keep it. */
-  createAssignment(title: string, dueDate: string | null, assignTo: string | null)
-      : Observable<Assignment> {
-    return this.http.post<Assignment>(
-      this.baseUrl, { title, dueDate, assignTo }, this.opts);
+  /**
+   * Set work for one or more courses. Teacher only.
+   *
+   * Returns a LIST: setting the same task for three classes is one action for
+   * the teacher and three assignments in the data, because each class has its
+   * own register and its own progress.
+   */
+  createAssignment(title: string, description: string | null,
+                   dueDate: string | null, courseIds: number[]): Observable<Assignment[]> {
+    return this.http.post<Assignment[]>(
+      `${this.api}/api/assignments`, { title, description, dueDate, courseIds }, this.opts);
   }
 
-  /** Owner only. */
-  updateAssignment(id: number, title: string, dueDate: string | null)
-      : Observable<Assignment> {
+  updateAssignment(id: number, title: string, description: string | null,
+                   dueDate: string | null): Observable<Assignment> {
     return this.http.put<Assignment>(
-      `${this.baseUrl}/${id}`, { title, dueDate }, this.opts);
+      `${this.api}/api/assignments/${id}`, { title, description, dueDate }, this.opts);
   }
 
-  /** Owner only, and refused once the assignment has been submitted. */
+  /** Refused once anybody has handed work in. */
   deleteAssignment(id: number): Observable<void> {
-    return this.http.delete<void>(`${this.baseUrl}/${id}`, this.opts);
+    return this.http.delete<void>(`${this.api}/api/assignments/${id}`, this.opts);
   }
 
-  submitAssignment(id: number): Observable<Assignment> {
-    return this.http.put<Assignment>(`${this.baseUrl}/${id}/submit`, {}, this.opts);
+  /** Every student's state for one assignment - the teacher's marking list. */
+  getSubmissionsForAssignment(assignmentId: number): Observable<Submission[]> {
+    return this.http.get<Submission[]>(
+      `${this.api}/api/assignments/${assignmentId}/submissions`, this.opts);
   }
 
-  /** Teacher only - reopens a submitted assignment. */
-  unsubmitAssignment(id: number): Observable<Assignment> {
-    return this.http.put<Assignment>(`${this.baseUrl}/${id}/unsubmit`, {}, this.opts);
+  // ----- submissions ---------------------------------------------------------
+
+  /** A student's own work, or a teacher's marking queue. */
+  getSubmissions(): Observable<Submission[]> {
+    return this.http.get<Submission[]>(`${this.api}/api/submissions`, this.opts);
+  }
+
+  /**
+   * Attach or replace the PDF.
+   *
+   * FormData rather than JSON, and deliberately WITHOUT a Content-Type header:
+   * the browser has to set it itself so it can append the multipart boundary.
+   * Setting it by hand produces a request the server cannot parse, and the
+   * failure looks like a server fault rather than a client mistake.
+   */
+  uploadFile(submissionId: number, file: File): Observable<Submission> {
+    const form = new FormData();
+    form.append('file', file, file.name);
+
+    return this.http.post<Submission>(
+      `${this.api}/api/submissions/${submissionId}/file`, form, this.opts);
+  }
+
+  submit(submissionId: number): Observable<Submission> {
+    return this.http.put<Submission>(
+      `${this.api}/api/submissions/${submissionId}/submit`, {}, this.opts);
+  }
+
+  /** Teacher only - reopens handed-in work. */
+  unsubmit(submissionId: number): Observable<Submission> {
+    return this.http.put<Submission>(
+      `${this.api}/api/submissions/${submissionId}/unsubmit`, {}, this.opts);
+  }
+
+  /**
+   * Fetch the PDF as a Blob so the page can offer it as a download.
+   *
+   * responseType 'blob' matters: the default would try to parse the bytes as
+   * JSON and fail on the first byte of the PDF header. The caller turns this
+   * into a download; see AppComponent.download.
+   */
+  downloadFile(submissionId: number): Observable<Blob> {
+    return this.http.get(`${this.api}/api/submissions/${submissionId}/file`, {
+      withCredentials: true,
+      responseType: 'blob'
+    });
   }
 }

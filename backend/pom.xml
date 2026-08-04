@@ -116,6 +116,28 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
+            <!-- Surefire runs the tests in a JVM it forks itself, so the flags in
+                 .mvn/jvm.config do not reach them - those apply to Maven's own JVM
+                 and silence a different pair of warnings.
+
+                 Mockito creates its mocks by attaching the Byte Buddy agent to the
+                 already-running JVM. Java warns about that in four lines on every
+                 test run, and says plainly that "dynamic loading of agents will be
+                 disallowed by default in a future release".
+
+                 The flag is already ON by default here - `java -XX:+PrintFlagsFinal
+                 -version` reports EnableDynamicAgentLoading = true - so this changes
+                 no behaviour at all. Stating it explicitly is what suppresses the
+                 warning, and it records the decision: when a future JDK flips that
+                 default, this line is the one to revisit, rather than discovering
+                 the whole suite has gone red. It is the option Mockito documents. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <argLine>-XX:+EnableDynamicAgentLoading</argLine>
+                </configuration>
+            </plugin>
         </plugins>
     </build>
 </project>

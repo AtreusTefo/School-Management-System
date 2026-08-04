@@ -3,11 +3,9 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
-  Assignment, AssignmentService, CurrentUser
+  Assignment, AssignmentService, Course, CurrentUser, SchoolClass, Submission, Subject
 } from './assignment.service';
-import {
-  AssignmentEdit, AssignmentTableComponent
-} from './assignment-table.component';
+import { FileChosen, SubmissionTableComponent } from './submission-table.component';
 import { environment } from '../environments/environment';
 
 /**
@@ -21,15 +19,22 @@ import { environment } from '../environments/environment';
  * courtesy to the user, not a security measure, because anyone can call the API
  * directly.
  *
- * The table itself is not drawn here. AssignmentTableComponent hands the rows to
- * DataTables and lets it own that piece of the page; this component supplies the
- * data and reacts to what the user asked to do with a row. Every call to the API
- * still goes through AssignmentService, exactly as before.
+ * WHAT THE TWO ROLES SEE, AND WHY THEY DIFFER IN SHAPE
+ * A STUDENT works on submissions: upload a PDF, hand it in, download it back.
+ * A TEACHER works on both - a marking queue of submissions across their courses,
+ * and the assignments they have set, which is where creating, editing and
+ * deleting live. Those are genuinely different jobs, so they are different
+ * panels rather than one table with hidden columns.
+ *
+ * The submission table itself is not drawn here. SubmissionTableComponent hands
+ * the rows to DataTables and lets it own that piece of the page; this component
+ * supplies the data and reacts to what the user asked to do with a row. Every
+ * call to the API still goes through AssignmentService.
  */
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, FormsModule, AssignmentTableComponent],
+  imports: [CommonModule, FormsModule, SubmissionTableComponent],
   templateUrl: './app.component.html'
 })
 export class AppComponent implements OnInit {
@@ -55,9 +60,20 @@ export class AppComponent implements OnInit {
    */
   loadingList = false;
   signingIn = false;
+  uploading = false;
 
   /** Everything the server returned. */
+  submissions: Submission[] = [];
+
+  /** The work a teacher has set. Empty for a student, who sets none. */
   assignments: Assignment[] = [];
+
+  /** The courses the caller is involved in - the picker when setting work. */
+  courses: Course[] = [];
+
+  /** Reference data, loaded only for a teacher setting up the timetable. */
+  subjects: Subject[] = [];
+  classes: SchoolClass[] = [];
 
   /**
    * The subset handed to the table, after the status filter.
@@ -70,15 +86,45 @@ export class AppComponent implements OnInit {
    * would look like new data to the table component and trigger a needless
    * redraw several times a second.
    */
-  visibleAssignments: Assignment[] = [];
+  visibleSubmissions: Submission[] = [];
 
   /** Status filter. A client-side view of data already loaded. */
   statusFilter: 'ALL' | 'IN_PROGRESS' | 'SUBMITTED' | 'OVERDUE' = 'ALL';
 
-  // Create form
+  // ----- setting work (teachers) ---------------------------------------------
+
   newTitle = '';
+  newDescription = '';
   newDueDate = '';
-  newAssignTo = '';
+
+  /**
+   * Which courses the new work is for.
+   *
+   * A SET rather than a single value, because "assign to more than one class at
+   * a time" is the requirement. Each selected course becomes its own assignment
+   * with its own register and its own progress.
+   */
+  selectedCourseIds = new Set<number>();
+
+  showSetWork = false;
+
+  // Editing an assignment
+  editingAssignmentId: number | null = null;
+  editTitle = '';
+  editDescription = '';
+  editDueDate = '';
+
+  // ----- timetable admin (teachers) ------------------------------------------
+
+  showTimetable = false;
+  newSubjectCode = '';
+  newSubjectName = '';
+  newClassName = '';
+  courseSubjectId: number | null = null;
+  courseClassId: number | null = null;
+  enrolClassId: number | null = null;
+  enrolUsername = '';
+  timetableNotice: string | null = null;
 
   // ----- account self-service (EPIC-09) --------------------------------------
 
@@ -104,10 +150,6 @@ export class AppComponent implements OnInit {
   creatingUser = false;
   showCreateUser = false;
   createUserNotice: string | null = null;
-
-  // Inline edit state now lives in AssignmentTableComponent, because the row
-  // being edited is part of the table DataTables draws. This component only sees
-  // the finished result, through the (saveAssignment) event.
 
   /** The last error to show the user, or null when all is well. */
   errorMessage: string | null = null;
@@ -137,7 +179,7 @@ export class AppComponent implements OnInit {
         // server answers 403. Asking anyway would put a red banner on top of a
         // screen that is already explaining what to do.
         if (!user.mustChangePassword) {
-          this.loadAssignments();
+          this.loadEverything();
         }
       },
       error: () => {
@@ -161,15 +203,31 @@ export class AppComponent implements OnInit {
   }
 
   get submittedCount(): number {
-    return this.assignments.filter(a => a.status === 'SUBMITTED').length;
+    return this.submissions.filter(s => s.status === 'SUBMITTED').length;
   }
 
   get inProgressCount(): number {
-    return this.assignments.filter(a => a.status === 'IN_PROGRESS').length;
+    return this.submissions.filter(s => s.status === 'IN_PROGRESS').length;
   }
 
   get overdueCount(): number {
-    return this.assignments.filter(a => a.overdue).length;
+    return this.submissions.filter(s => s.overdue).length;
+  }
+
+  /**
+   * The distinct subjects the caller is involved in.
+   *
+   * For a student this is literally "the subjects I am taught" - one of the
+   * requirements, answered from the course list rather than from its own
+   * endpoint, because it is the same data.
+   */
+  get mySubjects(): string[] {
+    return [...new Set(this.courses.map(c => c.subjectName))].sort();
+  }
+
+  /** For a student, the distinct teachers who teach them. */
+  get myTeachers(): string[] {
+    return [...new Set(this.courses.map(c => c.teacherUsername))].sort();
   }
 
   // ----- filtering ------------------------------------------------------------
@@ -193,10 +251,10 @@ export class AppComponent implements OnInit {
    * would change the data with nothing to tell Angular it had happened.
    */
   private applyFilters(): void {
-    this.visibleAssignments = this.assignments.filter(a =>
+    this.visibleSubmissions = this.submissions.filter(s =>
       this.statusFilter === 'ALL' ? true :
-      this.statusFilter === 'OVERDUE' ? a.overdue :
-      a.status === this.statusFilter
+      this.statusFilter === 'OVERDUE' ? s.overdue :
+      s.status === this.statusFilter
     );
   }
 
@@ -218,7 +276,7 @@ export class AppComponent implements OnInit {
         // Same reason as checkSession: a pending account gets the change-password
         // screen, not a list request that is going to be refused.
         if (!user.mustChangePassword) {
-          this.loadAssignments();
+          this.loadEverything();
         }
       },
       // Handled separately rather than through showError: a 401 here means the
@@ -242,16 +300,21 @@ export class AppComponent implements OnInit {
     this.service.logout().subscribe({
       next: () => {
         this.user = null;
+        this.submissions = [];
+        this.visibleSubmissions = [];
         this.assignments = [];
-        this.visibleAssignments = [];
+        this.courses = [];
         this.statusFilter = 'ALL';
         this.errorMessage = null;
         // Clear the account forms too. Leaving a half-typed password in a field
         // for the next person to sign in at this browser would be careless.
         this.showPasswordForm = false;
         this.showCreateUser = false;
+        this.showSetWork = false;
+        this.showTimetable = false;
         this.passwordNotice = null;
         this.createUserNotice = null;
+        this.timetableNotice = null;
         this.resetPasswordFields();
       },
       error: (err) => this.showError(err, 'Could not sign out')
@@ -329,9 +392,9 @@ export class AppComponent implements OnInit {
         this.resetPasswordFields();
         this.errorMessage = null;
         this.passwordNotice = 'Your password has been changed.';
-        // Coming out of the forced state, the list has never been loaded.
+        // Coming out of the forced state, nothing has ever been loaded.
         if (wasForced) {
-          this.loadAssignments();
+          this.loadEverything();
         }
       },
       error: (err) => {
@@ -370,7 +433,8 @@ export class AppComponent implements OnInit {
       next: () => {
         this.creatingUser = false;
         this.createUserNotice =
-          `Account "${username}" created. They must change this password when they first sign in.`;
+          `Account "${username}" created. They must change this password when they first sign in. `
+          + `Enrol them in a class so they receive work.`;
         this.newUsername = '';
         this.newUserPassword = '';
         this.errorMessage = null;
@@ -382,14 +446,29 @@ export class AppComponent implements OnInit {
     });
   }
 
-  // ----- assignments ---------------------------------------------------------
+  // ----- loading -------------------------------------------------------------
 
-  loadAssignments(): void {
+  /**
+   * Fetch everything the current role needs.
+   *
+   * The calls are independent and are fired together rather than chained. A
+   * student needs two of them; a teacher needs three, because only a teacher has
+   * work they have set.
+   */
+  loadEverything(): void {
+    this.loadSubmissions();
+    this.loadCourses();
+    if (this.isTeacher) {
+      this.loadAssignments();
+    }
+  }
+
+  loadSubmissions(): void {
     this.loadingList = true;
-    this.service.getAssignments().subscribe({
+    this.service.getSubmissions().subscribe({
       next: (data) => {
         this.loadingList = false;
-        this.assignments = data;
+        this.submissions = data;
         // Re-apply the current status filter to the new data, so a refresh does
         // not silently reset the view the user had set up.
         this.applyFilters();
@@ -397,70 +476,256 @@ export class AppComponent implements OnInit {
       },
       error: (err) => {
         this.loadingList = false;
-        this.showError(err, 'Could not load assignments');
+        this.showError(err, 'Could not load the work');
       }
     });
   }
 
-  onCreate(): void {
-    const title = this.newTitle.trim();
-    if (!title) {
+  loadCourses(): void {
+    this.service.getCourses().subscribe({
+      next: (data) => this.courses = data,
+      error: (err) => this.showError(err, 'Could not load your courses')
+    });
+  }
+
+  loadAssignments(): void {
+    this.service.getAssignments().subscribe({
+      next: (data) => this.assignments = data,
+      error: (err) => this.showError(err, 'Could not load the work you have set')
+    });
+  }
+
+  // ----- setting work --------------------------------------------------------
+
+  openSetWork(): void {
+    this.showSetWork = true;
+    this.newTitle = '';
+    this.newDescription = '';
+    this.newDueDate = '';
+    this.selectedCourseIds.clear();
+  }
+
+  closeSetWork(): void {
+    this.showSetWork = false;
+  }
+
+  toggleCourse(courseId: number): void {
+    if (this.selectedCourseIds.has(courseId)) {
+      this.selectedCourseIds.delete(courseId);
+    } else {
+      this.selectedCourseIds.add(courseId);
+    }
+  }
+
+  isCourseSelected(courseId: number): boolean {
+    return this.selectedCourseIds.has(courseId);
+  }
+
+  get canSetWork(): boolean {
+    return this.newTitle.trim().length > 0 && this.selectedCourseIds.size > 0;
+  }
+
+  onSetWork(): void {
+    if (!this.canSetWork) {
       return;
     }
     this.service.createAssignment(
-      title,
+      this.newTitle.trim(),
+      this.newDescription.trim() || null,
       this.newDueDate || null,
-      this.newAssignTo.trim() || null
+      [...this.selectedCourseIds]
+    ).subscribe({
+      next: (created) => {
+        const students = created.reduce((total, a) => total + a.studentCount, 0);
+        this.timetableNotice =
+          `Set for ${created.length} class${created.length === 1 ? '' : 'es'}, `
+          + `reaching ${students} student${students === 1 ? '' : 's'}.`;
+        this.showSetWork = false;
+        this.loadEverything();
+      },
+      error: (err) => this.showError(err, 'Could not set the work')
+    });
+  }
+
+  // ----- editing and deleting an assignment ----------------------------------
+
+  startEditAssignment(a: Assignment): void {
+    this.editingAssignmentId = a.id;
+    this.editTitle = a.title;
+    this.editDescription = a.description ?? '';
+    this.editDueDate = a.dueDate ?? '';
+  }
+
+  cancelEditAssignment(): void {
+    this.editingAssignmentId = null;
+  }
+
+  saveEditAssignment(id: number): void {
+    const title = this.editTitle.trim();
+    if (!title) {
+      return;
+    }
+    this.service.updateAssignment(
+      id, title, this.editDescription.trim() || null, this.editDueDate || null
     ).subscribe({
       next: () => {
-        this.newTitle = '';
-        this.newDueDate = '';
-        this.newAssignTo = '';
-        this.loadAssignments();
+        this.editingAssignmentId = null;
+        this.loadEverything();
       },
-      error: (err) => this.showError(err, 'Could not create the assignment')
+      error: (err) => this.showError(err, 'Could not save the change')
     });
   }
 
-  onSubmit(id: number): void {
-    this.service.submitAssignment(id).subscribe({
-      next: () => this.loadAssignments(),
-      error: (err) => this.showError(err, 'Could not submit the assignment')
-    });
-  }
-
-  onUnsubmit(id: number): void {
-    this.service.unsubmitAssignment(id).subscribe({
-      next: () => this.loadAssignments(),
-      error: (err) => this.showError(err, 'Could not reopen the assignment')
-    });
-  }
-
-  onDelete(a: Assignment): void {
-    if (!confirm(`Delete "${a.title}"? This cannot be undone.`)) {
+  onDeleteAssignment(a: Assignment): void {
+    if (!confirm(`Delete "${a.title}" for ${a.className}? This cannot be undone.`)) {
       return;
     }
     this.service.deleteAssignment(a.id).subscribe({
-      next: () => this.loadAssignments(),
-      error: (err) => this.showError(err, 'Could not delete the assignment')
+      next: () => this.loadEverything(),
+      error: (err) => this.showError(err, 'Could not delete the work')
     });
   }
 
-  // ----- inline editing ------------------------------------------------------
+  // ----- a student's own work ------------------------------------------------
 
   /**
-   * The table component collected the new title and due date; this saves them.
+   * Upload the chosen PDF.
    *
-   * Only a teacher may edit at all - the table only draws the Edit button for
-   * one, and the server refuses anyone else regardless. That rule follows the
-   * role rather than the row: a teacher who sets work FOR a student would
-   * otherwise be unable to correct it, and a student would be able to rewrite
-   * the assignment they had been set.
+   * The file is sent as it was chosen. Nothing here inspects or rewrites it -
+   * the server checks the size, the declared type AND the leading bytes, because
+   * a check performed in the browser is a check the browser can be made to skip.
    */
-  onSaveEdit(edit: AssignmentEdit): void {
-    this.service.updateAssignment(edit.id, edit.title, edit.dueDate).subscribe({
-      next: () => this.loadAssignments(),
-      error: (err) => this.showError(err, 'Could not save the change')
+  onFileChosen(chosen: FileChosen): void {
+    this.uploading = true;
+    this.service.uploadFile(chosen.submissionId, chosen.file).subscribe({
+      next: () => {
+        this.uploading = false;
+        this.errorMessage = null;
+        this.loadSubmissions();
+      },
+      error: (err) => {
+        this.uploading = false;
+        this.showError(err, 'Could not upload that file');
+      }
+    });
+  }
+
+  onSubmitWork(id: number): void {
+    this.service.submit(id).subscribe({
+      next: () => this.loadEverything(),
+      error: (err) => this.showError(err, 'Could not hand in the work')
+    });
+  }
+
+  onUnsubmitWork(id: number): void {
+    this.service.unsubmit(id).subscribe({
+      next: () => this.loadEverything(),
+      error: (err) => this.showError(err, 'Could not reopen the work')
+    });
+  }
+
+  /**
+   * Download a submitted PDF.
+   *
+   * The request cannot simply be a link: the endpoint needs the session cookie
+   * AND, cross-origin, the browser will not attach it to a plain navigation. So
+   * the bytes are fetched with the same credentialed HttpClient as everything
+   * else, then handed to the user as a temporary object URL.
+   *
+   * revokeObjectURL matters. Each blob URL pins its data in memory until it is
+   * released, so a teacher working through a class of thirty would otherwise
+   * accumulate every PDF they had opened.
+   */
+  onDownload(submission: Submission): void {
+    this.service.downloadFile(submission.id).subscribe({
+      next: (blob) => {
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = submission.fileName ?? 'submission.pdf';
+        anchor.click();
+        URL.revokeObjectURL(url);
+      },
+      error: (err) => this.showError(err, 'Could not download that file')
+    });
+  }
+
+  // ----- the timetable (teachers) --------------------------------------------
+
+  openTimetable(): void {
+    this.showTimetable = true;
+    this.timetableNotice = null;
+    this.service.getSubjects().subscribe({
+      next: (data) => this.subjects = data,
+      error: (err) => this.showError(err, 'Could not load subjects')
+    });
+    this.service.getClasses().subscribe({
+      next: (data) => this.classes = data,
+      error: (err) => this.showError(err, 'Could not load classes')
+    });
+  }
+
+  closeTimetable(): void {
+    this.showTimetable = false;
+  }
+
+  onCreateSubject(): void {
+    const code = this.newSubjectCode.trim();
+    const name = this.newSubjectName.trim();
+    if (!code || !name) {
+      return;
+    }
+    this.service.createSubject(code, name).subscribe({
+      next: (created) => {
+        this.subjects = [...this.subjects, created].sort((a, b) => a.name.localeCompare(b.name));
+        this.newSubjectCode = '';
+        this.newSubjectName = '';
+        this.timetableNotice = `Subject "${created.name}" added.`;
+      },
+      error: (err) => this.showError(err, 'Could not add the subject')
+    });
+  }
+
+  onCreateClass(): void {
+    const name = this.newClassName.trim();
+    if (!name) {
+      return;
+    }
+    this.service.createClass(name).subscribe({
+      next: (created) => {
+        this.classes = [...this.classes, created].sort((a, b) => a.name.localeCompare(b.name));
+        this.newClassName = '';
+        this.timetableNotice = `Class "${created.name}" added.`;
+      },
+      error: (err) => this.showError(err, 'Could not add the class')
+    });
+  }
+
+  onCreateCourse(): void {
+    if (this.courseSubjectId === null || this.courseClassId === null) {
+      return;
+    }
+    this.service.createCourse(this.courseSubjectId, this.courseClassId, null).subscribe({
+      next: (created) => {
+        this.timetableNotice = `You now teach ${created.label}.`;
+        this.loadCourses();
+      },
+      error: (err) => this.showError(err, 'Could not set up that course')
+    });
+  }
+
+  onEnrol(): void {
+    const username = this.enrolUsername.trim();
+    if (this.enrolClassId === null || !username) {
+      return;
+    }
+    this.service.enrolStudent(this.enrolClassId, username).subscribe({
+      next: () => {
+        this.timetableNotice = `"${username}" enrolled.`;
+        this.enrolUsername = '';
+        this.openTimetable();   // refresh the counts
+      },
+      error: (err) => this.showError(err, 'Could not enrol that student')
     });
   }
 
@@ -472,7 +737,7 @@ export class AppComponent implements OnInit {
 
   retry(): void {
     this.errorMessage = null;
-    this.loadAssignments();
+    this.loadEverything();
   }
 
   /**
@@ -499,9 +764,14 @@ export class AppComponent implements OnInit {
         // The session expired underneath us. Say so plainly and show the login
         // form again, rather than leaving a stale list on screen.
         this.user = null;
+        this.submissions = [];
+        this.visibleSubmissions = [];
         this.assignments = [];
-        this.visibleAssignments = [];
         this.errorMessage = 'Your session has ended. Please sign in again.';
+        return;
+      }
+      if (err.status === 413) {
+        this.errorMessage = `${fallback}: that file is larger than the 10 MB limit.`;
         return;
       }
       const serverMessage = (err.error as { message?: string } | null)?.message;
