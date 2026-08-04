@@ -1,7 +1,7 @@
 # School Management System - Agile Methodology
 ## Scrum Framework with Application > Epic > Feature > User Story > Task Hierarchy
 
-**Last updated:** 28 July 2026
+**Last updated:** 4 August 2026
 
 > **Document reset.** A previous version of this file recorded four completed sprints
 > in March 2026 covering teacher registration, student CRUD, assessment scoring,
@@ -10,8 +10,31 @@
 > built here. That content was inherited from an unrelated project.
 >
 > This version records only work that can be verified against the code and the commit
-> history. Delivered items are marked **Done**; everything else is marked **Not
-> started** and is a candidate, not a commitment.
+> history. Delivered items are marked **Done**; everything else is marked **Proposed**
+> and is a candidate, not a commitment.
+
+> **Translation note, 4 August 2026.** The ASP.NET hierarchy described above was
+> supplied again and has now been **translated** into this stack rather than discarded,
+> so the planning value survives without importing a foreign design. Every one of its
+> seven epics is accounted for in
+> [Appendix A: Disposition of the ASP.NET hierarchy](#appendix-a-disposition-of-the-aspnet-hierarchy)
+> - each item is marked as already delivered, translated into a proposed epic below,
+> or excluded with a reason.
+>
+> Three constraints shaped the translation:
+>
+> - **Identifiers already in use were not reused.** `US-01`-`US-20` and
+>   `TASK-01`-`TASK-65` denote delivered work, and several story IDs appear in the test
+>   suite's display names (`visibility (US-15)`, `overdue (US-18)`). New work therefore
+>   starts at `EPIC-09`, `FEAT-14`, `US-21`, `TASK-66`.
+> - **.NET technology was replaced, not carried over.** EF Core migrations became
+>   Flyway, `Program.cs` registration became Spring Boot configuration, XML doc comments
+>   became springdoc annotations, and jQuery DataTables became Angular-native sorting
+>   and filtering.
+> - **One instruction was corrected rather than translated.** The source specified
+>   `400 Bad Request` for invalid credentials. This system returns `401` deliberately,
+>   with the same message for a wrong username as for a wrong password, so that the API
+>   cannot be used to discover which usernames exist. That decision stands.
 
 ---
 
@@ -43,7 +66,7 @@ estimated in **story points** on the Fibonacci scale and prioritised by value.
 | **API documentation** | None. The contract is documented in `docs/project/PRD.md` section 5 |
 | **Error logging** | Spring Boot default console logging |
 | **Object mapping** | None. Small nested DTOs are used for request bodies |
-| **Testing** | JUnit 5, Mockito, MockMvc, Spring Security Test - 29 tests against H2 |
+| **Testing** | JUnit 5, Mockito, MockMvc, Spring Security Test - 48 tests against H2 |
 
 **Roles:** `TEACHER` and `STUDENT`. A teacher sets work, may set it FOR a student,
 and may edit, delete or reopen any assignment. A student sees only their own work
@@ -145,13 +168,53 @@ APPLICATION: School Management System - Assignment Tracker
 │       ├── US-18: Set a due date and see overdue work          (PRD R4)
 │       └── US-19: Undo an accidental submission                (PRD R6)
 │
-└── EPIC-08: Automated Testing                                      [Done]
-    └── FEAT-13: Regression Suite
-        └── US-20: Run the verification suite automatically   (PRD NFR-9)
+├── EPIC-08: Automated Testing                                      [Done]
+│   └── FEAT-13: Regression Suite
+│       └── US-20: Run the verification suite automatically   (PRD NFR-9)
+│
+├── EPIC-09: Account Self-Service                                   [Done]
+│   ├── FEAT-14: Password Management
+│   │   ├── US-21: Change my own password                        (PRD R7)
+│   │   └── US-22: Be forced to replace a temporary password      (PRD L9)
+│   └── FEAT-15: Account Administration
+│       └── US-23: Create an account for a new student            (PRD R7)
+│
+├── EPIC-10: Finding Work in a Long List                            [Done]
+│   └── FEAT-16: Sorting and Filtering
+│       ├── US-24: Sort the assignment table by any column
+│       ├── US-25: Filter assignments by text
+│       └── US-26: Filter assignments by status
+│
+├── EPIC-11: API Documentation                                      [Done]
+│   └── FEAT-17: OpenAPI Description
+│       └── US-27: Browse and try the endpoints in a UI
+│
+├── EPIC-12: Student Overview                                       [Done]
+│   └── FEAT-18: Personal Summary
+│       └── US-28: See what is outstanding, submitted and overdue
+│
+└── EPIC-13: Continuous Verification                         [Part done]
+    └── FEAT-19: Pipeline and Migration Coverage
+        ├── US-29: Run the suite on every push          [Done]  (PRD R9)
+        └── US-30: Exercise the SQL Server migrations   [Not started] (PRD R10)
 ```
 
-All eight epics are delivered. Sprint 2 below records how, and what changed in the
-design along the way.
+**EPIC-01 to EPIC-08 are delivered** - 20 stories, 92 points. Sprint 2 below records
+how, and what changed in the design along the way.
+
+**EPIC-09 to EPIC-13 were delivered in Sprint 3, on 4 August 2026**, except US-30.
+They are the translation of the ASP.NET hierarchy into work that makes sense for an
+assignment tracker; Appendix A records what each was translated from and what was
+excluded. Sprint 3 below records what was built, and the two corrections the work
+forced.
+
+> **US-25, US-26 and US-28 were already built when Sprint 3 began.** The search box,
+> the status filter and the summary cards existed in `app.component.ts` and its
+> template, having been added alongside the styling work, but no story had been written
+> for them - so this document listed them as proposed while the code had them running.
+> They are marked Done and pointed out here rather than quietly reclassified, because
+> "the backlog said proposed and the code said shipped" is the exact failure this
+> document was reset to stop.
 
 ---
 
@@ -207,7 +270,7 @@ A User Story is **Done** only when all of the following hold:
 - Documentation affected by the change was updated in the same commit.
 
 > **The known gap is closed.** These checks used to be a script somebody had to
-> remember to run; US-20 turned them into 29 tests that run as part of the build.
+> remember to run; US-20 turned them into a suite that is now 48 tests that run as part of the build.
 > Two limits remain honest: the suite runs against H2, so the SQL Server migrations
 > are not themselves covered, and browser behaviour still needs a real browser -
 > which is exactly where the CSRF defect was found.
@@ -252,6 +315,33 @@ Delivered work first, then candidates. **Total delivered: 47 points.**
 | US-19 | Undo an accidental submission | Low | 3 | Done |
 | US-20 | Run the verification suite automatically | High | 8 | Done |
 | **Delivered** | | | **92** | **all 20 stories** |
+
+### Sprint 3 - delivered 4 August 2026
+
+| ID | User Story | Epic | Priority | Points | Status |
+|----|-----------|------|----------|:------:|:------:|
+| US-29 | Run the suite on every push | EPIC-13 | High | 3 | Done |
+| US-21 | Change my own password | EPIC-09 | High | 5 | Done |
+| US-22 | Be forced to replace a temporary password | EPIC-09 | High | 3 | Done |
+| US-23 | Create an account for a new student | EPIC-09 | Medium | 5 | Done |
+| US-25 | Filter assignments by text | EPIC-10 | Medium | 2 | Done |
+| US-24 | Sort the assignment table by any column | EPIC-10 | Medium | 3 | Done |
+| US-26 | Filter assignments by status | EPIC-10 | Low | 2 | Done |
+| US-28 | See what is outstanding, submitted and overdue | EPIC-12 | Low | 3 | Done |
+| US-27 | Browse and try the endpoints in a UI | EPIC-11 | Low | 3 | Done |
+| **Delivered** | | | | **29** | **9 stories** |
+
+### Still open
+
+| ID | User Story | Epic | Priority | Est. | Status |
+|----|-----------|------|----------|:----:|:------:|
+| US-30 | Exercise the SQL Server migrations | EPIC-13 | Medium | 8 | Not started |
+
+> **Why US-30 was left.** It needs Testcontainers and a working Docker daemon, which
+> makes it the one story here that cannot be verified on this machine today. Claiming
+> it on the strength of code that has never run would be exactly the kind of unverified
+> assertion this document exists to prevent. The gap it addresses is real and is still
+> recorded as PRD R10 and L10.
 
 ---
 
@@ -349,10 +439,10 @@ delete an account that still owns work rather than silently destroying it.
 teacher-only reopening. Overdue is computed on every read rather than stored: a
 stored flag is wrong the moment midnight passes.
 
-*Testing (EPIC-08).* 29 automated tests - 17 unit tests of the business rules with
-mocks, and 12 full-stack tests through MockMvc with real security. The nine checks
-that used to be a PowerShell script somebody had to remember are now part of
-`mvnw test`.
+*Testing (EPIC-08).* 36 automated tests - 17 unit tests of the business rules with
+mocks, 12 full-stack tests through MockMvc with real security, and 7 covering
+concurrency and database integrity. The nine checks that used to be a PowerShell
+script somebody had to remember are now part of `mvnw test`.
 
 **Three design corrections made during the Sprint,** each found by testing rather
 than by review:
@@ -633,7 +723,7 @@ than by review:
 - [x] Each business operation runs in one transaction.
 - [x] The entity carries a `@Version` column for optimistic locking.
 - [x] A losing writer receives `409`, not a silent overwrite.
-- [x] Of 15 simultaneous submissions, exactly one returns `200`.
+- [x] Of 12 simultaneous submissions, exactly one returns `200`.
 - [x] Verified against both the pre-fix and post-fix builds with the same probe.
 
 **Tasks**
@@ -863,7 +953,8 @@ than by review:
 
 **Acceptance Criteria**
 - [x] `mvnw test` runs the suite; `mvnw package` fails if any test fails.
-- [x] 29 tests: 17 unit tests of business rules, 12 full-stack tests through MockMvc.
+- [x] 36 tests: 17 unit tests of business rules, 12 full-stack tests through MockMvc,
+      and 7 covering concurrency and database integrity.
 - [x] Coverage includes every status code in the error contract, the role rules, the
       ownership scoping, the full lifecycle, and the overdue derivation.
 - [x] A regression test asserts the password hash never appears in a response.
@@ -897,17 +988,390 @@ wipes the database. EPIC-08 ran alongside rather than last, and earned its place
 the test suite caught the seed-ordering fault that only appeared once Flyway was
 disabled in the test profile.
 
-## Candidate Work
+## Sprint 3 - Translating the Inherited Hierarchy
 
-Not started. These are options, not commitments.
+**Dates:** 4 August 2026
+**Sprint Goal:** *Turn the translated ASP.NET hierarchy into working software, without
+importing the design decisions that made it a different application.*
+**Delivered:** 29 story points, 9 stories. US-30 not started.
 
-| Item | Why |
+**Sprint Review.**
+
+*Account self-service (EPIC-09).* The system had one honest, serious limitation: every
+account used a shared password published in the README, and no one could change it.
+A user may now replace their own password, and a teacher may issue an account whose
+temporary password must be replaced before it can be used for anything at all.
+
+*Presentation (EPIC-10, EPIC-12).* Sorting was added; the text filter, status filter
+and summary counts were found already built and were given the stories they had been
+missing. Sorting composes with the filters rather than replacing them - filter decides
+which rows, sort decides their order.
+
+*Documentation (EPIC-11).* springdoc-openapi serves an interactive description of all
+ten paths at `/swagger-ui.html`, generated from the controllers rather than maintained
+by hand.
+
+*Verification (EPIC-13).* A GitHub Actions workflow runs the backend suite and the
+frontend type-check and build on every push. The suite grew from 36 tests to 48.
+
+**Two corrections the work forced.**
+
+1. *A forced password change would have locked out the demo.* The story as written
+   marked seeded accounts pending, which on the next start would have blocked
+   `teacher` and `student` - and every existing test - from doing anything, in order
+   to protect credentials already printed in the README. Migration V3 backfills
+   existing rows to "not pending" and the flag is set only on accounts a teacher
+   creates, where the risk is real: somebody else chose that password and knows it.
+2. *The unit tests were stubbing a method the service no longer called.* Making the
+   pending-account rule real meant `AssignmentService` moved from
+   `AppUserService.currentUser()` to `currentActiveUser()`. Fourteen mock stubs in
+   `AssignmentServiceTest` still named the old method, so Mockito returned null and
+   eleven tests failed with no obvious connection to the change. Worth noting because
+   the failures pointed at assignment logic that was entirely correct.
+
+**Sprint Retrospective**
+
+| | Notes |
+|-|-------|
+| Start | Checking the code before writing the story. Three stories in this sprint were already implemented, and the backlog did not know. |
+| Stop | Assuming a security rule is free of consequences for the demo path. The forced-change flag was correct in principle and would have made the application unusable on first start. |
+| Continue | Adding tests in the same change as the rule. The twelve new tests in `AccountSelfServiceTest` are what make "a pending account can do nothing else" a guarantee rather than a claim. |
+| Continue | Running migrations against real SQL Server before calling them done. V3 was written with `GO` batches from the start because V2 had already taught that lesson. |
+
+---
+
+## Epic Detail: EPIC-09 to EPIC-13
+
+Each story states what it was translated from, so the origin stays traceable.
+
+---
+
+### EPIC-09: Account Self-Service
+
+> **Goal**: Let an account's password belong to the person using it, rather than to
+> whoever wrote the seed data.
+>
+> **Translated from**: FEAT-01 Teacher Registration, FEAT-12 Student Account Setup.
+> Open self-registration was **not** carried over: in a school, accounts are issued,
+> not claimed, and anyone who could register themselves as a `TEACHER` would be able to
+> set work for any student. Creation therefore stays an administrative act (US-23) and
+> only the password becomes self-service.
+
+#### FEAT-14: Password Management
+
+##### US-21: Change My Own Password
+> **Points**: 5 | **Status**: Done | **PRD**: R7
+
+**As a** signed-in user,
+**I want** to change my own password,
+**so that** my account is not permanently held by a value someone else chose.
+
+**Acceptance Criteria**
+- [x] `PUT /api/auth/password` accepts the current password and a new one.
+- [x] The current password must be supplied and must verify, even though the caller is
+      already authenticated - a hijacked session must not be enough to seize the account.
+- [x] A wrong current password returns `401`; a new password failing policy returns `400`.
+- [x] The new password is stored as a BCrypt hash by the application's own encoder.
+- [x] The hash never appears in any response, and the existing regression test that
+      asserts this continues to pass.
+- [x] `seedAccounts` must not silently reset a changed password on the next restart.
+
+**Tasks**
+- TASK-66: Add `ChangePasswordRequest` DTO with `@NotBlank` and `@Size` constraints
+- TASK-67: Implement `changePassword` in `AppUserService`, re-verifying the current password
+- TASK-68: Implement `PUT /api/auth/password` in `AuthController`
+- TASK-69: Build the Angular change-password form, routed behind the signed-in guard
+
+> **Watch the seed runner.** `TrackerApplication.seedAccounts` currently rewrites the
+> password whenever the stored hash does not verify against `password123`. Once a user
+> can choose their own, that logic would undo their change at the next restart. The
+> guard has to become "only if the account is still using the seeded value", or the
+> reset has to be limited to a development profile.
+
+##### US-22: Be Forced to Replace a Temporary Password
+> **Points**: 3 | **Status**: Done | **PRD**: L9
+
+**As a** school,
+**I want** a password somebody else chose to be unusable beyond first sign-in,
+**so that** an account is only ever operated by the person it belongs to.
+
+**Acceptance Criteria**
+- [x] `AppUser` carries a `must_change_password` flag, set true on any account a
+      teacher creates.
+- [x] While the flag is set, every endpoint except sign-in, sign-out, `/api/auth/me`
+      and the password change returns `403` with a message naming the reason.
+- [x] Changing the password clears the flag, and the account works immediately after.
+- [x] The flag is a real column with a `NOT NULL` constraint and a default, added by
+      Flyway migration `V3`.
+
+**Tasks**
+- TASK-70: Add the column in migration `V3__must_change_password.sql` as its own `GO` batch
+- TASK-71: Enforce the restriction in the service layer, so it holds for any caller
+- TASK-72: Redirect the Angular app to the change-password form while the flag is set
+
+> **The story originally said "seeded password", and building it showed why that was
+> wrong.** Marking the two seeded development accounts pending would have locked
+> `teacher`, `student` and the whole test suite out of the system on the very next
+> start - to protect credentials that are printed in the README and are a known,
+> accepted limitation (L9). V3 therefore backfills existing rows to *not* pending, and
+> the flag is set only where the risk is real: an account whose password was chosen by
+> somebody else, who still knows it. L9 remains open and is not what this story closed.
+
+> **Note the exemption for `/api/auth/me`.** A pending account has to be able to ask
+> who it is, or the frontend cannot discover that it is pending and would have nothing
+> to show but an error. The rule lives in `AppUserService.currentActiveUser()`, which
+> the assignment operations call; `currentUser()` stays unguarded precisely so identity
+> and the password change itself remain reachable.
+
+##### FEAT-15: Account Administration
+
+##### US-23: Create an Account for a New Student
+> **Points**: 5 | **Status**: Done | **PRD**: R7
+
+**As a** teacher,
+**I want** to create a student account,
+**so that** work can be set for someone who has not been onboarded yet.
+
+**Acceptance Criteria**
+- [x] `POST /api/users` is `TEACHER`-only, enforced in the service.
+- [x] A duplicate username returns `409`, and the database's `uq_app_user_username`
+      constraint is what makes that true rather than a check-then-insert race.
+- [x] The initial password is issued with `must_change_password` set.
+- [x] A teacher cannot create another `TEACHER` - role escalation stays an explicit,
+      out-of-band act.
+
+**Tasks**
+- TASK-73: Add `CreateUserRequest` DTO and `AppUserService.createStudent`
+- TASK-74: Implement `POST /api/users` with the role guard
+- TASK-75: Map the unique-constraint violation to `409` without leaking driver text
+- TASK-76: Build the Angular create-account form, visible only to teachers
+
+---
+
+### EPIC-10: Finding Work in a Long List
+
+> **Goal**: Keep the list usable once it holds more rows than fit on a screen.
+>
+> **Translated from**: EPIC-04 DataTables Integration. The capability was kept and the
+> library was not. jQuery DataTables would add a second DOM-manipulation model beside
+> Angular's, and the source's own task - "sort Performance by a hidden percentage
+> column" - exists only to work around the plugin sorting rendered text. Angular sorts
+> the typed array directly, so the workaround is unnecessary here.
+
+#### FEAT-16: Sorting and Filtering
+
+##### US-24: Sort the Assignment Table by Any Column
+> **Points**: 3 | **Status**: Done
+
+**As a** user,
+**I want** to sort the table by any column,
+**so that** I can bring the most urgent work to the top.
+
+**Acceptance Criteria**
+- [x] Title, owner, due date and status all sort, ascending and descending.
+- [x] Sorting is client-side over the already-loaded array; it issues no new request.
+- [x] Assignments with no due date sort predictably rather than landing arbitrarily.
+- [x] `OVERDUE` sorts as a distinct value even though it is derived, not stored.
+- [x] The active sort column and direction are visible, not merely applied.
+
+**Tasks**
+- TASK-77: Add sort state and a typed comparator per column to `AppComponent`
+- TASK-78: Make headers clickable, with an accessible `aria-sort` attribute
+- TASK-79: Decide and document the null-due-date ordering rule
+
+##### US-25: Filter Assignments by Text
+> **Points**: 2 | **Status**: Done
+
+**As a** user,
+**I want** to filter the list by typing,
+**so that** I can find one assignment without reading the whole table.
+
+**Acceptance Criteria**
+- [x] One input filters on title and owner, case-insensitively, as the user types.
+- [x] Filtering is client-side and does not re-query the API.
+- [x] A filter matching nothing shows an explicit "No assignments match" message,
+      distinct from the existing "No assignments yet."
+- [x] Clearing the input restores the full list.
+
+**Tasks**
+- TASK-80: Add the filter input and a derived filtered list
+- TASK-81: Distinguish "empty because filtered" from "empty because none exist"
+
+##### US-26: Filter Assignments by Status
+> **Points**: 2 | **Status**: Done
+
+**As a** teacher,
+**I want** to show only outstanding or only overdue work,
+**so that** I can see what still needs chasing.
+
+**Acceptance Criteria**
+- [x] Filters for All, `IN_PROGRESS`, `SUBMITTED` and `OVERDUE`.
+- [x] `OVERDUE` filters on the derived flag, not on the stored status.
+- [x] The status filter and the text filter compose rather than overriding each other.
+
+**Tasks**
+- TASK-82: Add the status filter control and fold it into the derived list
+- TASK-83: Verify the two filters compose correctly in both orders
+
+---
+
+### EPIC-11: API Documentation
+
+> **Goal**: Let the API be explored without reading the controllers.
+>
+> **Translated from**: EPIC-05 API and Documentation. Swagger registration in
+> `Program.cs` becomes the `springdoc-openapi` starter; XML doc comments become
+> annotations. The current position - "None. The contract is documented in PRD.md
+> section 5" - is a deliberate choice, and this epic revisits it rather than
+> contradicting it.
+
+#### FEAT-17: OpenAPI Description
+
+##### US-27: Browse and Try the Endpoints in a UI
+> **Points**: 3 | **Status**: Done
+
+**As a** developer or tester,
+**I want** an interactive description of the API,
+**so that** I can see the contract and exercise it without writing a client.
+
+**Acceptance Criteria**
+- [x] All ten endpoints appear with their request and response shapes.
+- [x] The documented error bodies match the real `ApiError` shape.
+- [x] The UI is reachable only in development; it is not exposed by the production profile.
+- [x] Its routes do not weaken the security rules - it must not become an unauthenticated
+      hole in a filter chain where every other path requires a session.
+- [x] CSRF still applies to any write issued from the UI, or the page states why it cannot.
+
+**Tasks**
+- TASK-84: Add the `springdoc-openapi-starter-webmvc-ui` dependency
+- TASK-85: Annotate the controllers and the `ApiError` record
+- TASK-86: Restrict the UI to a development profile and re-run the security tests
+
+> **The security tests are the acceptance gate here.** Adding a documentation UI means
+> adding permitted paths to `SecurityConfig`, which is exactly the kind of change that
+> can quietly widen access. `AssignmentApiTest` already asserts that an anonymous
+> request receives `401`; that must still pass.
+
+---
+
+### EPIC-12: Student Overview
+
+> **Goal**: Answer "how am I doing?" without counting rows by eye.
+>
+> **Translated from**: FEAT-14 Student Dashboard. The source's dashboard reported
+> total, average and percentage **scores**. This system holds no marks, and the scope
+> guard excludes them, so the dashboard was re-aimed at the data that does exist:
+> counts of outstanding, submitted and overdue work.
+
+#### FEAT-18: Personal Summary
+
+##### US-28: See What Is Outstanding, Submitted and Overdue
+> **Points**: 3 | **Status**: Done
+
+**As a** student,
+**I want** a summary of my work at the top of the page,
+**so that** I can see what is left without scanning the table.
+
+**Acceptance Criteria**
+- [x] Shows counts of outstanding, submitted and overdue assignments.
+- [x] Counts are derived from the list already fetched - no second endpoint, no second
+      source of truth that could disagree with the table beneath it.
+- [x] A teacher sees the same summary scoped to everything they can see.
+- [x] Overdue is counted from the same derived flag the table uses.
+
+**Tasks**
+- TASK-87: Derive the counts in `AppComponent` from the existing array
+- TASK-88: Render the summary above the table
+- TASK-89: Verify the counts against the table for both roles
+
+> **Deliberately not a new endpoint.** A `GET /api/assignments/summary` would compute
+> the same numbers a second time, and any divergence between it and the list would be a
+> defect that only appears with certain data. Deriving from the array already on the
+> page cannot drift.
+
+---
+
+### EPIC-13: Continuous Verification
+
+> **Goal**: Close the two gaps the current suite honestly admits to.
+>
+> **Translated from**: nothing in the ASP.NET hierarchy - it had no CI story. These are
+> PRD R9 and R10, promoted here because the source's Definition of Done assumed a
+> pipeline that does not exist.
+
+#### FEAT-19: Pipeline and Migration Coverage
+
+##### US-29: Run the Suite on Every Push
+> **Points**: 3 | **Status**: Done | **PRD**: R9
+
+**Acceptance Criteria**
+- [x] A GitHub Actions workflow runs `mvnw test` on push and pull request.
+- [x] The workflow provisions JDK 25 itself rather than assuming a machine.
+- [x] A failing test fails the check visibly on the pull request.
+- [x] `npm run build` and `tsc --noEmit` run for the frontend.
+
+**Tasks**
+- TASK-90: Add `.github/workflows/build.yml` pinning JDK 25
+- TASK-91: Cache the Maven and npm dependencies
+- TASK-92: Verify the workflow fails when a test is deliberately broken
+
+##### US-30: Exercise the SQL Server Migrations
+> **Estimate**: 8 | **Status**: Proposed | **PRD**: R10
+
+**Acceptance Criteria**
+- [ ] The migrations run against real SQL Server, not H2, in at least one test.
+- [ ] The `GO`-batch structure of `V2` is exercised as written.
+- [ ] The constraints are proved by attempting bad writes and expecting refusal -
+      orphan `owner_id`, duplicate username, invalid status, over-long title.
+- [ ] The suite still runs with no SQL Server present, skipping these rather than failing.
+
+**Tasks**
+- TASK-93: Add Testcontainers with the SQL Server image
+- TASK-94: Add a migration test profile with Flyway enabled and `ddl-auto=validate`
+- TASK-95: Port the `sqlcmd` constraint probes into assertions that expect rejection
+
+> **This is the larger of the two and the more valuable.** `ddl-auto=validate` currently
+> catches drift between migrations and entities, but nothing at all exercises the
+> migration SQL itself - a `GO`-batch mistake would reach a real database undetected.
+
+---
+
+## Appendix A: Disposition of the ASP.NET Hierarchy
+
+Every epic from the source map, and where it went. Nothing was dropped silently.
+
+| Source | Disposition | Where |
+|---|---|---|
+| **EPIC-01** Security - Teacher Login | **Already delivered.** Session cookie plus CSRF, BCrypt, `401` on failure. | US-15 |
+| **EPIC-01** Security - Input Validation | **Already delivered.** Jakarta Bean Validation at the edge plus a service guard plus database constraints - three layers, not one. | US-08, US-09 |
+| **EPIC-01** Security - Teacher Registration | **Translated, narrowed.** Self-registration excluded; password self-service and teacher-issued accounts kept. | EPIC-09 |
+| **EPIC-02** Student Management (CRUD on a `Student` entity) | **Excluded.** A student here is an `AppUser` with role `STUDENT`, not a separate record with grade, student number and contact details. Account creation covers the real need. | US-23 |
+| **EPIC-03** Assessment and Scoring | **Excluded.** The scope guard states there are no grades, marks or assessments. This is the single largest exclusion: US-11, US-12, US-13, US-21 and US-22 of the source all rest on stored marks. | - |
+| **EPIC-04** DataTables Integration | **Translated.** Capability kept, jQuery plugin replaced with Angular-native sorting and filtering. | EPIC-10 |
+| **EPIC-05** API and Documentation | **Translated.** Swagger in `Program.cs` becomes springdoc-openapi. | EPIC-11 |
+| **EPIC-06** Student Portal - login | **Already delivered.** A student signs in and sees only their own work, scoped by the query. | US-15 |
+| **EPIC-06** Student Portal - dashboard | **Translated, re-aimed.** Score summary becomes a work-status summary, since no marks exist. | EPIC-12 |
+| **EPIC-07** Admin Portal and audit logs | **Excluded.** There are two roles and no audit log; the scope guard names both. An `ADMIN` role remains listed as candidate work, but the tabbed dashboard and `AuditLogService` are not proposed. | - |
+
+### Specific instructions not carried over
+
+| Source instruction | Why not |
+|---|---|
+| `400 Bad Request` for invalid credentials (TASK-12, TASK-82) | This system returns `401`, with an identical message for a wrong username and a wrong password, so the API cannot be used to enumerate accounts. A deliberate decision, documented in PRD.md section 4. |
+| Store the session token in `localStorage` (TASK-04, TASK-11, TASK-81) | Authentication is a `HttpOnly` session cookie with a CSRF token. A token in `localStorage` is readable by any script on the page. |
+| EF Core migrations (TASK-33, TASK-48) | Entity Framework is .NET. Flyway fills the role here. |
+| Register services in `Program.cs` (TASK-17, TASK-68) | ASP.NET Core's entry point. The equivalent is `TrackerApplication` plus `@Configuration` classes. |
+| XML doc comments on controllers (TASK-69) | A .NET documentation convention; springdoc uses annotations. |
+| `DELETE /api/students/{id}` with cascade delete (TASK-40) | `assignment.owner_id` is deliberately `ON DELETE NO_ACTION`. Destroying somebody's work as a side effect of removing their account must be an explicit decision in the service, never a schema behaviour. |
+| Separate `Grade` entity seeded 7-12 (TASK-33) | There is no grouping above an assignment. Listed as candidate work, not proposed. |
+
+### Still candidate work, not proposed above
+
+| Item | Why it is not an epic yet |
 |------|-----|
-| Password change and account self-service | Passwords are currently fixed at seed time |
-| More than two roles | An admin who can manage accounts |
-| Frontend component tests | Karma and Jasmine are installed but no specs exist yet |
-| Migration tests | The suite runs on H2, so the SQL Server migrations themselves are unverified by it |
-| Classes, terms and subjects | The schema still has no grouping above an assignment |
+| An `ADMIN` role | Nothing currently needs oversight across accounts; two roles cover the delivered behaviour |
+| Frontend component tests | Karma and Jasmine are installed but no specs exist |
+| Classes, terms and subjects | The schema has no grouping above an assignment, and adding one is a data-model change, not a feature |
 
 ---
 
@@ -956,4 +1420,27 @@ Not started. These are options, not commitments.
 | EPIC-08 | Epic | Automated Testing | Application | 8 | Done |
 | FEAT-13 | Feature | Regression Suite | EPIC-08 | 8 | Done |
 | US-20 | User Story | Run the verification suite automatically | FEAT-13 | 8 | Done |
-| **Totals** | | **20 User Stories, 65 Tasks** | | **92 pts** | **92 delivered** |
+| **Subtotal** | | **8 Epics, 13 Features, 20 User Stories, 65 Tasks** | | **92 pts** | **92 delivered** |
+| EPIC-09 | Epic | Account Self-Service | Application | 13 | Done |
+| FEAT-14 | Feature | Password Management | EPIC-09 | 8 | Done |
+| US-21 | User Story | Change my own password | FEAT-14 | 5 | Done |
+| US-22 | User Story | Be forced to replace a seeded password | FEAT-14 | 3 | Done |
+| FEAT-15 | Feature | Account Administration | EPIC-09 | 5 | Done |
+| US-23 | User Story | Create an account for a new student | FEAT-15 | 5 | Done |
+| EPIC-10 | Epic | Finding Work in a Long List | Application | 7 | Done |
+| FEAT-16 | Feature | Sorting and Filtering | EPIC-10 | 7 | Done |
+| US-24 | User Story | Sort the assignment table by any column | FEAT-16 | 3 | Done |
+| US-25 | User Story | Filter assignments by text | FEAT-16 | 2 | Done |
+| US-26 | User Story | Filter assignments by status | FEAT-16 | 2 | Done |
+| EPIC-11 | Epic | API Documentation | Application | 3 | Done |
+| FEAT-17 | Feature | OpenAPI Description | EPIC-11 | 3 | Done |
+| US-27 | User Story | Browse and try the endpoints in a UI | FEAT-17 | 3 | Done |
+| EPIC-12 | Epic | Student Overview | Application | 3 | Done |
+| FEAT-18 | Feature | Personal Summary | EPIC-12 | 3 | Done |
+| US-28 | User Story | See what is outstanding, submitted and overdue | FEAT-18 | 3 | Done |
+| EPIC-13 | Epic | Continuous Verification | Application | 11 | Part done |
+| FEAT-19 | Feature | Pipeline and Migration Coverage | EPIC-13 | 11 | Part done |
+| US-29 | User Story | Run the suite on every push | FEAT-19 | 3 | Done |
+| US-30 | User Story | Exercise the SQL Server migrations | FEAT-19 | 8 | Not started |
+| **Subtotal** | | **5 Epics, 6 Features, 10 User Stories, 30 Tasks** | | **37 pts** | **29 delivered** |
+| **Totals** | | **13 Epics, 19 Features, 30 User Stories, 95 Tasks** | | **129 pts** | **121 delivered, US-30 outstanding** |

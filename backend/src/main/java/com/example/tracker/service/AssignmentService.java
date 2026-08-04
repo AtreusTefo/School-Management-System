@@ -59,7 +59,7 @@ public class AssignmentService {
      * merely decline to draw it.
      */
     public List<Assignment> getAllAssignments() {
-        AppUser me = users.currentUser();
+        AppUser me = users.currentActiveUser();
         return me.getRole() == Role.TEACHER
                 ? repository.findAllByOrderByIdAsc()
                 : repository.findByOwnerOrderByIdAsc(me);
@@ -86,7 +86,7 @@ public class AssignmentService {
      */
     @Transactional
     public Assignment createAssignment(String title, LocalDate dueDate, String assignTo) {
-        AppUser me = users.currentUser();
+        AppUser me = users.currentActiveUser();
         if (me.getRole() != Role.TEACHER) {
             throw new AccessDeniedException("Only a teacher can create an assignment.");
         }
@@ -130,7 +130,7 @@ public class AssignmentService {
      */
     @Transactional
     public Assignment unsubmitAssignment(Long id) {
-        AppUser me = users.currentUser();
+        AppUser me = users.currentActiveUser();
         Assignment assignment = requireVisible(id);
 
         if (me.getRole() != Role.TEACHER) {
@@ -208,7 +208,7 @@ public class AssignmentService {
         if (id == null) {
             throw new IllegalArgumentException("Assignment id must not be null.");
         }
-        AppUser me = users.currentUser();
+        AppUser me = users.currentActiveUser();
         Assignment assignment = repository.findById(id)
                 .orElseThrow(() -> new AssignmentNotFoundException(id));
 
@@ -231,7 +231,7 @@ public class AssignmentService {
      */
     private Assignment requireTeacher(Long id, String action) {
         Assignment assignment = requireVisible(id);
-        AppUser me = users.currentUser();
+        AppUser me = users.currentActiveUser();
 
         if (me.getRole() != Role.TEACHER) {
             throw new AccessDeniedException(

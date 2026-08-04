@@ -101,7 +101,7 @@ class AssignmentServiceTest {
         @Test
         @DisplayName("a teacher can create, and the status is forced to IN_PROGRESS")
         void teacherCanCreate() {
-            when(users.currentUser()).thenReturn(teacher);
+            when(users.currentActiveUser()).thenReturn(teacher);
             when(repository.save(any(Assignment.class))).thenAnswer(i -> i.getArgument(0));
 
             Assignment created = service.createAssignment("Science Lab", null, null);
@@ -113,7 +113,7 @@ class AssignmentServiceTest {
         @Test
         @DisplayName("a student cannot create")
         void studentCannotCreate() {
-            when(users.currentUser()).thenReturn(student);
+            when(users.currentActiveUser()).thenReturn(student);
 
             assertThatThrownBy(() -> service.createAssignment("Nope", null, null))
                     .isInstanceOf(AccessDeniedException.class);
@@ -123,7 +123,7 @@ class AssignmentServiceTest {
         @Test
         @DisplayName("the title is trimmed, and a blank one is refused")
         void titleIsTrimmedAndBlankRefused() {
-            when(users.currentUser()).thenReturn(teacher);
+            when(users.currentActiveUser()).thenReturn(teacher);
             when(repository.save(any(Assignment.class))).thenAnswer(i -> i.getArgument(0));
 
             assertThat(service.createAssignment("  Padded  ", null, null).getTitle())
@@ -136,7 +136,7 @@ class AssignmentServiceTest {
         @Test
         @DisplayName("work can be set FOR another account")
         void canAssignToSomeoneElse() {
-            when(users.currentUser()).thenReturn(teacher);
+            when(users.currentActiveUser()).thenReturn(teacher);
             when(users.findByUsernameOrReject("student")).thenReturn(student);
             when(repository.save(any(Assignment.class))).thenAnswer(i -> i.getArgument(0));
 
@@ -156,7 +156,7 @@ class AssignmentServiceTest {
         @DisplayName("an assignment cannot be submitted twice")
         void cannotSubmitTwice() {
             Assignment a = owned(5L, student, AssignmentStatus.SUBMITTED);
-            when(users.currentUser()).thenReturn(student);
+            when(users.currentActiveUser()).thenReturn(student);
             when(repository.findById(5L)).thenReturn(Optional.of(a));
 
             assertThatThrownBy(() -> service.submitAssignment(5L))
@@ -174,7 +174,7 @@ class AssignmentServiceTest {
         @Test
         @DisplayName("an unknown id is reported as not found")
         void unknownIdNotFound() {
-            when(users.currentUser()).thenReturn(teacher);
+            when(users.currentActiveUser()).thenReturn(teacher);
             when(repository.findById(999L)).thenReturn(Optional.empty());
 
             assertThatThrownBy(() -> service.submitAssignment(999L))
@@ -190,7 +190,7 @@ class AssignmentServiceTest {
         @DisplayName("a student asking for someone else's row is told NOT FOUND, not FORBIDDEN")
         void otherPeoplesRowsLookMissing() {
             Assignment someoneElses = owned(7L, teacher, AssignmentStatus.IN_PROGRESS);
-            when(users.currentUser()).thenReturn(student);
+            when(users.currentActiveUser()).thenReturn(student);
             when(repository.findById(7L)).thenReturn(Optional.of(someoneElses));
 
             // 404 rather than 403 is deliberate: answering "forbidden" would
@@ -203,13 +203,13 @@ class AssignmentServiceTest {
         @Test
         @DisplayName("a teacher sees every assignment; a student sees only their own")
         void listIsScopedByRole() {
-            when(users.currentUser()).thenReturn(student);
+            when(users.currentActiveUser()).thenReturn(student);
             service.getAllAssignments();
             verify(repository).findByOwnerOrderByIdAsc(student);
             verify(repository, never()).findAllByOrderByIdAsc();
 
             reset(repository);
-            when(users.currentUser()).thenReturn(teacher);
+            when(users.currentActiveUser()).thenReturn(teacher);
             service.getAllAssignments();
             verify(repository).findAllByOrderByIdAsc();
         }
@@ -223,7 +223,7 @@ class AssignmentServiceTest {
         @DisplayName("a student cannot edit even their OWN assignment")
         void studentCannotEditOwnAssignment() {
             Assignment mine = owned(9L, student, AssignmentStatus.IN_PROGRESS);
-            when(users.currentUser()).thenReturn(student);
+            when(users.currentActiveUser()).thenReturn(student);
             when(repository.findById(9L)).thenReturn(Optional.of(mine));
 
             // Editing follows the role, not the row: otherwise a student could
@@ -236,7 +236,7 @@ class AssignmentServiceTest {
         @DisplayName("a teacher can edit work owned by a student")
         void teacherCanEditStudentsAssignment() {
             Assignment theirs = owned(9L, student, AssignmentStatus.IN_PROGRESS);
-            when(users.currentUser()).thenReturn(teacher);
+            when(users.currentActiveUser()).thenReturn(teacher);
             when(repository.findById(9L)).thenReturn(Optional.of(theirs));
 
             Assignment updated = service.updateAssignment(9L, "Corrected title",
@@ -250,7 +250,7 @@ class AssignmentServiceTest {
         @DisplayName("a submitted assignment cannot be deleted")
         void cannotDeleteSubmitted() {
             Assignment submitted = owned(11L, student, AssignmentStatus.SUBMITTED);
-            when(users.currentUser()).thenReturn(teacher);
+            when(users.currentActiveUser()).thenReturn(teacher);
             when(repository.findById(11L)).thenReturn(Optional.of(submitted));
 
             assertThatThrownBy(() -> service.deleteAssignment(11L))
@@ -265,11 +265,11 @@ class AssignmentServiceTest {
             Assignment submitted = owned(12L, student, AssignmentStatus.SUBMITTED);
             when(repository.findById(12L)).thenReturn(Optional.of(submitted));
 
-            when(users.currentUser()).thenReturn(student);
+            when(users.currentActiveUser()).thenReturn(student);
             assertThatThrownBy(() -> service.unsubmitAssignment(12L))
                     .isInstanceOf(AccessDeniedException.class);
 
-            when(users.currentUser()).thenReturn(teacher);
+            when(users.currentActiveUser()).thenReturn(teacher);
             assertThat(service.unsubmitAssignment(12L).getStatus())
                     .isEqualTo(AssignmentStatus.IN_PROGRESS);
 

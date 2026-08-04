@@ -32,11 +32,20 @@ export interface Assignment {
   overdue: boolean;
 }
 
-/** Who is signed in. */
+/**
+ * Who is signed in.
+ *
+ * `mustChangePassword` is true while the account still holds a password someone
+ * else chose - a teacher created it and issued a temporary one. The UI uses it
+ * to show the change-password form instead of the list, but that is a courtesy:
+ * the server refuses every other operation for such an account regardless of
+ * what the browser chooses to draw.
+ */
 export interface CurrentUser {
   id: number;
   username: string;
   role: Role;
+  mustChangePassword: boolean;
 }
 
 /**
@@ -98,6 +107,24 @@ export class AssignmentService {
   /** Who am I? Returns 401 when nobody is signed in. */
   me(): Observable<CurrentUser> {
     return this.http.get<CurrentUser>(`${this.api}/api/auth/me`, this.opts);
+  }
+
+  /**
+   * Replace my own password (US-21).
+   *
+   * The current password goes with it. The server requires it even though the
+   * session already identifies us - a session proves somebody signed in, not
+   * that the person here now is the account's owner.
+   */
+  changePassword(currentPassword: string, newPassword: string): Observable<CurrentUser> {
+    return this.http.put<CurrentUser>(
+      `${this.api}/api/auth/password`, { currentPassword, newPassword }, this.opts);
+  }
+
+  /** Create a student account (US-23). Teacher only; the server enforces it. */
+  createStudent(username: string, temporaryPassword: string): Observable<CurrentUser> {
+    return this.http.post<CurrentUser>(
+      `${this.api}/api/users`, { username, temporaryPassword }, this.opts);
   }
 
   // ----- assignments ---------------------------------------------------------

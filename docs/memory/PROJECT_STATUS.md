@@ -65,18 +65,20 @@ code-first. Any document mentioning EF is inherited from that unrelated project.
 | Angular | **18.2** standalone, TypeScript 5.5 | `package.json` |
 | Node / npm | **24.18.0** / **11.16.0** | `node --version` |
 | Database | SQL Server **2019** (15.0.2000.5) | `SELECT @@VERSION` |
-| Schema | Flyway **V1 + V2 applied**, `ddl-auto=validate` | startup log |
-| Test suite | **36 tests, 0 failures**, BUILD SUCCESS | `mvnw test` |
+| Schema | Flyway **V1 + V2 + V3 applied**, `ddl-auto=validate` | startup log |
+| Test suite | **48 tests, 0 failures**, BUILD SUCCESS | `mvnw test` |
 | Backend | Running, :8080 | live HTTP |
 | Frontend | Running, :4200, watch mode | live HTTP |
 
-**Test breakdown (36 total).** The figure 29 appears in older documents and is wrong.
+**Test breakdown (48 total).** The figures 29 and 36 appear in older documents and are
+both out of date.
 
 | Class | Count | Covers |
 |---|---|---|
 | `AssignmentServiceTest` | 17 | Business rules, repository mocked. Nested: creating 4, submitting 3, visibility 2, lifecycle 4, overdue 4 |
 | `AssignmentApiTest` | 12 | MockMvc with real security; every status in the error contract |
 | `ConcurrencyAndIntegrityTest` | 7 | 12 simultaneous submissions yield exactly one 200; DB refuses orphans, duplicates, invalid enums, over-long titles |
+| `AccountSelfServiceTest` | 12 | EPIC-09. Password change 5, account creation 4, pending-account lockout 3 |
 
 Tests run against **H2**, so no SQL Server instance is needed for the suite.
 
@@ -484,6 +486,19 @@ delivered work or an agreed backlog.
 | **R8** | Classes, terms and subjects; there is no grouping above an assignment |
 | **R9** | Run the test suite in CI on every push |
 | **R10** | Tests that exercise the SQL Server migrations, not just the entities |
+
+**R7 and R9 were closed on 4 August 2026** by Sprint 3 (`EPIC-09` to `EPIC-13`,
+`US-21` to `US-29`, 29 points). R8 and R10 remain open. Appendix A of
+`docs/project/AGILE_HIERACHY.md` records what was excluded from the inherited ASP.NET
+hierarchy and why - notably all assessment and scoring work, and the admin portal with
+audit logs, both of which the scope guard forbids.
+
+**L9 is narrowed, not closed.** A user can now change their own password, and a
+teacher-created account must replace its temporary one before it can do anything. The
+two seeded development accounts still use `password123` and are still reset at every
+startup: migration V3 deliberately backfills them to "not pending", because marking
+them would lock the demo and the test suite out of the system to protect credentials
+the README publishes anyway.
 
 Accepted limitations, chosen rather than discovered:
 

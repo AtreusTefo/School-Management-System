@@ -70,6 +70,24 @@
             <artifactId>flyway-sqlserver</artifactId>
         </dependency>
 
+        <!-- OPENAPI (US-27): generates the API description from the controllers
+             and serves an interactive UI at /swagger-ui.html.
+
+             This is the Java equivalent of registering Swagger in an ASP.NET
+             Program.cs. It reads the existing @RestController and @Valid
+             annotations, so the description is derived from the code rather than
+             maintained by hand - a hand-written contract drifts the moment
+             somebody changes a signature and forgets.
+
+             IT IS OFF UNLESS SWITCHED ON. See app.openapi.enabled in
+             application.properties: exposing an unauthenticated description of
+             every endpoint is a development convenience, not something to ship. -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <version>2.8.6</version>
+        </dependency>
+
         <!-- H2: no longer the application database. Kept for TESTS only, so the
              suite runs fast and needs no SQL Server instance to be up. -->
         <dependency>

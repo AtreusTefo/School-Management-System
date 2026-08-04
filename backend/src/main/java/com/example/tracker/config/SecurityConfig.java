@@ -32,6 +32,29 @@ import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 public class SecurityConfig {
 
     /**
+     * Whether the OpenAPI description and its UI are reachable (US-27).
+     *
+     * Defaults to FALSE, so forgetting to set it fails closed. The development
+     * profile turns it on in application.properties; a deployment that does not
+     * set it gets no documentation endpoints at all.
+     *
+     * This flag exists because the paths below are permitAll. Every other route
+     * in this application requires a session, and a documentation UI is exactly
+     * the kind of convenience that quietly becomes an unauthenticated listing of
+     * the entire API surface in production.
+     */
+    @org.springframework.beans.factory.annotation.Value("${app.openapi.enabled:false}")
+    private boolean openApiEnabled;
+
+    /**
+     * The paths springdoc serves. Listed once here rather than inline, so the
+     * set that is opened up is visible in a single place.
+     */
+    private static final String[] OPENAPI_PATHS = {
+            "/v3/api-docs", "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html"
+    };
+
+    /**
      * BCrypt, not a plain hash.
      *
      * BCrypt is deliberately SLOW and salts every password individually. Slow
@@ -79,13 +102,21 @@ public class SecurityConfig {
 
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
 
-            .authorizeHttpRequests(auth -> auth
+            .authorizeHttpRequests(auth -> {
                     // Signing in and checking who you are must work before you are known.
-                    .requestMatchers("/api/auth/login", "/api/auth/csrf").permitAll()
+                    auth.requestMatchers("/api/auth/login", "/api/auth/csrf").permitAll();
                     // Preflight is a browser mechanic, not a protected action.
-                    .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
+                    auth.requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll();
+                    // The documentation UI, only when explicitly switched on. The
+                    // rule is added conditionally rather than being permitted and
+                    // then blocked elsewhere: a path that is never permitted cannot
+                    // be reached by a mistake in a later filter.
+                    if (openApiEnabled) {
+                        auth.requestMatchers(OPENAPI_PATHS).permitAll();
+                    }
                     // Everything else needs an account.
-                    .anyRequest().authenticated())
+                    auth.anyRequest().authenticated();
+            })
 
             /*
              * Answer an unauthenticated API call with 401 and nothing else.

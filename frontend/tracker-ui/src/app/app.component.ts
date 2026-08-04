@@ -8,6 +8,15 @@ import {
 import { environment } from '../environments/environment';
 
 /**
+ * The columns a user may sort by.
+ *
+ * A union rather than `string`, for the same reason AssignmentStatus is one: a
+ * typo becomes a compile error here instead of a comparator that silently never
+ * matches and leaves the table in its original order.
+ */
+export type SortColumn = 'title' | 'ownerUsername' | 'dueDate' | 'status';
+
+/**
  * THE COMPONENT
  * -------------
  * The controller of the UI. It asks the service for data, stores it, and gives
@@ -65,10 +74,46 @@ export class AppComponent implements OnInit {
   searchTerm = '';
   statusFilter: 'ALL' | 'IN_PROGRESS' | 'SUBMITTED' | 'OVERDUE' = 'ALL';
 
+  /**
+   * Which column the table is sorted by, and which way. null means "as the
+   * server sent it", which is id order - the order work was created in.
+   *
+   * Sorting is a view over data already in the browser, exactly like the filters
+   * above. It issues no request, so it cannot change WHICH rows this person is
+   * allowed to see - only the order they appear in.
+   */
+  sortColumn: SortColumn | null = null;
+  sortDirection: 'asc' | 'desc' = 'asc';
+
   // Create form
   newTitle = '';
   newDueDate = '';
   newAssignTo = '';
+
+  // ----- account self-service (EPIC-09) --------------------------------------
+
+  /** Change-password form. */
+  currentPassword = '';
+  newPassword = '';
+  confirmPassword = '';
+  changingPassword = false;
+  passwordNotice: string | null = null;
+
+  /**
+   * True when the user opened the change-password form themselves, as opposed to
+   * being sent there because their account is pending.
+   *
+   * Kept separate from user.mustChangePassword so the form can be dismissed in
+   * the voluntary case and cannot be in the forced one.
+   */
+  showPasswordForm = false;
+
+  /** Create-account form (teachers only). */
+  newUsername = '';
+  newUserPassword = '';
+  creatingUser = false;
+  showCreateUser = false;
+  createUserNotice: string | null = null;
 
   // Inline edit state: the id being edited, or null
   editingId: number | null = null;
@@ -99,7 +144,12 @@ export class AppComponent implements OnInit {
       next: (user) => {
         this.user = user;
         this.checkingSession = false;
-        this.loadAssignments();
+        // An account pending a password change may not read the list - the
+        // server answers 403. Asking anyway would put a red banner on top of a
+        // screen that is already explaining what to do.
+        if (!user.mustChangePassword) {
+          this.loadAssignments();
+        }
       },
       error: () => {
         this.user = null;
@@ -193,6 +243,103 @@ export class AppComponent implements OnInit {
     this.applyFilters();
   }
 
+  // ----- sorting --------------------------------------------------------------
+
+  /**
+   * Click a column heading: sort by it, or reverse if it is already the sort
+   * column. A third click clears the sort and returns the table to server order,
+   * so there is always a way back to "as sent" without reloading the page.
+   */
+  toggleSort(column: SortColumn): void {
+    if (this.sortColumn !== column) {
+      this.sortColumn = column;
+      this.sortDirection = 'asc';
+    } else if (this.sortDirection === 'asc') {
+      this.sortDirection = 'desc';
+    } else {
+      this.sortColumn = null;
+    }
+    this.applyFilters();
+  }
+
+  /**
+   * The value for aria-sort on a heading.
+   *
+   * Screen readers announce this; the arrow drawn in the template is invisible
+   * to them. Returning 'none' rather than null keeps the attribute present on
+   * every sortable column, which is what tells assistive technology that the
+   * column can be sorted at all.
+   */
+  ariaSortFor(column: SortColumn): 'ascending' | 'descending' | 'none' {
+    if (this.sortColumn !== column) {
+      return 'none';
+    }
+    return this.sortDirection === 'asc' ? 'ascending' : 'descending';
+  }
+
+  /**
+   * The arrow drawn beside a heading. Decorative only - aria-sort above is what
+   * conveys this to a screen reader, so the arrow is marked aria-hidden in the
+   * template and never has to be readable.
+   */
+  sortIndicator(column: SortColumn): string {
+    if (this.sortColumn !== column) {
+      return '';
+    }
+    return this.sortDirection === 'asc' ? '↑' : '↓';
+  }
+
+  /**
+   * Rank a row for status sorting: overdue first, then outstanding, then done.
+   *
+   * Status cannot be compared as text. Alphabetically IN_PROGRESS precedes
+   * SUBMITTED by accident rather than by meaning, and OVERDUE is not a stored
+   * status at all - it is derived, so it has no string to compare. Ranking by
+   * urgency is the order somebody actually wants when they click the column.
+   */
+  private statusRank(a: Assignment): number {
+    if (a.overdue) {
+      return 0;
+    }
+    return a.status === 'IN_PROGRESS' ? 1 : 2;
+  }
+
+  /**
+   * Compare two rows on the active sort column.
+   *
+   * NULL DUE DATES ALWAYS SORT LAST, in both directions. This is deliberate and
+   * is the one rule here worth stating: "no deadline" is a legitimate state, not
+   * a missing value, so treating it as either the earliest or the latest date
+   * would be a lie. Reversing the direction reverses the dated rows among
+   * themselves and leaves the undated ones at the bottom, where they can always
+   * be found.
+   */
+  private compare(a: Assignment, b: Assignment, column: SortColumn): number {
+    if (column === 'dueDate') {
+      if (!a.dueDate && !b.dueDate) {
+        return 0;
+      }
+      // Signal "sort last" independently of direction; handled by the caller.
+      if (!a.dueDate) {
+        return Number.POSITIVE_INFINITY;
+      }
+      if (!b.dueDate) {
+        return Number.NEGATIVE_INFINITY;
+      }
+      // ISO yyyy-MM-dd sorts correctly as plain text, so no Date object is
+      // needed - and none is wanted, given how it mangles timezones.
+      return a.dueDate.localeCompare(b.dueDate);
+    }
+
+    if (column === 'status') {
+      return this.statusRank(a) - this.statusRank(b);
+    }
+
+    // Title and owner. localeCompare gives a sensible ordering for accented
+    // characters, which a raw < comparison does not.
+    return a[column].localeCompare(b[column], undefined, { sensitivity: 'base' });
+  }
+
   /**
    * Narrow the loaded list down to what the user asked to see.
    *
@@ -205,7 +352,7 @@ export class AppComponent implements OnInit {
   private applyFilters(): void {
     const term = this.searchTerm.trim().toLowerCase();
 
-    this.visibleAssignments = this.assignments.filter(a => {
+    const filtered = this.assignments.filter(a => {
       const matchesStatus =
         this.statusFilter === 'ALL' ? true :
         this.statusFilter === 'OVERDUE' ? a.overdue :
@@ -217,6 +364,29 @@ export class AppComponent implements OnInit {
 
       return matchesStatus && matchesTerm;
     });
+
+    // Sorting composes with filtering rather than replacing it: filter first to
+    // decide WHICH rows, then order what survived. Doing it the other way round
+    // would sort rows that are about to be discarded.
+    const column = this.sortColumn;
+    if (column !== null) {
+      const factor = this.sortDirection === 'asc' ? 1 : -1;
+      filtered.sort((a, b) => {
+        const raw = this.compare(a, b, column);
+        // The infinities are the "always last" signal from compare(); they must
+        // not be flipped by the direction factor, or undated rows would jump to
+        // the top on a descending sort.
+        if (raw === Number.POSITIVE_INFINITY) {
+          return 1;
+        }
+        if (raw === Number.NEGATIVE_INFINITY) {
+          return -1;
+        }
+        return raw * factor;
+      });
+    }
+
+    this.visibleAssignments = filtered;
   }
 
   // ----- authentication ------------------------------------------------------
@@ -233,7 +403,12 @@ export class AppComponent implements OnInit {
         this.user = user;
         this.loginPassword = '';
         this.errorMessage = null;
-        this.loadAssignments();
+        this.passwordNotice = null;
+        // Same reason as checkSession: a pending account gets the change-password
+        // screen, not a list request that is going to be refused.
+        if (!user.mustChangePassword) {
+          this.loadAssignments();
+        }
       },
       // Handled separately rather than through showError: a 401 here means the
       // credentials were wrong, NOT that a session expired. Routing it through
@@ -260,8 +435,139 @@ export class AppComponent implements OnInit {
         this.visibleAssignments = [];
         this.clearFilters();
         this.errorMessage = null;
+        // Clear the account forms too. Leaving a half-typed password in a field
+        // for the next person to sign in at this browser would be careless.
+        this.showPasswordForm = false;
+        this.showCreateUser = false;
+        this.passwordNotice = null;
+        this.createUserNotice = null;
+        this.resetPasswordFields();
       },
       error: (err) => this.showError(err, 'Could not sign out')
+    });
+  }
+
+  // ----- account self-service (EPIC-09) --------------------------------------
+
+  /**
+   * True when the account cannot do anything until its password is replaced.
+   *
+   * The list is not even requested in this state - not to enforce anything, but
+   * because the server would refuse it with a 403, and a red banner on a screen
+   * that is already telling the user what to do would only be noise.
+   */
+  get mustChangePassword(): boolean {
+    return this.user?.mustChangePassword === true;
+  }
+
+  /** Whether to render the change-password form at all. */
+  get passwordFormVisible(): boolean {
+    return this.mustChangePassword || this.showPasswordForm;
+  }
+
+  openPasswordForm(): void {
+    this.showPasswordForm = true;
+    this.passwordNotice = null;
+    this.resetPasswordFields();
+  }
+
+  /** Only reachable when the change is voluntary; a forced one has no way out. */
+  closePasswordForm(): void {
+    this.showPasswordForm = false;
+    this.resetPasswordFields();
+  }
+
+  private resetPasswordFields(): void {
+    this.currentPassword = '';
+    this.newPassword = '';
+    this.confirmPassword = '';
+  }
+
+  /**
+   * Client-side check that the two new-password fields agree.
+   *
+   * The server never sees `confirmPassword` and has no opinion on it - it is a
+   * typing check, not a rule. Everything the server does enforce (length, that
+   * the current password matches, that the new one differs) is checked there and
+   * surfaces as a normal error.
+   */
+  get passwordsMatch(): boolean {
+    return this.newPassword === this.confirmPassword;
+  }
+
+  get canSubmitPassword(): boolean {
+    return !this.changingPassword
+        && this.currentPassword.length > 0
+        && this.newPassword.length >= 8
+        && this.passwordsMatch;
+  }
+
+  onChangePassword(): void {
+    if (!this.canSubmitPassword) {
+      return;
+    }
+    this.changingPassword = true;
+    this.service.changePassword(this.currentPassword, this.newPassword).subscribe({
+      next: (user) => {
+        this.changingPassword = false;
+        const wasForced = this.mustChangePassword;
+        // Take the server's word for the new state rather than assuming the flag
+        // cleared - it is the server that decides when the account is usable.
+        this.user = user;
+        this.showPasswordForm = false;
+        this.resetPasswordFields();
+        this.errorMessage = null;
+        this.passwordNotice = 'Your password has been changed.';
+        // Coming out of the forced state, the list has never been loaded.
+        if (wasForced) {
+          this.loadAssignments();
+        }
+      },
+      error: (err) => {
+        this.changingPassword = false;
+        this.showError(err, 'Could not change your password');
+      }
+    });
+  }
+
+  // ----- creating an account (teachers only) ---------------------------------
+
+  openCreateUser(): void {
+    this.showCreateUser = true;
+    this.createUserNotice = null;
+    this.newUsername = '';
+    this.newUserPassword = '';
+  }
+
+  closeCreateUser(): void {
+    this.showCreateUser = false;
+  }
+
+  get canCreateUser(): boolean {
+    return !this.creatingUser
+        && this.newUsername.trim().length > 0
+        && this.newUserPassword.length >= 8;
+  }
+
+  onCreateUser(): void {
+    if (!this.canCreateUser) {
+      return;
+    }
+    this.creatingUser = true;
+    const username = this.newUsername.trim();
+    this.service.createStudent(username, this.newUserPassword).subscribe({
+      next: () => {
+        this.creatingUser = false;
+        this.createUserNotice =
+          `Account "${username}" created. They must change this password when they first sign in.`;
+        this.newUsername = '';
+        this.newUserPassword = '';
+        this.errorMessage = null;
+      },
+      error: (err) => {
+        this.creatingUser = false;
+        this.showError(err, 'Could not create the account');
+      }
     });
   }
 

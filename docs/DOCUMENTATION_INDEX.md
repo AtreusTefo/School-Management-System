@@ -40,7 +40,7 @@ document permitted to sit loose in `docs/`; everything else belongs in a subfold
 | Document | Contents |
 |----------|----------|
 | [`PRD.md`](project/PRD.md) | Product requirements. Purpose, goals and non-goals, users, functional requirements (marked **Built**), the interface contract, non-functional requirements, proposed scope (marked **not agreed**), known limitations, acceptance criteria, and the assumptions behind all of it. |
-| [`AGILE_HIERACHY.md`](project/AGILE_HIERACHY.md) | Scrum framework and backlog. Application to Epic to Feature to User Story to Task hierarchy, Definition of Done, story-point scale, the delivered backlog, the sprint record, and planned epics with their dependencies. |
+| [`AGILE_HIERACHY.md`](project/AGILE_HIERACHY.md) | Scrum framework and backlog. Application to Epic to Feature to User Story to Task hierarchy, Definition of Done, story-point scale, the delivered backlog (EPIC-01 to EPIC-08, 20 stories, 92 points) and the sprint record. Appendix A traces every epic of an inherited ASP.NET hierarchy to its disposition here - delivered, translated into a proposed epic (EPIC-09 to EPIC-13), or excluded with a reason. |
 
 ### memory/
 

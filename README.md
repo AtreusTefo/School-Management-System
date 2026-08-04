@@ -10,8 +10,33 @@ and an **Angular frontend**. Beginner-friendly, heavily commented.
 - **Submit** an assignment, flipping its status to `SUBMITTED`
 - **Edit, delete and reopen** (teachers only; submitted work must be reopened first)
 - **Due dates**, with `OVERDUE` shown for work past its deadline
+- **Sort, search and filter** the list, with a summary of what is outstanding
+- **Change your own password**, and **create student accounts** (teachers only) that
+  must have their temporary password replaced at first sign-in
 
 Development accounts: `teacher` and `student`, both with password `password123`.
+
+### A five-minute walkthrough
+
+Start the backend, then the frontend, and open http://localhost:4200.
+
+1. Sign in as **`teacher`**. Four assignments; the summary counts outstanding,
+   submitted and overdue. "Science Lab Report" is already overdue on purpose.
+2. Click the **Title**, **Due** or **Status** headings to sort. Click again to
+   reverse, a third time to return to the original order. Assignments with no due
+   date always sort last — "no deadline" is a real state, not a missing value.
+3. Type in the search box and use the **All / Open / Submitted / Overdue** buttons.
+   They compose, and the empty state distinguishes "nothing matches your filter"
+   from "nothing here yet".
+4. Click **Add a student account**, create one with a temporary password, and note
+   the message: they must change it at first sign-in.
+5. **Sign out**, then sign in as the account you just made. The application is
+   replaced by *Choose your password* — there is no Cancel, and no other screen is
+   reachable. The server returns `403` for anything else, so this holds even if the
+   browser is bypassed.
+6. Set a new password. The list appears immediately.
+7. Visit http://localhost:8080/swagger-ui.html to see the same API described and
+   callable.
 
 ## Requirements
 - **Java 25** (the current LTS) — Maven is not needed, the project ships `mvnw`
@@ -118,12 +143,19 @@ requires the `X-XSRF-TOKEN` header.
 | POST | `/api/auth/login` | Sign in (`{"username":"...","password":"..."}`) |
 | GET | `/api/auth/me` | Who am I? |
 | POST | `/api/auth/logout` | End the session |
+| PUT | `/api/auth/password` | Change your own password |
+| POST | `/api/users` | Create a student account — teachers only |
 | GET | `/api/assignments` | List (scoped by role) |
 | POST | `/api/assignments` | Create — teachers only |
 | PUT | `/api/assignments/{id}` | Edit title / due date — teachers only |
 | DELETE | `/api/assignments/{id}` | Delete — teachers only, not while submitted |
 | PUT | `/api/assignments/{id}/submit` | Mark as SUBMITTED |
 | PUT | `/api/assignments/{id}/unsubmit` | Reopen — teachers only |
+
+Browse and try all of these at **http://localhost:8080/swagger-ui.html** while the
+backend is running. The description is generated from the controllers, so it cannot
+drift from the code. It is off unless `app.openapi.enabled` is true — development
+turns it on; a deployment should not.
 
 ### Error responses
 Failures return the status code that matches the problem, plus a readable message:
@@ -168,9 +200,10 @@ cd "School Management System/backend"
 ./mvnw test
 ```
 
-36 tests: 17 unit tests of the business rules, 12 full-stack tests through MockMvc
-with real security, and 7 covering concurrency and database integrity. They run
-against H2, so **no SQL Server instance is needed** to run the suite.
+48 tests: 17 unit tests of the business rules, 12 full-stack tests through MockMvc
+with real security, 7 covering concurrency and database integrity, and 12 covering
+account self-service. They run against H2, so **no SQL Server instance is needed**
+to run the suite.
 
 `./mvnw package` runs them too, and fails the build if any test fails.
 

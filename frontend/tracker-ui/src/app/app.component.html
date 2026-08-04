@@ -45,6 +45,19 @@
             <span class="badge badge--role">{{ user.role }}</span>
           </span>
         </div>
+        <!-- Available to everyone, unlike creating accounts: your own password is
+             always yours to change. Hidden while a forced change is already on
+             screen, where it would just re-open the form the user is looking at. -->
+        <button *ngIf="!mustChangePassword" type="button" class="btn btn--ghost"
+                (click)="openPasswordForm()">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2" stroke-linecap="round"
+               stroke-linejoin="round" aria-hidden="true">
+            <rect x="3" y="11" width="18" height="11" rx="2" />
+            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+          </svg>
+          Password
+        </button>
         <button type="button" class="btn btn--ghost" (click)="onLogout()">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
                stroke="currentColor" stroke-width="2" stroke-linecap="round"
@@ -138,6 +151,83 @@
 
     <!-- ===== SIGNED IN ===== -->
     <ng-container *ngIf="user">
+
+      <!-- A short confirmation after a successful account action. Separate from
+           the error banner: this is good news, and colouring it like a failure
+           would teach people to ignore the failure colour. -->
+      <div *ngIf="passwordNotice" class="notice" role="status">
+        <span>{{ passwordNotice }}</span>
+        <button type="button" class="btn btn--sm btn--ghost"
+                (click)="passwordNotice = null">Dismiss</button>
+      </div>
+
+      <!-- ===== CHANGE PASSWORD (US-21, US-22) =====
+           Shown in two situations that look similar and are not: the user chose
+           to change their password, or the account cannot be used until they do.
+           The forced case hides the whole application behind this card and offers
+           no Cancel, because there is nothing else the account may do. -->
+      <section *ngIf="passwordFormVisible" class="auth">
+        <div class="card auth__card">
+          <div class="card__body">
+
+            <div class="auth__head">
+              <h2>{{ mustChangePassword ? 'Choose your password' : 'Change your password' }}</h2>
+              <p *ngIf="mustChangePassword">
+                This account was created for you with a temporary password that
+                someone else chose. Pick your own before you continue.
+              </p>
+              <p *ngIf="!mustChangePassword">
+                You will stay signed in on this device.
+              </p>
+            </div>
+
+            <form (ngSubmit)="onChangePassword()" class="auth__fields">
+              <div class="field">
+                <label class="field__label" for="currentPassword">Current password</label>
+                <input id="currentPassword" class="input" type="password" name="currentPassword"
+                       [(ngModel)]="currentPassword" autocomplete="current-password" />
+              </div>
+
+              <div class="field">
+                <label class="field__label" for="newPassword">New password</label>
+                <input id="newPassword" class="input" type="password" name="newPassword"
+                       [(ngModel)]="newPassword" autocomplete="new-password" />
+                <!-- Stated up front rather than only after a rejected attempt. -->
+                <span class="field__hint">At least 8 characters.</span>
+              </div>
+
+              <div class="field">
+                <label class="field__label" for="confirmPassword">Confirm new password</label>
+                <input id="confirmPassword" class="input" type="password" name="confirmPassword"
+                       [(ngModel)]="confirmPassword" autocomplete="new-password" />
+                <!-- A typing check, not a rule. The server never sees this field. -->
+                <span class="field__hint field__hint--warn"
+                      *ngIf="confirmPassword.length > 0 && !passwordsMatch">
+                  The two passwords do not match.
+                </span>
+              </div>
+
+              <button type="submit" class="btn btn--primary btn--block"
+                      [disabled]="!canSubmitPassword">
+                <span *ngIf="changingPassword" class="spinner" aria-hidden="true"></span>
+                {{ changingPassword ? 'Saving...' : 'Change password' }}
+              </button>
+
+              <!-- No way out of the forced case: there is nothing else to go to. -->
+              <button *ngIf="!mustChangePassword" type="button"
+                      class="btn btn--ghost btn--block" (click)="closePasswordForm()">
+                Cancel
+              </button>
+            </form>
+
+          </div>
+        </div>
+      </section>
+
+      <!-- Everything below is the ordinary application, hidden entirely while an
+           account is pending. The server would refuse each of these calls anyway;
+           not drawing them keeps the user pointed at the one thing they can do. -->
+      <ng-container *ngIf="!mustChangePassword">
 
       <!-- Counts are derived from the list already loaded, not fetched
            separately, so they can never disagree with the rows beneath them. -->
@@ -237,7 +327,50 @@
         <p class="card__note" *ngIf="isTeacher">
           Due date and student are optional. Leave "Assign to" blank to keep the
           assignment under your own name.
+          <!-- Only a teacher sees this, and the server refuses a student's attempt
+               regardless - the same courtesy-not-a-boundary rule as everywhere. -->
+          <button type="button" class="link-btn" (click)="openCreateUser()"
+                  *ngIf="!showCreateUser">Add a student account</button>
         </p>
+
+        <!-- ===== CREATE A STUDENT ACCOUNT (US-23) ===== -->
+        <div *ngIf="isTeacher && showCreateUser" class="subform">
+          <div class="subform__head">
+            <h3>New student account</h3>
+            <button type="button" class="btn btn--sm btn--ghost"
+                    (click)="closeCreateUser()">Close</button>
+          </div>
+
+          <div *ngIf="createUserNotice" class="notice notice--inline" role="status">
+            {{ createUserNotice }}
+          </div>
+
+          <form (ngSubmit)="onCreateUser()" class="create-form">
+            <div class="field">
+              <label class="field__label" for="newUsername">Username</label>
+              <input id="newUsername" class="input" type="text" name="newUsername"
+                     [(ngModel)]="newUsername" placeholder="e.g. jsmith"
+                     autocomplete="off" />
+            </div>
+            <div class="field">
+              <label class="field__label" for="newUserPassword">Temporary password</label>
+              <input id="newUserPassword" class="input" type="text" name="newUserPassword"
+                     [(ngModel)]="newUserPassword" placeholder="At least 8 characters"
+                     autocomplete="off" />
+              <!-- Shown as plain text on purpose: the teacher has to read this out
+                   or write it down to hand over. Masking a value whose whole
+                   purpose is to be communicated helps nobody. It stops being a
+                   secret worth hiding the moment the student replaces it. -->
+              <span class="field__hint">
+                Visible so you can pass it on. They must change it at first sign-in.
+              </span>
+            </div>
+            <button type="submit" class="btn btn--primary" [disabled]="!canCreateUser">
+              <span *ngIf="creatingUser" class="spinner" aria-hidden="true"></span>
+              {{ creatingUser ? 'Creating...' : 'Create account' }}
+            </button>
+          </form>
+        </div>
 
         <!-- ===== LOADING ===== -->
         <div *ngIf="loadingList" class="loading">
@@ -284,12 +417,37 @@
         <!-- ===== ASSIGNMENT TABLE ===== -->
         <div class="table-wrap" *ngIf="!loadingList && visibleAssignments.length > 0">
           <table class="table">
+            <!-- Sortable headings are real <button> elements inside the <th>, not
+                 a click handler on the <th> itself. A button is focusable and
+                 operable from the keyboard for free; a clickable table cell is
+                 reachable only with a mouse. aria-sort carries the current state,
+                 since the arrow is decorative and invisible to a screen reader. -->
             <thead>
               <tr>
-                <th scope="col">Title</th>
-                <th scope="col">Owner</th>
-                <th scope="col">Due</th>
-                <th scope="col">Status</th>
+                <th scope="col" [attr.aria-sort]="ariaSortFor('title')">
+                  <button type="button" class="th-sort" (click)="toggleSort('title')">
+                    Title
+                    <span class="th-sort__arrow" aria-hidden="true">{{ sortIndicator('title') }}</span>
+                  </button>
+                </th>
+                <th scope="col" [attr.aria-sort]="ariaSortFor('ownerUsername')">
+                  <button type="button" class="th-sort" (click)="toggleSort('ownerUsername')">
+                    Owner
+                    <span class="th-sort__arrow" aria-hidden="true">{{ sortIndicator('ownerUsername') }}</span>
+                  </button>
+                </th>
+                <th scope="col" [attr.aria-sort]="ariaSortFor('dueDate')">
+                  <button type="button" class="th-sort" (click)="toggleSort('dueDate')">
+                    Due
+                    <span class="th-sort__arrow" aria-hidden="true">{{ sortIndicator('dueDate') }}</span>
+                  </button>
+                </th>
+                <th scope="col" [attr.aria-sort]="ariaSortFor('status')">
+                  <button type="button" class="th-sort" (click)="toggleSort('status')">
+                    Status
+                    <span class="th-sort__arrow" aria-hidden="true">{{ sortIndicator('status') }}</span>
+                  </button>
+                </th>
                 <th scope="col" class="col-actions">Actions</th>
               </tr>
             </thead>
@@ -386,6 +544,7 @@
         </div>
 
       </div>
+      </ng-container>
     </ng-container>
 
   </main>

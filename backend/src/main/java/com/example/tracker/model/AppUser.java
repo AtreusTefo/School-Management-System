@@ -56,6 +56,21 @@ public class AppUser {
     @Column(nullable = false, length = 20)
     private Role role;
 
+    /**
+     * True while this account still holds a password somebody else chose (US-22).
+     *
+     * An account created by a teacher is issued with a temporary password that
+     * the teacher necessarily knows. Until the owner replaces it, "signed in as
+     * this person" does not reliably mean this person, so the service refuses
+     * every other operation for them.
+     *
+     * A primitive boolean rather than Boolean: there is no third state. Allowing
+     * null would force every caller to decide what "unset" meant, and they would
+     * not all decide the same way.
+     */
+    @Column(name = "must_change_password", nullable = false)
+    private boolean mustChangePassword;
+
     /** Optimistic locking, for the same reason Assignment carries one. */
     @jakarta.persistence.Version
     @JsonIgnore
@@ -66,9 +81,15 @@ public class AppUser {
     }
 
     public AppUser(String username, String passwordHash, Role role) {
+        this(username, passwordHash, role, false);
+    }
+
+    public AppUser(String username, String passwordHash, Role role,
+                   boolean mustChangePassword) {
         this.username = username;
         this.passwordHash = passwordHash;
         this.role = role;
+        this.mustChangePassword = mustChangePassword;
     }
 
     public Long getId() {
@@ -93,6 +114,14 @@ public class AppUser {
 
     public void setRole(Role role) {
         this.role = role;
+    }
+
+    public boolean isMustChangePassword() {
+        return mustChangePassword;
+    }
+
+    public void setMustChangePassword(boolean mustChangePassword) {
+        this.mustChangePassword = mustChangePassword;
     }
 
     public Long getVersion() {

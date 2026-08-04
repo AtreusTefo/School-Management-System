@@ -590,6 +590,128 @@ code {
 .col-actions { width: 1%; }
 .row-actions { display: flex; gap: 6px; justify-content: flex-end; }
 
+/* -----------------------------------------------------------------------------
+   ACCOUNT SELF-SERVICE (EPIC-09)
+   Confirmations, the inline create-account panel, and field hints.
+-------------------------------------------------------------------------------- */
+
+/* A success notice. Deliberately NOT styled like .alert: an action that worked
+   and an action that failed must not look the same, or the failure colour stops
+   carrying meaning. */
+.notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  border: 1px solid var(--ok-border, #a7d8b4);
+  border-left: 3px solid var(--ok, #2e9e5b);
+  border-radius: var(--radius, 8px);
+  background: var(--ok-soft, #eef9f1);
+  color: var(--ok-text, #1c6b3d);
+  font-size: 0.9rem;
+}
+
+/* The same message shown inside a panel rather than at page level. */
+.notice--inline {
+  margin: 0 0 14px;
+  display: block;
+}
+
+/* The inline create-account panel, set apart from the assignment form above it
+   so two forms in one card do not read as a single long one. */
+.subform {
+  padding: 16px 20px 4px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-muted);
+}
+
+.subform__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.subform__head h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 650;
+}
+
+/* A button that reads as a link, for an action sitting inside a sentence. Kept
+   a real <button> because it performs an action rather than navigating - an <a>
+   without an href is not focusable and announces nothing useful. */
+.link-btn {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--brand);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.link-btn:hover { color: var(--brand-strong, var(--brand)); }
+
+.link-btn:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+/* Guidance under a field, stated before an attempt is rejected rather than
+   after it. */
+.field__hint {
+  display: block;
+  margin-top: 5px;
+  font-size: 0.78rem;
+  color: var(--text-subtle);
+}
+
+.field__hint--warn { color: var(--danger, #b3261e); }
+
+
+/* Sortable column headings.
+   The <th> keeps its own padding, so the button is stripped back to nothing and
+   stretched to fill the cell - that way the whole heading is the click target,
+   not just the few pixels the text occupies. It inherits font and colour so a
+   sortable heading looks identical to a fixed one until hovered. */
+.th-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.th-sort:hover { color: var(--brand); }
+
+/* A visible focus ring, offset so it is not swallowed by the cell background.
+   Removing outlines entirely is what makes a table unusable by keyboard. */
+.th-sort:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+
+/* Reserve the arrow's width whether or not it is drawn, so clicking through the
+   sort states does not shift the heading text sideways. */
+.th-sort__arrow {
+  display: inline-block;
+  min-width: 0.7em;
+  font-size: 0.85em;
+  color: var(--brand);
+}
+
 
 /* -----------------------------------------------------------------------------
    12. EMPTY, LOADING AND AUTH STATES

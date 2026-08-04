@@ -7,6 +7,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -115,6 +116,24 @@ public class AuthController {
         token.getToken();
     }
 
+    /**
+     * PUT /api/auth/password - replace your own password (US-21).
+     *
+     * Deliberately on /api/auth rather than /api/users/{id}: there is no id in
+     * the path because a caller may only ever change their OWN password, and an
+     * id would invite the question of whose. The session decides the subject.
+     *
+     * The controller does no checking of its own. It takes the two values,
+     * hands them to the service, and reports the result - the rules about what
+     * makes a password acceptable, and whether the current one matched, belong
+     * in the service so they hold for any caller.
+     */
+    @PutMapping("/password")
+    public UserView changePassword(@Valid @RequestBody ChangePasswordRequest request) {
+        return UserView.of(users.changeOwnPassword(
+                request.getCurrentPassword(), request.getNewPassword()));
+    }
+
     /** What the client may send when signing in. */
     static class LoginRequest {
         @NotBlank(message = "Username must not be blank")
@@ -145,9 +164,44 @@ public class AuthController {
      * carries a name and a role and nothing else, so the password hash cannot
      * leak by accident when a field is added to the entity later.
      */
-    public record UserView(Long id, String username, String role) {
+    public record UserView(Long id, String username, String role,
+                           boolean mustChangePassword) {
         static UserView of(AppUser user) {
-            return new UserView(user.getId(), user.getUsername(), user.getRole().name());
+            return new UserView(user.getId(), user.getUsername(), user.getRole().name(),
+                    user.isMustChangePassword());
+        }
+    }
+
+    /**
+     * What the client may send when changing a password.
+     *
+     * The current password is required by the DTO as well as re-checked in the
+     * service. @NotBlank here rejects an empty field before any hashing happens;
+     * the service still verifies it, because a validation annotation only guards
+     * this one entry point.
+     */
+    static class ChangePasswordRequest {
+        @NotBlank(message = "Current password must not be blank")
+        private String currentPassword;
+
+        @NotBlank(message = "New password must not be blank")
+        @Size(min = 8, message = "New password must be at least 8 characters")
+        private String newPassword;
+
+        public String getCurrentPassword() {
+            return currentPassword;
+        }
+
+        public void setCurrentPassword(String currentPassword) {
+            this.currentPassword = currentPassword;
+        }
+
+        public String getNewPassword() {
+            return newPassword;
+        }
+
+        public void setNewPassword(String newPassword) {
+            this.newPassword = newPassword;
         }
     }
 }
