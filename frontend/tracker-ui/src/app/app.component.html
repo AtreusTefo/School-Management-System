@@ -168,25 +168,15 @@
             <span class="badge badge--neutral">{{ visibleAssignments.length }}</span>
           </div>
 
-          <!-- Search and filter act on rows already in the browser. They change
-               what is LOOKED AT, never what is allowed to be seen - the server
-               still decides the scope of the list. -->
-          <div class="toolbar">
-            <div class="search">
-              <span class="search__icon" aria-hidden="true">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-                     stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                     stroke-linejoin="round">
-                  <circle cx="11" cy="11" r="7" />
-                  <path d="M21 21l-4.3-4.3" />
-                </svg>
-              </span>
-              <label class="sr-only" for="search">Search assignments</label>
-              <input id="search" class="input" type="search" name="search"
-                     [(ngModel)]="searchTerm" (ngModelChange)="onFilterChange()"
-                     placeholder="Search title or owner" />
-            </div>
+          <!-- There is no search box here any more: DataTables draws its own,
+               inside the table below. Two search boxes over the same rows would
+               have to be kept in agreement, and the loser is always the user.
 
+               The status filter stays, because it decides WHICH ROWS ARE GIVEN
+               to the table rather than searching the ones already there. Either
+               way it only changes what is LOOKED AT, never what is allowed to be
+               seen - the server still decides the scope of the list. -->
+          <div class="toolbar">
             <!-- Real buttons, with aria-pressed carrying the selected state. The
                  highlight alone tells a screen reader nothing. -->
             <div class="segmented" role="group" aria-label="Filter by status">
@@ -245,145 +235,40 @@
           <span>Loading assignments...</span>
         </div>
 
-        <!-- ===== EMPTY STATES =====
-             Two of them, because "there is nothing here" and "your filter hides
-             everything" call for different actions from the user. Showing the
-             same sentence for both sends someone hunting for missing data that
-             is in fact one click away. -->
-        <div *ngIf="!loadingList && visibleAssignments.length === 0" class="empty">
+        <!-- ===== EMPTY STATE =====
+             Only for the case where the account genuinely has no assignments.
+             "Your search matched nothing" is DataTables' job now, and it says so
+             inside the table itself - see the language options in the table
+             component. Showing the same sentence for both would send someone
+             hunting for missing data that is in fact one click away. -->
+        <div *ngIf="!loadingList && assignments.length === 0" class="empty">
           <svg class="empty__icon" width="40" height="40" viewBox="0 0 24 24" fill="none"
                stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
                stroke-linejoin="round" aria-hidden="true">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
             <path d="M14 2v6h6M9 15h6M9 11h3" />
           </svg>
-
-          <ng-container *ngIf="isFiltered; else nothingAtAll">
-            <div class="empty__title">No matching assignments</div>
-            <p class="empty__text">
-              {{ assignments.length }} assignment(s) are hidden by the current
-              search or filter.
-            </p>
-            <p class="empty__action">
-              <button type="button" class="btn btn--sm" (click)="clearFilters()">
-                Clear filters
-              </button>
-            </p>
-          </ng-container>
-
-          <ng-template #nothingAtAll>
-            <div class="empty__title">No assignments yet</div>
-            <p class="empty__text">
-              {{ isTeacher
-                 ? 'Use the form above to set the first piece of work.'
-                 : 'Nothing has been set for you yet.' }}
-            </p>
-          </ng-template>
+          <div class="empty__title">No assignments yet</div>
+          <p class="empty__text">
+            {{ isTeacher
+               ? 'Use the form above to set the first piece of work.'
+               : 'Nothing has been set for you yet.' }}
+          </p>
         </div>
 
-        <!-- ===== ASSIGNMENT TABLE ===== -->
-        <div class="table-wrap" *ngIf="!loadingList && visibleAssignments.length > 0">
-          <table class="table">
-            <thead>
-              <tr>
-                <th scope="col">Title</th>
-                <th scope="col">Owner</th>
-                <th scope="col">Due</th>
-                <th scope="col">Status</th>
-                <th scope="col" class="col-actions">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              <!-- trackBy keeps existing rows alive across a refresh instead of
-                   rebuilding every one of them; see trackById in the component. -->
-              <tr *ngFor="let a of visibleAssignments; trackBy: trackById"
-                  [class.is-editing]="editingId === a.id">
-
-                <!-- Inline edit replaces the row's fields in place, so the user keeps
-                     their bearings instead of being sent to a separate screen. -->
-                <ng-container *ngIf="editingId === a.id; else readOnlyRow">
-                  <td>
-                    <label class="sr-only" for="editTitle">Title</label>
-                    <input id="editTitle" class="input" type="text" name="editTitle"
-                           [(ngModel)]="editTitle" />
-                  </td>
-                  <td class="cell-muted">{{ a.ownerUsername }}</td>
-                  <td>
-                    <label class="sr-only" for="editDueDate">Due date</label>
-                    <input id="editDueDate" class="input" type="date" name="editDueDate"
-                           [(ngModel)]="editDueDate" />
-                  </td>
-                  <td>
-                    <span class="badge"
-                          [class.badge--done]="a.status === 'SUBMITTED'"
-                          [class.badge--progress]="a.status === 'IN_PROGRESS'">
-                      <span class="badge__dot" aria-hidden="true"></span>
-                      {{ statusLabel(a.status) }}
-                    </span>
-                  </td>
-                  <td class="col-actions">
-                    <div class="row-actions">
-                      <button type="button" class="btn btn--sm btn--primary"
-                              (click)="saveEdit()" [disabled]="!editTitle.trim()">Save</button>
-                      <button type="button" class="btn btn--sm btn--ghost"
-                              (click)="cancelEdit()">Cancel</button>
-                    </div>
-                  </td>
-                </ng-container>
-
-                <ng-template #readOnlyRow>
-                  <td class="cell-title">{{ a.title }}</td>
-                  <td class="cell-muted">{{ a.ownerUsername }}</td>
-                  <td>
-                    <span class="cell-due">
-                      <span [class.cell-muted]="!a.dueDate">{{ formatDate(a.dueDate) }}</span>
-                      <!-- Overdue is computed by the server on every read, so it is always
-                           correct for today rather than whenever a flag was last written. -->
-                      <span *ngIf="a.overdue" class="badge badge--overdue">Overdue</span>
-                    </span>
-                  </td>
-                  <td>
-                    <!-- The badge pairs a coloured dot with a written word. Colour
-                         on its own would carry no meaning for a colour-blind
-                         reader, or in a printout. -->
-                    <span class="badge"
-                          [class.badge--done]="a.status === 'SUBMITTED'"
-                          [class.badge--progress]="a.status === 'IN_PROGRESS'">
-                      <span class="badge__dot" aria-hidden="true"></span>
-                      {{ statusLabel(a.status) }}
-                    </span>
-                  </td>
-                  <td class="col-actions">
-                    <div class="row-actions">
-                      <button type="button" class="btn btn--sm btn--primary"
-                              (click)="onSubmit(a.id)"
-                              [disabled]="a.status === 'SUBMITTED'"
-                              [attr.aria-label]="'Submit ' + a.title">Submit</button>
-
-                      <!-- Reopening is a teacher's decision only: otherwise "submitted"
-                           would mean nothing, since work could be retracted once late. -->
-                      <button *ngIf="isTeacher" type="button" class="btn btn--sm"
-                              (click)="onUnsubmit(a.id)"
-                              [disabled]="a.status === 'IN_PROGRESS'"
-                              [attr.aria-label]="'Reopen ' + a.title">Reopen</button>
-
-                      <!-- Edit and delete stay with the owner, even for a teacher who can
-                           see every row. -->
-                      <button *ngIf="canModify(a)" type="button" class="btn btn--sm"
-                              (click)="startEdit(a)"
-                              [attr.aria-label]="'Edit ' + a.title">Edit</button>
-                      <button *ngIf="canModify(a)" type="button" class="btn btn--sm btn--danger"
-                              (click)="onDelete(a)"
-                              [disabled]="a.status === 'SUBMITTED'"
-                              title="A submitted assignment must be reopened before it can be deleted"
-                              [attr.aria-label]="'Delete ' + a.title">Delete</button>
-                    </div>
-                  </td>
-                </ng-template>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+        <!-- ===== ASSIGNMENT TABLE =====
+             DataTables draws this, not Angular. All this template does is hand
+             over the rows and listen for what the user asked to do with one.
+             See AssignmentTableComponent for why ownership is split that way. -->
+        <app-assignment-table
+          *ngIf="!loadingList && assignments.length > 0"
+          [assignments]="visibleAssignments"
+          [isTeacher]="isTeacher"
+          (submitAssignment)="onSubmit($event)"
+          (unsubmitAssignment)="onUnsubmit($event)"
+          (deleteAssignment)="onDelete($event)"
+          (saveAssignment)="onSaveEdit($event)">
+        </app-assignment-table>
 
       </div>
     </ng-container>
