@@ -229,6 +229,15 @@ code {
 }
 
 .brand__text { display: flex; flex-direction: column; min-width: 0; }
+
+/* On a narrow screen the title would otherwise wrap onto two lines and run
+   underneath the user chip. Truncating keeps the bar one line tall; the full
+   name is still in the DOM for a screen reader. */
+.brand__text h1 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .brand__sub {
   font-size: 0.72rem;
   color: var(--text-subtle);
@@ -673,46 +682,6 @@ code {
 .field__hint--warn { color: var(--danger, #b3261e); }
 
 
-/* Sortable column headings.
-   The <th> keeps its own padding, so the button is stripped back to nothing and
-   stretched to fill the cell - that way the whole heading is the click target,
-   not just the few pixels the text occupies. It inherits font and colour so a
-   sortable heading looks identical to a fixed one until hovered. */
-.th-sort {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0;
-  margin: 0;
-  border: 0;
-  background: none;
-  font: inherit;
-  letter-spacing: inherit;
-  text-transform: inherit;
-  color: inherit;
-  cursor: pointer;
-}
-
-.th-sort:hover { color: var(--brand); }
-
-/* A visible focus ring, offset so it is not swallowed by the cell background.
-   Removing outlines entirely is what makes a table unusable by keyboard. */
-.th-sort:focus-visible {
-  outline: 2px solid var(--brand);
-  outline-offset: 3px;
-  border-radius: 3px;
-}
-
-/* Reserve the arrow's width whether or not it is drawn, so clicking through the
-   sort states does not shift the heading text sideways. */
-.th-sort__arrow {
-  display: inline-block;
-  min-width: 0.7em;
-  font-size: 0.85em;
-  color: var(--brand);
-}
-
-
 /* -----------------------------------------------------------------------------
    12. EMPTY, LOADING AND AUTH STATES
 -------------------------------------------------------------------------------- */
@@ -821,4 +790,248 @@ code {
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+
+/* -----------------------------------------------------------------------------
+   15. DATATABLES THEME
+   -----------------------------------------------------------------------------
+   DataTables ships its own stylesheet, loaded before this one in angular.json so
+   that everything here wins. It arrives looking like a generic admin table:
+   different blues, its own button shapes, its own fonts. Rather than accept two
+   visual languages on one page, its generated controls are re-pointed at the
+   design tokens from section 1, so search, paging and the row count look like
+   the rest of the application and follow dark mode with it.
+
+   Only DataTables' OWN furniture is restyled here. The cells inside the table
+   already carry the .table classes from section 11, because the table component
+   renders them with those class names.
+-------------------------------------------------------------------------------- */
+
+/* The container DataTables wraps around the table. It replaces .table-wrap, so
+   it takes over responsibility for scrolling a wide table sideways rather than
+   widening the whole page. */
+div.dt-container {
+  color: var(--text);
+  font-family: var(--font);
+}
+
+/* The top and bottom control bars.
+   DataTables' own stylesheet already lays these out as flex rows, but the rule
+   is restated here rather than relied upon. Two reasons: this file must produce
+   a correct layout on its own, and DataTables switches to a stacked layout at
+   767px while the rest of this design system breaks at 780px - thirteen pixels
+   in which the two disagreed about whether the page was a phone. */
+div.dt-container .dt-layout-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  margin: 0;
+  padding: 14px 20px;
+}
+
+div.dt-container div.dt-layout-cell {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+div.dt-container div.dt-layout-cell.dt-layout-start { justify-content: flex-start; margin-right: auto; }
+div.dt-container div.dt-layout-cell.dt-layout-end   { justify-content: flex-end;   margin-left: auto; }
+
+/* An empty cell would otherwise still claim its share of the row and push the
+   remaining control off its edge. */
+div.dt-container div.dt-layout-cell:empty { display: none; }
+
+/* The row holding the table itself must not have side padding, or the table
+   would be inset from the card edges while the header above it is not. */
+div.dt-container .dt-layout-row:has(.dt-layout-table) { padding: 0; }
+div.dt-container div.dt-layout-table { overflow-x: auto; }
+
+/* Separators between the controls and the table, so the top and bottom bars read
+   as part of the card rather than floating. */
+div.dt-container .dt-layout-row:first-child { border-bottom: 1px solid var(--border); }
+div.dt-container .dt-layout-row:last-child  { border-top: 1px solid var(--border); }
+
+/* ---- search and page-length inputs ---- */
+div.dt-container .dt-search,
+div.dt-container .dt-length {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+/* Matches .input from section 6. Written out rather than shared, because these
+   elements are generated by DataTables and cannot be given our class. */
+div.dt-container .dt-input,
+div.dt-container .dt-search input,
+div.dt-container .dt-length select {
+  height: 36px;
+  padding: 0 11px;
+  margin: 0;
+  font: inherit;
+  font-size: 0.9rem;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+div.dt-container .dt-search input { min-width: 240px; }
+
+div.dt-container .dt-input:focus,
+div.dt-container .dt-search input:focus,
+div.dt-container .dt-length select:focus {
+  outline: none;
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 22%, transparent);
+}
+
+div.dt-container .dt-search input::placeholder { color: var(--text-subtle); }
+
+/* ---- "Showing 1 to 10 of 47" ---- */
+div.dt-container .dt-info {
+  padding: 0;
+  font-size: 0.85rem;
+  color: var(--text-subtle);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- paging ---- */
+div.dt-container .dt-paging { display: flex; gap: 4px; }
+
+div.dt-container .dt-paging .dt-paging-button {
+  min-width: 34px;
+  height: 34px;
+  padding: 0 10px;
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text) !important;
+  font-size: 0.85rem;
+  font-weight: 550;
+  cursor: pointer;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+
+div.dt-container .dt-paging .dt-paging-button:hover:not(.disabled) {
+  background: var(--surface-muted) !important;
+  border-color: var(--text-subtle);
+  color: var(--text) !important;
+}
+
+div.dt-container .dt-paging .dt-paging-button.current,
+div.dt-container .dt-paging .dt-paging-button.current:hover {
+  background: var(--brand) !important;
+  border-color: var(--brand);
+  color: #fff !important;
+}
+
+/* Kept legible rather than faded to near-invisible: a user needs to be able to
+   read "Previous" to understand why it will not respond. */
+div.dt-container .dt-paging .dt-paging-button.disabled,
+div.dt-container .dt-paging .dt-paging-button.disabled:hover {
+  background: var(--surface) !important;
+  border-color: var(--border);
+  color: var(--text-subtle) !important;
+  cursor: not-allowed;
+}
+
+/* ---- the table itself ---- */
+/* DataTables adds .dataTable, which brings its own borders and header arrows.
+   These rules fold it back into the .table styling from section 11. */
+table.dataTable {
+  width: 100% !important;
+  border-collapse: collapse !important;
+  margin: 0 !important;
+  font-size: 0.9rem;
+}
+
+/* The actions column takes only what its buttons need, so the title column gets
+   the rest instead of the row ending in a gap. */
+table.dataTable > tbody > tr > td.col-actions,
+table.dataTable > thead > tr > th:last-child { width: 1%; white-space: nowrap; }
+
+table.dataTable > thead > tr > th {
+  padding: 10px 20px;
+  background: var(--surface-muted);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-subtle);
+  font-size: 0.72rem;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+table.dataTable > tbody > tr { background: transparent; }
+table.dataTable > tbody > tr:hover > td { background: var(--surface-muted); }
+
+table.dataTable > tbody > tr > td {
+  padding: 12px 20px;
+  border-top: 0;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+table.dataTable > tbody > tr:last-child > td { border-bottom: 0; }
+
+/* The sort arrows DataTables draws in each heading. Dimmed until the column is
+   the one being sorted, so the active column is obvious at a glance. */
+table.dataTable > thead > tr > th .dt-column-order { opacity: 0.35; }
+table.dataTable > thead > tr > th.dt-ordering-asc .dt-column-order,
+table.dataTable > thead > tr > th.dt-ordering-desc .dt-column-order { opacity: 1; }
+
+table.dataTable > thead > tr > th.dt-orderable-asc:hover,
+table.dataTable > thead > tr > th.dt-orderable-desc:hover {
+  background: var(--surface-sunk);
+  cursor: pointer;
+}
+
+/* The "no rows" message, styled to match .empty rather than DataTables' plain
+   centred sentence. */
+table.dataTable > tbody > tr > td.dt-empty {
+  padding: 48px 24px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+/* The inputs shown in a row being edited inline. */
+table.dataTable .input { min-width: 140px; }
+
+@media (max-width: 780px) {
+  /* Stack the controls on a phone, at the same breakpoint as everything else in
+     this file. The search field takes the full width rather than staying at its
+     desktop size and forcing the row to scroll. */
+  div.dt-container .dt-layout-row {
+    display: block;
+    padding: 12px 14px;
+  }
+  div.dt-container div.dt-layout-cell { display: block; }
+  div.dt-container div.dt-layout-cell > * { margin: 8px 0; }
+
+  div.dt-container .dt-search { width: 100%; }
+  div.dt-container .dt-search input { min-width: 0; width: 100%; }
+
+  div.dt-container .dt-paging { flex-wrap: wrap; }
+
+  /* Give the columns room and let the container scroll sideways, rather than
+     squeezing five columns into 420px and wrapping every title over three
+     lines. Scrolling one table beats an unreadable one. */
+  /* 820px is what the five columns need before the title starts wrapping: a
+     teacher's four action buttons alone take roughly 250 of it. */
+  table.dataTable { min-width: 820px; }
+
+  table.dataTable > thead > tr > th,
+  table.dataTable > tbody > tr > td { padding-left: 14px; padding-right: 14px; }
 }

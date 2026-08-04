@@ -5,16 +5,10 @@ import { HttpErrorResponse } from '@angular/common/http';
 import {
   Assignment, AssignmentService, CurrentUser
 } from './assignment.service';
+import {
+  AssignmentEdit, AssignmentTableComponent
+} from './assignment-table.component';
 import { environment } from '../environments/environment';
-
-/**
- * The columns a user may sort by.
- *
- * A union rather than `string`, for the same reason AssignmentStatus is one: a
- * typo becomes a compile error here instead of a comparator that silently never
- * matches and leaves the table in its original order.
- */
-export type SortColumn = 'title' | 'ownerUsername' | 'dueDate' | 'status';
 
 /**
  * THE COMPONENT
@@ -26,11 +20,16 @@ export type SortColumn = 'title' | 'ownerUsername' | 'dueDate' | 'status';
  * rule it reflects is also enforced by the server - hiding a button is a
  * courtesy to the user, not a security measure, because anyone can call the API
  * directly.
+ *
+ * The table itself is not drawn here. AssignmentTableComponent hands the rows to
+ * DataTables and lets it own that piece of the page; this component supplies the
+ * data and reacts to what the user asked to do with a row. Every call to the API
+ * still goes through AssignmentService, exactly as before.
  */
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, AssignmentTableComponent],
   templateUrl: './app.component.html'
 })
 export class AppComponent implements OnInit {
@@ -61,29 +60,20 @@ export class AppComponent implements OnInit {
   assignments: Assignment[] = [];
 
   /**
-   * The subset currently on screen, after the search box and the status filter.
+   * The subset handed to the table, after the status filter.
    *
-   * Held as a field and recomputed by applyFilters() rather than exposed as a
-   * getter. A getter returning a new array runs on every change-detection pass
-   * and hands *ngFor a fresh object each time, which makes Angular tear down and
-   * rebuild rows that did not change.
+   * Free-text search is NOT applied here - DataTables owns that, and doing it in
+   * both places would mean two search boxes fighting over the same rows.
+   *
+   * Held as a field and reassigned by applyFilters() rather than exposed as a
+   * getter. A getter returns a new array on every change-detection pass, which
+   * would look like new data to the table component and trigger a needless
+   * redraw several times a second.
    */
   visibleAssignments: Assignment[] = [];
 
-  /** Search text and status filter. Both are client-side views of loaded data. */
-  searchTerm = '';
+  /** Status filter. A client-side view of data already loaded. */
   statusFilter: 'ALL' | 'IN_PROGRESS' | 'SUBMITTED' | 'OVERDUE' = 'ALL';
-
-  /**
-   * Which column the table is sorted by, and which way. null means "as the
-   * server sent it", which is id order - the order work was created in.
-   *
-   * Sorting is a view over data already in the browser, exactly like the filters
-   * above. It issues no request, so it cannot change WHICH rows this person is
-   * allowed to see - only the order they appear in.
-   */
-  sortColumn: SortColumn | null = null;
-  sortDirection: 'asc' | 'desc' = 'asc';
 
   // Create form
   newTitle = '';
@@ -115,10 +105,9 @@ export class AppComponent implements OnInit {
   showCreateUser = false;
   createUserNotice: string | null = null;
 
-  // Inline edit state: the id being edited, or null
-  editingId: number | null = null;
-  editTitle = '';
-  editDueDate = '';
+  // Inline edit state now lives in AssignmentTableComponent, because the row
+  // being edited is part of the table DataTables draws. This component only sees
+  // the finished result, through the (saveAssignment) event.
 
   /** The last error to show the user, or null when all is well. */
   errorMessage: string | null = null;
@@ -183,210 +172,32 @@ export class AppComponent implements OnInit {
     return this.assignments.filter(a => a.overdue).length;
   }
 
-  /** True when a filter is hiding rows, so the empty state can say which. */
-  get isFiltered(): boolean {
-    return this.statusFilter !== 'ALL' || this.searchTerm.trim() !== '';
-  }
-
-  /** SUBMITTED reads as shouting in a table cell; the badge says "Submitted". */
-  statusLabel(status: Assignment['status']): string {
-    return status === 'SUBMITTED' ? 'Submitted' : 'In progress';
-  }
-
-  /**
-   * Render an ISO date as "12 Aug 2026".
-   *
-   * Deliberately not `new Date(iso)`. A bare yyyy-MM-dd is parsed by the browser
-   * as UTC midnight, so anyone west of Greenwich sees the previous day - a due
-   * date of the 12th displayed as the 11th. Splitting the string keeps the date
-   * exactly as the server meant it, with no timezone involved at all.
-   */
-  formatDate(iso: string | null): string {
-    if (!iso) {
-      return 'No due date';
-    }
-    const parts = iso.split('-');
-    if (parts.length !== 3) {
-      return iso;
-    }
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-                    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const monthIndex = Number(parts[1]) - 1;
-    const month = months[monthIndex] ?? parts[1];
-    return `${Number(parts[2])} ${month} ${parts[0]}`;
-  }
-
-  /**
-   * Identity for *ngFor. Without it Angular compares the objects themselves, and
-   * because every refresh fetches new objects it would discard and rebuild every
-   * row - losing focus and scroll position on each poll.
-   */
-  trackById(_index: number, a: Assignment): number {
-    return a.id;
-  }
-
   // ----- filtering ------------------------------------------------------------
-
-  /** Called by the search box and the status buttons. */
-  onFilterChange(): void {
-    this.applyFilters();
-  }
 
   setStatusFilter(filter: typeof this.statusFilter): void {
     this.statusFilter = filter;
     this.applyFilters();
   }
 
-  clearFilters(): void {
-    this.searchTerm = '';
-    this.statusFilter = 'ALL';
-    this.applyFilters();
-  }
-
-  // ----- sorting --------------------------------------------------------------
-
   /**
-   * Click a column heading: sort by it, or reverse if it is already the sort
-   * column. A third click clears the sort and returns the table to server order,
-   * so there is always a way back to "as sent" without reloading the page.
-   */
-  toggleSort(column: SortColumn): void {
-    if (this.sortColumn !== column) {
-      this.sortColumn = column;
-      this.sortDirection = 'asc';
-    } else if (this.sortDirection === 'asc') {
-      this.sortDirection = 'desc';
-    } else {
-      this.sortColumn = null;
-    }
-    this.applyFilters();
-  }
-
-  /**
-   * The value for aria-sort on a heading.
-   *
-   * Screen readers announce this; the arrow drawn in the template is invisible
-   * to them. Returning 'none' rather than null keeps the attribute present on
-   * every sortable column, which is what tells assistive technology that the
-   * column can be sorted at all.
-   */
-  ariaSortFor(column: SortColumn): 'ascending' | 'descending' | 'none' {
-    if (this.sortColumn !== column) {
-      return 'none';
-    }
-    return this.sortDirection === 'asc' ? 'ascending' : 'descending';
-  }
-
-  /**
-   * The arrow drawn beside a heading. Decorative only - aria-sort above is what
-   * conveys this to a screen reader, so the arrow is marked aria-hidden in the
-   * template and never has to be readable.
-   */
-  sortIndicator(column: SortColumn): string {
-    if (this.sortColumn !== column) {
-      return '';
-    }
-    return this.sortDirection === 'asc' ? '↑' : '↓';
-  }
-
-  /**
-   * Rank a row for status sorting: overdue first, then outstanding, then done.
-   *
-   * Status cannot be compared as text. Alphabetically IN_PROGRESS precedes
-   * SUBMITTED by accident rather than by meaning, and OVERDUE is not a stored
-   * status at all - it is derived, so it has no string to compare. Ranking by
-   * urgency is the order somebody actually wants when they click the column.
-   */
-  private statusRank(a: Assignment): number {
-    if (a.overdue) {
-      return 0;
-    }
-    return a.status === 'IN_PROGRESS' ? 1 : 2;
-  }
-
-  /**
-   * Compare two rows on the active sort column.
-   *
-   * NULL DUE DATES ALWAYS SORT LAST, in both directions. This is deliberate and
-   * is the one rule here worth stating: "no deadline" is a legitimate state, not
-   * a missing value, so treating it as either the earliest or the latest date
-   * would be a lie. Reversing the direction reverses the dated rows among
-   * themselves and leaves the undated ones at the bottom, where they can always
-   * be found.
-   */
-  private compare(a: Assignment, b: Assignment, column: SortColumn): number {
-    if (column === 'dueDate') {
-      if (!a.dueDate && !b.dueDate) {
-        return 0;
-      }
-      // Signal "sort last" independently of direction; handled by the caller.
-      if (!a.dueDate) {
-        return Number.POSITIVE_INFINITY;
-      }
-      if (!b.dueDate) {
-        return Number.NEGATIVE_INFINITY;
-      }
-      // ISO yyyy-MM-dd sorts correctly as plain text, so no Date object is
-      // needed - and none is wanted, given how it mangles timezones.
-      return a.dueDate.localeCompare(b.dueDate);
-    }
-
-    if (column === 'status') {
-      return this.statusRank(a) - this.statusRank(b);
-    }
-
-    // Title and owner. localeCompare gives a sensible ordering for accented
-    // characters, which a raw < comparison does not.
-    return a[column].localeCompare(b[column], undefined, { sensitivity: 'base' });
-  }
-
-  /**
-   * Narrow the loaded list down to what the user asked to see.
+   * Narrow the loaded list down to the chosen status.
    *
    * This filters data already in the browser; it does not ask the server for a
    * different set. That keeps the endpoint's meaning intact - the API still
    * decides what this person is ALLOWED to see, and the filter only decides what
    * they are currently LOOKING at. A filter must never be mistaken for access
    * control.
+   *
+   * A NEW array is assigned rather than the existing one being mutated, because
+   * the table component compares its @Input() by reference: mutating in place
+   * would change the data with nothing to tell Angular it had happened.
    */
   private applyFilters(): void {
-    const term = this.searchTerm.trim().toLowerCase();
-
-    const filtered = this.assignments.filter(a => {
-      const matchesStatus =
-        this.statusFilter === 'ALL' ? true :
-        this.statusFilter === 'OVERDUE' ? a.overdue :
-        a.status === this.statusFilter;
-
-      const matchesTerm = term === '' ||
-        a.title.toLowerCase().includes(term) ||
-        a.ownerUsername.toLowerCase().includes(term);
-
-      return matchesStatus && matchesTerm;
-    });
-
-    // Sorting composes with filtering rather than replacing it: filter first to
-    // decide WHICH rows, then order what survived. Doing it the other way round
-    // would sort rows that are about to be discarded.
-    const column = this.sortColumn;
-    if (column !== null) {
-      const factor = this.sortDirection === 'asc' ? 1 : -1;
-      filtered.sort((a, b) => {
-        const raw = this.compare(a, b, column);
-        // The infinities are the "always last" signal from compare(); they must
-        // not be flipped by the direction factor, or undated rows would jump to
-        // the top on a descending sort.
-        if (raw === Number.POSITIVE_INFINITY) {
-          return 1;
-        }
-        if (raw === Number.NEGATIVE_INFINITY) {
-          return -1;
-        }
-        return raw * factor;
-      });
-    }
-
-    this.visibleAssignments = filtered;
+    this.visibleAssignments = this.assignments.filter(a =>
+      this.statusFilter === 'ALL' ? true :
+      this.statusFilter === 'OVERDUE' ? a.overdue :
+      a.status === this.statusFilter
+    );
   }
 
   // ----- authentication ------------------------------------------------------
@@ -433,7 +244,7 @@ export class AppComponent implements OnInit {
         this.user = null;
         this.assignments = [];
         this.visibleAssignments = [];
-        this.clearFilters();
+        this.statusFilter = 'ALL';
         this.errorMessage = null;
         // Clear the account forms too. Leaving a half-typed password in a field
         // for the next person to sign in at this browser would be careless.
@@ -579,8 +390,8 @@ export class AppComponent implements OnInit {
       next: (data) => {
         this.loadingList = false;
         this.assignments = data;
-        // Re-apply the current search and status filter to the new data, so a
-        // refresh does not silently reset the view the user had set up.
+        // Re-apply the current status filter to the new data, so a refresh does
+        // not silently reset the view the user had set up.
         this.applyFilters();
         this.errorMessage = null;
       },
@@ -637,43 +448,20 @@ export class AppComponent implements OnInit {
 
   // ----- inline editing ------------------------------------------------------
 
-  startEdit(a: Assignment): void {
-    this.editingId = a.id;
-    this.editTitle = a.title;
-    this.editDueDate = a.dueDate ?? '';
-  }
-
-  cancelEdit(): void {
-    this.editingId = null;
-  }
-
-  saveEdit(): void {
-    if (this.editingId === null) {
-      return;
-    }
-    const title = this.editTitle.trim();
-    if (!title) {
-      return;
-    }
-    this.service.updateAssignment(this.editingId, title, this.editDueDate || null)
-      .subscribe({
-        next: () => {
-          this.editingId = null;
-          this.loadAssignments();
-        },
-        error: (err) => this.showError(err, 'Could not save the change')
-      });
-  }
-
   /**
-   * Only a teacher may edit or delete - the server enforces this too.
+   * The table component collected the new title and due date; this saves them.
    *
-   * Not owner-based: a teacher who sets work FOR a student would otherwise be
-   * unable to correct it, and a student would be able to rewrite the assignment
-   * they had been set. Editing follows the role, not the row.
+   * Only a teacher may edit at all - the table only draws the Edit button for
+   * one, and the server refuses anyone else regardless. That rule follows the
+   * role rather than the row: a teacher who sets work FOR a student would
+   * otherwise be unable to correct it, and a student would be able to rewrite
+   * the assignment they had been set.
    */
-  canModify(_a: Assignment): boolean {
-    return this.isTeacher;
+  onSaveEdit(edit: AssignmentEdit): void {
+    this.service.updateAssignment(edit.id, edit.title, edit.dueDate).subscribe({
+      next: () => this.loadAssignments(),
+      error: (err) => this.showError(err, 'Could not save the change')
+    });
   }
 
   // ----- error handling ------------------------------------------------------
