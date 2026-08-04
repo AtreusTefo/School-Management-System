@@ -1,7 +1,7 @@
 # Documentation Index
 
 **Project:** School Management System - Assignment Tracker
-**Last updated:** 28 July 2026
+**Last updated:** 4 August 2026
 
 Every project document, what it is for, and when to read it. This file is the only
 document permitted to sit loose in `docs/`; everything else belongs in a subfolder.
@@ -17,11 +17,13 @@ document permitted to sit loose in `docs/`; everything else belongs in a subfold
 | Understand how the code is structured | [`architecture/ARCHITECTURE.md`](architecture/ARCHITECTURE.md) |
 | See what was delivered and what is planned | [`project/AGILE_HIERACHY.md`](project/AGILE_HIERACHY.md) |
 | Work on this codebase (human or AI) | [`CLAUDE.md`](../CLAUDE.md) (repository root) |
+| Pick up where the last session left off | [`memory/PROJECT_STATUS.md`](memory/PROJECT_STATUS.md) |
 
 > **Scope warning.** The repository is named *School Management System*, but the
-> delivered system is one slice of that idea: assignment tracking. One entity, three
-> endpoints, no users. If a document ever describes teachers, students, admins,
-> logins or grades, it is wrong - verify against the code.
+> delivered system is one slice of that idea: assignment tracking. Two entities
+> (`Assignment`, `AppUser`), two roles (`TEACHER`, `STUDENT`), ten endpoints. If a
+> document describes grades, marks, assessments, audit logs, file uploads,
+> notifications, classes, terms or subjects, it is wrong - verify against the code.
 
 ---
 
@@ -40,6 +42,12 @@ document permitted to sit loose in `docs/`; everything else belongs in a subfold
 | [`PRD.md`](project/PRD.md) | Product requirements. Purpose, goals and non-goals, users, functional requirements (marked **Built**), the interface contract, non-functional requirements, proposed scope (marked **not agreed**), known limitations, acceptance criteria, and the assumptions behind all of it. |
 | [`AGILE_HIERACHY.md`](project/AGILE_HIERACHY.md) | Scrum framework and backlog. Application to Epic to Feature to User Story to Task hierarchy, Definition of Done, story-point scale, the delivered backlog, the sprint record, and planned epics with their dependencies. |
 
+### memory/
+
+| Document | Contents |
+|----------|----------|
+| [`PROJECT_STATUS.md`](memory/PROJECT_STATUS.md) | Session handoff. Verified implementation state and versions; the file map as built; settled decisions with the reasoning behind them, so they are not re-litigated; the from-scratch environment setup actually performed; operational gotchas; a verification playbook with expected output; known documentation inaccuracies; open items. Written to be pasted into a new session for instant context. |
+
 ### daily-reports/
 
 | Document | Contents |
@@ -50,7 +58,9 @@ document permitted to sit loose in `docs/`; everything else belongs in a subfold
 
 ### error-fixes/
 
-Empty. The first documented fix goes here.
+| Document | Contents |
+|----------|----------|
+| [`invalid-runtime-for-javase.md`](error-fixes/invalid-runtime-for-javase.md) | The Red Hat Java extension reporting "Invalid runtime for JavaSE-nn: the path points to a missing or inaccessible folder". Root cause: `java.configuration.runtimes` in `.vscode/settings.json` listed four JDK paths belonging to the original development machine. Editor-only; the Maven build reads `JAVA_HOME` and was unaffected. |
 
 ---
 
@@ -63,6 +73,7 @@ Where a new document belongs. Do not leave files loose in `docs/`.
 | `architecture/` | System design, data flow, architectural patterns | In use |
 | `project/` | Requirements, planning, deliverables, scope | In use |
 | `daily-reports/` | Daily progress and status, named `YYYY-MM-DD.md` | In use |
+| `memory/` | Session-handoff snapshots: implementation state and operational knowledge, kept current rather than dated | In use |
 | `error-fixes/` | Bug fixes and error resolutions, one file per issue | Empty, reserved |
 | `implementation/` | Implementation guides, code summaries, completion reports | Not yet created |
 | `guides/` | Quick start, testing, how-to | Not yet created |

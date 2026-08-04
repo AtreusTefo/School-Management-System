@@ -22,25 +22,25 @@
     // builds perfectly from the command line.
     //
     // The "name" values are Eclipse execution environments and must be spelled
-    // exactly like this; JavaSE-1.8 is the odd one out. The older entries are
-    // listed so the server can still open a project that targets them.
+    // exactly like this; JavaSE-1.8 would be the odd one out if it were listed.
+    //
+    // ONLY LIST JDKs THAT ACTUALLY EXIST ON THIS MACHINE.
+    // Every entry here is validated on startup, and one pointing at a missing
+    // folder produces a blocking "Invalid runtime for JavaSE-nn" notification -
+    // even when the project does not target that version. This file previously
+    // carried four entries copied from a different machine (a "Developer.03"
+    // user profile, plus a JDK 11 and a JDK 8 that were never installed here),
+    // and raised one error per absent path. The build was never affected: the
+    // Maven Wrapper reads JAVA_HOME and knows nothing about this registry.
+    //
+    // The path below is machine-specific by nature. If you clone this project
+    // elsewhere, correct it to your own JDK 25 - `echo $env:JAVA_HOME` gives it -
+    // rather than adding entries for JDKs this project has no use for.
     "java.configuration.runtimes": [
         {
             "name": "JavaSE-25",
-            "path": "C:\\Users\\Developer.03\\Java\\jdk-25.0.4+7",
+            "path": "C:\\Program Files\\Eclipse Adoptium\\jdk-25.0.4.7-hotspot",
             "default": true
-        },
-        {
-            "name": "JavaSE-17",
-            "path": "C:\\Users\\Developer.03\\Java\\jdk-17.0.19+10"
-        },
-        {
-            "name": "JavaSE-11",
-            "path": "C:\\Program Files\\Microsoft\\jdk-11.0.12.7-hotspot"
-        },
-        {
-            "name": "JavaSE-1.8",
-            "path": "C:\\Program Files\\Eclipse Foundation\\jdk-8.0.302.8-hotspot"
         }
     ]
 }

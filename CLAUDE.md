@@ -3,7 +3,7 @@
 ## Project Context
 - **Name:** School Management System - Assignment Tracker
 - **Repository:** https://github.com/AtreusTefo/School-Management-System
-- **Stack:** Java 25 (LTS), Spring Boot 3.5.16 (backend REST API) + Angular 18 standalone (frontend SPA) + SQL Server 2019 (`MSSQLSERVER01`, database `School Management System`, TCP 14333)
+- **Stack:** Java 25 (LTS), Spring Boot 3.5.16 (backend REST API) + Angular 18 standalone (frontend SPA) + SQL Server 2019, database `School Management System`. The instance name, port and auth mode are per-machine; the values currently in force are in `docs/memory/PROJECT_STATUS.md`.
 - **Primary IDEs:** VS Code, Claude Code
 - **Main Goal:** A small, heavily commented full-stack application that tracks assignment submission state, built to demonstrate a strictly layered architecture. Both goals are real: the software must work, and the code must stay readable enough to teach from.
 
@@ -29,31 +29,48 @@ School Management System/
 ├── CLAUDE.md                   # This file - stays at the repository root
 ├── README.md                   # Run instructions - stays at the repository root
 ├── .gitignore                  # Excludes target/, node_modules/, dist/, .angular/
+├── .vscode/settings.json       # TypeScript pin + java.configuration.runtimes
 ├── docs/                       # ALL project documentation (see below)
 │   ├── DOCUMENTATION_INDEX.md
 │   ├── architecture/           # ARCHITECTURE.md
 │   ├── project/                # PRD.md, AGILE_HIERACHY.md
-│   ├── daily-reports/
-│   └── error-fixes/
+│   ├── memory/                 # PROJECT_STATUS.md - session handoff, per-machine values
+│   ├── daily-reports/          # YYYY-MM-DD.md, dated records - do not rewrite
+│   └── error-fixes/            # One file per issue
 ├── backend/                    # Spring Boot REST API
 │   ├── mvnw / mvnw.cmd / .mvn/ # Maven Wrapper - no system Maven needed
 │   ├── pom.xml
-│   └── src/main/
-│       ├── java/com/example/tracker/
-│       │   ├── TrackerApplication.java      # Entry point + seed data
-│       │   ├── model/          # Assignment, AssignmentStatus
-│       │   ├── repository/     # AssignmentRepository (Spring Data JPA)
-│       │   ├── service/        # AssignmentService - business rules
-│       │   ├── controller/     # AssignmentController - HTTP only
-│       │   └── exception/      # AssignmentNotFoundException, GlobalExceptionHandler
-│       └── resources/application.properties
+│   └── src/
+│       ├── main/java/com/example/tracker/
+│       │   ├── TrackerApplication.java  # Entry point + seed runners (accounts, then assignments)
+│       │   ├── controller/     # AssignmentController, AuthController - HTTP only
+│       │   ├── service/        # AssignmentService, AppUserService - business rules
+│       │   ├── repository/     # AssignmentRepository, AppUserRepository (Spring Data JPA)
+│       │   ├── model/          # Assignment, AssignmentStatus, AppUser, Role
+│       │   ├── config/         # SecurityConfig (auth, CSRF), CorsConfig (allowed origins)
+│       │   ├── security/       # AppUserDetailsService - loads accounts for Spring Security
+│       │   └── exception/      # AssignmentNotFoundException, AccessDeniedException,
+│       │                       #   GlobalExceptionHandler - exception to HTTP status
+│       ├── main/resources/
+│       │   ├── application.properties
+│       │   └── db/migration/   # Flyway, SQL Server dialect - V1__baseline_assignment.sql,
+│       │                       #   V2__accounts_and_ownership.sql
+│       └── test/
+│           ├── java/com/example/tracker/
+│           │   ├── AssignmentApiTest.java            # MockMvc, real security
+│           │   ├── ConcurrencyAndIntegrityTest.java  # 12 racing submissions, DB constraints
+│           │   └── service/AssignmentServiceTest.java # business rules, repository mocked
+│           └── resources/application-test.properties # H2, Flyway off, ddl-auto=create-drop
 └── frontend/
     └── tracker-ui/             # The runnable Angular project - ng serve here
         └── src/
             ├── main.ts
             ├── index.html
+            ├── styles.css
+            ├── environments/   # environment.ts (build), environment.development.ts (serve)
             └── app/
                 ├── assignment.service.ts    # The only place that knows API URLs
+                ├── csrf.interceptor.ts      # Attaches X-XSRF-TOKEN cross-origin
                 ├── app.component.ts         # UI logic
                 └── app.component.html       # Table, create form, error banner
 ```
@@ -67,28 +84,54 @@ School Management System/
 - **Build frontend:** `npm run build` in `frontend/tracker-ui`.
 - **Type-check frontend:** `npx tsc --noEmit -p tsconfig.app.json`.
 - **Run tests:** `.\mvnw.cmd test` - 36 tests, run against H2, no SQL Server needed.
-- **Database:** SQL Server, `tcp:localhost,14333`, database `School Management System`, login `tracker_app`. Query it with:
+- **Database:** SQL Server, database `School Management System`, login `tracker_app`. The connection string in `application.properties` uses port 14333; confirm your instance actually listens there before assuming a failure is the application's fault. Query it with:
   `sqlcmd -S "tcp:localhost,14333" -U tracker_app -P 'Tracker!2026Dev' -d "School Management System"`
 - **Development accounts:** `teacher` and `student`, both password `password123`, reset at every startup.
 
 Start the backend first. The frontend calls it directly at `http://localhost:8080` and shows a red banner with a Retry button if it cannot connect.
 
-### Environment Gotchas on This Machine
+### Environment Gotchas
 These cost real time. Check them before diagnosing further.
 
-- **Java 25 is required, and `JAVA_HOME` must point at it.** JDK 8 and 11 are also installed here, and `java` on the PATH still resolves to JDK 8 by design so other work keeps running. `JAVA_HOME` is set to `C:\Users\Developer.03\Java\jdk-25.0.4+7`; the Maven Wrapper reads it in preference to the PATH. If `mvnw` fails with `Unsupported class file major version` or `class file version 61.0`, `JAVA_HOME` is unset or stale - a terminal opened before it was set will not see it, and inside VS Code the editor itself must be restarted, not just the terminal.
-- **Antivirus intercepts HTTPS.** Avast re-signs TLS traffic. A fresh JDK does not trust its root, so Maven fails with `PKIX path building failed`. Import the Avast root into the JDK truststore (`keytool -importcert -cacerts -storepass changeit`). For npm, set `NODE_EXTRA_CA_CERTS` to a PEM copy of the same certificate.
-- **Antivirus also quarantines build files.** Avast has removed both `backend/mvnw.cmd` and a freshly installed `java.exe` as false positives. Symptoms are a vanished wrapper script and `Access denied` when restoring it, even though other files write fine. Fix in Avast: restore from Quarantine and add exclusions for the project folder and `C:\Users\Developer.03\Java\`.
-- **The system proxy captures loopback.** Chrome cannot reach `localhost:4200` through it. Launch browser automation with `--no-proxy-server --proxy-bypass-list=<-loopback>`.
-- **Never wait on network idle** against the Angular dev server. Its live-reload websocket stays open, so that condition never arrives. Wait for the document instead.
+**Read this section as symptoms, not as settings.** It is split in two deliberately.
+Group A holds facts about the project and the stack, true on any machine. Group B
+holds problems that depend on the machine: they are written as *symptom, cause, how to
+check, how to fix*, because the specific paths, ports and instance names differ
+between installations.
+
+> **Never copy a literal path, port or instance name out of this file and assume it
+> matches your machine.** Doing exactly that is what produced a workspace full of
+> "Invalid runtime for JavaSE-nn" errors on 4 August 2026: `.vscode/settings.json`
+> carried four JDK paths from the original development machine, none of which existed
+> on the new one. Verify a value before relying on it. The concrete values in force on
+> the current machine are recorded in `docs/memory/PROJECT_STATUS.md` sections 2, 5
+> and 6, which is the file that is meant to change per machine - this one is not.
+
+#### Group A - always true, on any machine
+
+- **`JAVA_HOME` must point at a JDK 25, and it is `JAVA_HOME` that decides.** The Maven Wrapper reads it in preference to whatever `java` is on the `PATH`, so the `PATH` can point anywhere without breaking the build. If `mvnw` fails with `Unsupported class file major version` or `class file version 61.0`, `JAVA_HOME` is unset, stale, or aimed at an older JDK. A terminal opened before it was set will not see it, and in VS Code the **editor** must be restarted, not just the terminal. Check with `echo $env:JAVA_HOME` (PowerShell) or `echo $JAVA_HOME`.
 - **Stop the backend before rebuilding.** Windows holds a lock on the running jar and `mvnw clean` fails to delete it.
+- **The JDBC driver cannot use shared memory.** SQL Server must have TCP enabled before Java can connect at all. This is the reason `sqlcmd` can connect while the application cannot, which looks baffling until you know it - `sqlcmd` will happily use shared memory.
+- **Write SQL Server migrations as separate `GO` batches.** SQL Server compiles a whole batch before running any of it, so adding a column and using it in the same batch fails with "Invalid column name" even though the ALTER would have created it first.
+- **Never wait on network idle** against the Angular dev server. Its live-reload websocket stays open, so that condition never arrives. Wait for the document instead.
 - **The editor may use a different TypeScript than the build.** `.vscode/settings.json` pins `typescript.tsdk` to the project copy; select "Use Workspace Version" once when prompted, or the editor will report errors the build does not.
 - **Do not round-trip UTF-8 files through PowerShell `Get-Content`/`Set-Content`.** It mangles the box-drawing characters in this file's directory tree. Edit Markdown with an editor or a tool that preserves encoding.
-- **SQL Server needs TCP explicitly enabled.** Only Shared Memory was on by default, and the JDBC driver cannot use shared memory - `sqlcmd` connects while Java cannot, which looks baffling. The port is pinned to 14333 because named instances otherwise use dynamic ports that change on every restart. Both changes need an elevated shell; see the README.
-- **Write SQL Server migrations as separate `GO` batches.** SQL Server compiles a whole batch before running any of it, so adding a column and using it in the same batch fails with "Invalid column name" even though the ALTER would have created it first.
-- **The Avast root certificate rotates.** When Maven starts failing with `PKIX path validation failed` on a build that worked yesterday, Avast has regenerated its interception root. Re-export it and re-import into the JDK truststore; the old alias must be deleted first.
-- **PowerShell's `-WebSession` persists headers between requests.** A probe that sets `X-XSRF-TOKEN` once will silently resend it forever, so a "no token" test passes for the wrong reason. Call `$session.Headers.Clear()` before asserting that a header is absent.
+- **PowerShell's `-WebSession` persists headers between requests.** A probe that sets `X-XSRF-TOKEN` once will silently resend it forever, so a "no token" test passes for the wrong reason. Call `$session.Headers.Clear()` before asserting that a header is absent - but note that clearing it also strips the token from later writes, which then return `403` for CSRF reasons and are easily misread as an authorisation result.
 - **Register Playwright dialog handlers before navigating.** Playwright dismisses dialogs by default, so a late `page.on('dialog', ...)` means `confirm()` returns false and the action under test never runs.
+
+#### Group B - machine-dependent, verify before applying
+
+- **More than one JDK installed, and `java` resolves to the wrong one.** Common where older JDKs are kept so other work keeps running. Harmless by itself: set `JAVA_HOME` to the JDK 25 and leave the `PATH` alone. Only a problem if something reads the `PATH` instead.
+- **The Java language server reports `Invalid runtime for JavaSE-nn: the path points to a missing or inaccessible folder`.** `java.configuration.runtimes` in `.vscode/settings.json` lists JDK locations, every entry is validated at startup, and the list is machine-specific. Point the JavaSE-25 entry at your own JDK and delete entries for JDKs you do not have - listing one the project does not target costs an error for nothing. This never affects the Maven build, which ignores the setting entirely. Fully documented in `docs/error-fixes/invalid-runtime-for-javase.md`.
+- **Maven fails with `PKIX path building failed` or `PKIX path validation failed`.** Some antivirus and corporate proxies (Avast, Kaspersky, Zscaler and others) intercept HTTPS by re-signing it with their own root certificate. Windows trusts that root; a freshly installed JDK does not. Import it into the JDK truststore with `keytool -importcert -trustcacerts -alias corp-proxy -file the-root.cer -cacerts -storepass changeit`. For npm, set `NODE_EXTRA_CA_CERTS` to a PEM copy. **These roots rotate**, so a build that worked yesterday can fail today - re-export and re-import, deleting the old alias first. If your machine has no such interception, none of this applies; Maven simply downloads.
+- **The Maven Wrapper script or `java.exe` vanishes, or restoring it gives `Access denied` while other files write fine.** Antivirus false-positive quarantine. Avast has removed both `backend/mvnw.cmd` and a freshly installed `java.exe`. Restore from Quarantine and add exclusions for the project folder and your JDK install directory.
+- **A browser cannot reach `localhost:4200`.** A system proxy may capture loopback traffic. Launch browser automation with `--no-proxy-server --proxy-bypass-list=<-loopback>`.
+- **SQL Server will not accept a JDBC connection.** Work through these in order, since the defaults differ by installation: TCP enabled at all; the port the instance actually listens on; whether the instance is *named* (dynamic ports that change on every restart, so pin one) or the *default* instance (usually 1433 already); and whether authentication is Mixed Mode, which is required because the application signs in with the SQL login `tracker_app` rather than a Windows identity. Enabling TCP and changing the auth mode can be done through `xp_instance_regwrite` without an elevated shell if you are a sysadmin on the instance, but **restarting the service needs elevation**. A worked example is in `docs/memory/PROJECT_STATUS.md` section 5.
+- **`node_modules/` is missing.** Run `npm install` in `frontend/tracker-ui`. Do not assume it is present because a document says the project ships with dependencies installed. Note also that npm 11 blocks package install scripts by default; if an esbuild platform error appears, run `npm approve-scripts --allow-scripts-pending`.
+
+#### When you hit a new machine-specific problem
+
+Add it to **Group B as a symptom**, not to Group A as a fact, and keep your own machine's literal values in `docs/memory/PROJECT_STATUS.md` rather than here. A gotcha written as "the path is X" becomes wrong the moment somebody clones the project; the same gotcha written as "if you see error Y, check Z" stays useful everywhere.
 
 ## Coding Standards & Patterns
 
@@ -167,6 +210,7 @@ Report results honestly, including failures. Do not describe a check as passing 
   - `guides/` - quick start, testing, how-to
   - `error-fixes/` - bug fixes, error resolutions, issue tracking
   - `daily-reports/` - daily progress and status updates
+  - `memory/` - session handoff. Implementation state, settled decisions, and the per-machine values the rest of the documentation deliberately avoids hardcoding. Kept current rather than dated, which is what separates it from `daily-reports/`.
 - **Never** leave documentation files loose in the `docs/` root, apart from `DOCUMENTATION_INDEX.md`.
 
 ## Error Resolution Procedure
