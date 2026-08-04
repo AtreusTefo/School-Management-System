@@ -23,20 +23,32 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Temurin 25, matching the JDK the project is developed against. `cache:
       # maven` keeps ~/.m2 between runs, which is the difference between a
       # two-minute job and a five-minute one.
       - name: Set up JDK 25
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '25'
           distribution: 'temurin'
           cache: maven
 
-      # No `chmod +x mvnw` step: the wrapper is committed with its permission
-      # bit, and running it through `sh` would mask a genuinely broken wrapper.
+      # There is no `chmod +x mvnw` step here, and that is deliberate.
+      #
+      # The first run of this workflow failed with "./mvnw: Permission denied"
+      # (exit 126), because the wrapper was committed as mode 100644. It was
+      # checked in from Windows, where core.filemode is false and git cannot see
+      # the Unix executable bit, so it had never been executable for anybody
+      # cloning on Linux or macOS - the defect simply had no way to show itself
+      # until something ran it on Ubuntu.
+      #
+      # The fix belongs in the repository, not here: the mode was corrected to
+      # 100755 with `git update-index --chmod=+x backend/mvnw`. A chmod step in
+      # CI would have made this job pass while leaving every Linux and macOS
+      # clone with a wrapper it still could not run. Invoking `sh mvnw` would
+      # hide it just as effectively.
       - name: Run the test suite
         working-directory: backend
         run: ./mvnw --batch-mode test
@@ -52,10 +64,15 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
+      # node-version is the Node the BUILD runs on, which is unrelated to the
+      # Node the action itself runs on - the v4 actions were pinned to Node 20
+      # and the runner had begun forcing them onto 24, which is what the
+      # deprecation warnings on the first run were about. Bumping the action
+      # majors resolves that; 20 is still the right build target.
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '20'
           cache: npm

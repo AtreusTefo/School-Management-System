@@ -61,6 +61,7 @@ document permitted to sit loose in `docs/`; everything else belongs in a subfold
 | Document | Contents |
 |----------|----------|
 | [`invalid-runtime-for-javase.md`](error-fixes/invalid-runtime-for-javase.md) | The Red Hat Java extension reporting "Invalid runtime for JavaSE-nn: the path points to a missing or inaccessible folder". Root cause: `java.configuration.runtimes` in `.vscode/settings.json` listed four JDK paths belonging to the original development machine. Editor-only; the Maven build reads `JAVA_HOME` and was unaffected. |
+| [`mvnw-permission-denied-in-ci.md`](error-fixes/mvnw-permission-denied-in-ci.md) | GitHub Actions failing with "./mvnw: Permission denied" and exit code 126. Root cause: `backend/mvnw` was committed as mode 100644 because Windows sets `core.filemode=false`, so the wrapper had never been executable on a Unix filesystem. Fixed in the repository with `git update-index --chmod=+x`, not with a `chmod` step in CI. |
 
 ---
 

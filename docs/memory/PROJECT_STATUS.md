@@ -352,6 +352,14 @@ These cost real time. Check them before diagnosing further.
 
 - **Stop the backend before rebuilding.** Windows holds a lock on the running jar and
   `mvnw clean` fails to delete it.
+- **Committing from Windows loses the Unix executable bit.** Git for Windows sets
+  `core.filemode=false`, so every file is stored as mode `100644`. This is why CI
+  failed with `./mvnw: Permission denied` and exit 126 the first time it ran on
+  Ubuntu - the wrapper had never been executable for any Linux or macOS clone, and
+  Windows never noticed because it runs `mvnw.cmd`. Fix a file's mode in the
+  repository with `git update-index --chmod=+x <path>`, never with a `chmod` step in
+  CI, which would leave every Unix clone still broken. Check with
+  `git ls-files -s <path>`. See `docs/error-fixes/mvnw-permission-denied-in-ci.md`.
 - **Never wait on network idle** against the Angular dev server. Its live-reload
   websocket stays open, so that condition never arrives. Wait for the document.
 - **Write SQL Server migrations as separate `GO` batches.** SQL Server compiles a
