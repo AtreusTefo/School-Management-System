@@ -14,6 +14,7 @@ import com.example.tracker.repository.AssignmentRepository;
 import com.example.tracker.repository.CourseRepository;
 import com.example.tracker.repository.EnrolmentRepository;
 import com.example.tracker.repository.SubmissionRepository;
+import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -231,12 +232,27 @@ public class AssignmentService {
         return AssignmentView.of(assignment, studentCount, 0);
     }
 
+    /**
+     * WHY THE GUARDS BELOW ARE @NonNull, AND WHY THEY GO THROUGH Require.orThrow
+     * ----------------------------------------------------------------------------
+     * Every one of them either returns a real object or throws. There is no path
+     * that returns null, which is the entire point of a method called "require".
+     *
+     * Stating that on the method is what lets the result be handed straight to
+     * repository methods that demand non-null. But the method BODY still ended
+     * in `.orElseThrow(...)`, and `java.util.Optional` carries no null-safety
+     * annotations - so declaring the method @NonNull only moved the warning
+     * inside, to the return statement the compiler could no longer take on
+     * trust. Require.orThrow proves the same guarantee with a plain null check
+     * instead, which needs no annotation to be believed.
+     */
+    @NonNull
     private Assignment requireAssignment(Long id) {
         if (id == null) {
             throw new IllegalArgumentException("Assignment id must not be null.");
         }
-        return assignments.findById(id)
-                .orElseThrow(() -> new AssignmentNotFoundException(id));
+        return Require.orThrow(assignments.findById(id),
+                () -> new AssignmentNotFoundException(id));
     }
 
     private Course requireCourse(Long courseId) {
@@ -265,6 +281,7 @@ public class AssignmentService {
         }
     }
 
+    @NonNull
     private Assignment requireOwnCourse(Long id, String action) {
         AppUser me = requireTeacher(action + " an assignment");
         Assignment assignment = requireAssignment(id);
@@ -272,6 +289,7 @@ public class AssignmentService {
         return assignment;
     }
 
+    @NonNull
     private AppUser requireTeacher(String action) {
         AppUser me = users.currentActiveUser();
         if (me.getRole() != Role.TEACHER) {

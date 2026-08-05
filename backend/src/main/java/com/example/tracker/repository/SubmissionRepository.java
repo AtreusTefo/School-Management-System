@@ -6,6 +6,7 @@ import com.example.tracker.model.AssignmentStatus;
 import com.example.tracker.model.Submission;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -22,10 +23,24 @@ import java.util.Optional;
 @Repository
 public interface SubmissionRepository extends JpaRepository<Submission, Long> {
 
-    /** Everything one student owes or has handed in - what a student sees. */
+    /**
+     * Everything one student owes or has handed in - what a student sees.
+     *
+     * WHY THE LIST RETURNS ARE @NonNull
+     * A Spring Data query method with a collection return type NEVER returns
+     * null; when nothing matches it returns an empty list. That is a real
+     * guarantee, and stating it lets these results be passed straight to
+     * deleteAll() and the stream API, which require non-null.
+     *
+     * Left unstated, every caller got "needs unchecked conversion" for a value
+     * that cannot be null - and a warning that is always wrong is a warning
+     * people stop reading.
+     */
+    @NonNull
     List<Submission> findByStudentOrderByIdAsc(AppUser student);
 
     /** Every student's state for one assignment - the teacher's marking list. */
+    @NonNull
     List<Submission> findByAssignmentOrderByIdAsc(Assignment assignment);
 
     Optional<Submission> findByAssignmentAndStudent(Assignment assignment, AppUser student);

@@ -289,6 +289,51 @@ submission_file.content      varbinary(max) NOT NULL
 submission_file.uploaded_at  datetimeoffset(6) NOT NULL
 ```
 
+#### Marks, and why nothing derived is stored
+
+```
+assessment.student_id      bigint         NOT NULL   \ composite FK -> app_user(id, role)
+assessment.student_role    nvarchar(20)   NOT NULL   / CHECK = 'STUDENT'
+assessment.course_id       bigint         NOT NULL   FK -> course(id)
+assessment.submission_id   bigint         NULL       \ composite FK -> submission(id, student_id)
+                                                     / so a mark cannot be attached to
+                                                       another student's work
+assessment.name            nvarchar(100)  NOT NULL   CHECK not blank
+assessment.score           decimal(6,2)   NOT NULL   CHECK >= 0
+assessment.max_score       decimal(6,2)   NOT NULL   CHECK > 0
+                                          CHECK score <= max_score   <- the headline rule
+assessment.recorded_by_id  bigint         NOT NULL   \ composite FK -> app_user(id, role)
+assessment.recorded_by_role nvarchar(20)  NOT NULL   / CHECK = 'TEACHER'
+assessment.(student_id, course_id, name)             UNIQUE
+assessment.submission_id                             UNIQUE *filtered*, WHERE NOT NULL
+```
+
+**There is no percentage column, no total, no average and no grade.** Every one of
+those is computed on read, and that is the single most important decision in this
+table. A stored average is a second copy of a truth that already exists in the
+marks, and it stops agreeing with them the first time a mark is corrected - with
+nothing anywhere to say so. Deriving them means correcting a mark corrects the
+report, with nothing to recalculate and no scheduled job to forget.
+
+`DECIMAL`, not `FLOAT`. Marks are exact quantities that get added and compared;
+binary floating point cannot represent 0.1 exactly, so totals drift and two equal
+marks can compare unequal. The same requirement money has, and the same answer.
+
+**The subject percentage is total score over total maximum**, never the mean of
+the individual percentages. A student scoring 5/10 and 90/100 has 95 out of 110 =
+86.36%; averaging the percentages gives 70% and silently treats a ten-mark quiz
+as equal in weight to a hundred-mark exam. Both look plausible on a report.
+
+**Why the index on `submission_id` is *filtered*.** SQL Server treats NULLs as
+equal for uniqueness, so a plain `UNIQUE` would permit exactly one unlinked
+assessment in the entire table and refuse every test and exam after the first.
+`WHERE submission_id IS NOT NULL` applies the rule only to the rows it is about.
+
+> One operational consequence: a filtered index makes `SET QUOTED_IDENTIFIER ON`
+> mandatory for any write to this table. The JDBC driver sets it on connect, so
+> the application never notices; `sqlcmd` does not, and the resulting error 1934
+> reads exactly like a constraint rejection.
+
 #### The role guard: how a composite key makes a rule a fact
 
 "Only a student can be enrolled" and "only a teacher can teach" are not checks in a

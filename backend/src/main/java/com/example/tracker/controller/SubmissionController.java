@@ -100,6 +100,12 @@ public class SubmissionController {
      * A filename is user-supplied text - the service has already stripped path
      * separators and control characters, and this handles the quoting and the
      * non-ASCII encoding correctly rather than approximately.
+     *
+     * Nothing here checks the three FileDownload values for null, and it does
+     * not need to: the record declares them @NonNull, which is a guarantee the
+     * schema already enforces (every backing column is NOT NULL) and the service
+     * upholds (it throws rather than returning a record with a hole in it).
+     * Adding defensive checks here would suggest the guarantee is doubted.
      */
     @GetMapping("/{id}/file")
     public ResponseEntity<Resource> download(@PathVariable Long id) {

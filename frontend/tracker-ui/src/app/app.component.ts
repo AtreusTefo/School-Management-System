@@ -3,9 +3,11 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
-  Assignment, AssignmentService, Course, CurrentUser, SchoolClass, Submission, Subject
+  Assessment, Assignment, AssignmentService, Course, CurrentUser, Performance,
+  SchoolClass, Submission, Subject
 } from './assignment.service';
 import { FileChosen, SubmissionTableComponent } from './submission-table.component';
+import { MarksTableComponent } from './marks-table.component';
 import { environment } from '../environments/environment';
 
 /**
@@ -34,7 +36,7 @@ import { environment } from '../environments/environment';
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, FormsModule, SubmissionTableComponent],
+  imports: [CommonModule, FormsModule, SubmissionTableComponent, MarksTableComponent],
   templateUrl: './app.component.html'
 })
 export class AppComponent implements OnInit {
@@ -125,6 +127,36 @@ export class AppComponent implements OnInit {
   enrolClassId: number | null = null;
   enrolUsername = '';
   timetableNotice: string | null = null;
+
+  // ----- marks and performance (EPIC-16) -------------------------------------
+
+  /** Every mark the caller may see. A student's report, or a teacher's mark book. */
+  marks: Assessment[] = [];
+
+  /** Performance per student per subject, derived by the server from those marks. */
+  performance: Performance[] = [];
+
+  showMarkEntry = false;
+  markCourseId: number | null = null;
+  markStudent = '';
+  markName = '';
+
+  /**
+   * Held as STRINGS, not numbers, all the way to the server.
+   *
+   * An <input type="number"> bound to a number goes through a JavaScript double,
+   * which is how 34.5 can arrive as 34.499999999999996 at a BigDecimal column.
+   * Keeping the typed text intact means the server parses exactly what the
+   * teacher entered.
+   */
+  markScore = '';
+  markMaxScore = '';
+
+  /** The register for the class of the selected course, for the student picker. */
+  markCandidates: string[] = [];
+
+  editingMarkId: number | null = null;
+  markNotice: string | null = null;
 
   // ----- account self-service (EPIC-09) --------------------------------------
 
@@ -304,6 +336,8 @@ export class AppComponent implements OnInit {
         this.visibleSubmissions = [];
         this.assignments = [];
         this.courses = [];
+        this.marks = [];
+        this.performance = [];
         this.statusFilter = 'ALL';
         this.errorMessage = null;
         // Clear the account forms too. Leaving a half-typed password in a field
@@ -312,6 +346,8 @@ export class AppComponent implements OnInit {
         this.showCreateUser = false;
         this.showSetWork = false;
         this.showTimetable = false;
+        this.showMarkEntry = false;
+        this.markNotice = null;
         this.passwordNotice = null;
         this.createUserNotice = null;
         this.timetableNotice = null;
@@ -458,9 +494,29 @@ export class AppComponent implements OnInit {
   loadEverything(): void {
     this.loadSubmissions();
     this.loadCourses();
+    this.loadMarks();
     if (this.isTeacher) {
       this.loadAssignments();
     }
+  }
+
+  /**
+   * Marks and the performance summary, fetched together.
+   *
+   * Two requests rather than one, and deliberately not derived from each other
+   * in the browser: the summary is the SERVER's arithmetic, and asking it means
+   * the report on screen and the report a teacher exports are the same numbers
+   * the database would produce for anybody else.
+   */
+  loadMarks(): void {
+    this.service.getAssessments().subscribe({
+      next: (data) => this.marks = data,
+      error: (err) => this.showError(err, 'Could not load marks')
+    });
+    this.service.getPerformance().subscribe({
+      next: (data) => this.performance = data,
+      error: (err) => this.showError(err, 'Could not load the performance summary')
+    });
   }
 
   loadSubmissions(): void {
@@ -726,6 +782,140 @@ export class AppComponent implements OnInit {
         this.openTimetable();   // refresh the counts
       },
       error: (err) => this.showError(err, 'Could not enrol that student')
+    });
+  }
+
+  // ----- marks (EPIC-16) -----------------------------------------------------
+
+  /** The title printed on the exported PDF, so a saved report says whose it is. */
+  get markReportTitle(): string {
+    return this.isTeacher
+      ? `Marks report - ${this.user?.username ?? ''}`
+      : `My marks - ${this.user?.username ?? ''}`;
+  }
+
+  openMarkEntry(): void {
+    this.showMarkEntry = true;
+    this.editingMarkId = null;
+    this.markNotice = null;
+    this.markCourseId = null;
+    this.markStudent = '';
+    this.markName = '';
+    this.markScore = '';
+    this.markMaxScore = '';
+    this.markCandidates = [];
+  }
+
+  closeMarkEntry(): void {
+    this.showMarkEntry = false;
+    this.editingMarkId = null;
+  }
+
+  /**
+   * When the course changes, fetch that class's register.
+   *
+   * The student picker offers only people actually enrolled, which matches what
+   * the server will accept - it refuses a mark for somebody not in the class.
+   * Offering every account and letting the save fail would be a worse way to
+   * learn the same rule.
+   */
+  onMarkCourseChange(): void {
+    this.markStudent = '';
+    this.markCandidates = [];
+    if (this.markCourseId === null) {
+      return;
+    }
+    const course = this.courses.find(c => c.id === this.markCourseId);
+    if (!course) {
+      return;
+    }
+    this.service.getClassStudents(course.classId).subscribe({
+      next: (names) => this.markCandidates = names,
+      error: (err) => this.showError(err, 'Could not load the class register')
+    });
+  }
+
+  /**
+   * String(...) rather than calling .trim() directly, and that is not paranoia.
+   *
+   * These fields are declared as strings and bound to text inputs so the typed
+   * value reaches the server unrounded. An earlier version used
+   * <input type="number">, which makes Angular write a JavaScript NUMBER into
+   * the model instead - and .trim() on a number throws, which killed this getter
+   * and left the Save button permanently disabled with nothing on screen to say
+   * why. Coercing here means a future change of input type degrades to a working
+   * form rather than a dead one.
+   */
+  get canSaveMark(): boolean {
+    const text = (value: unknown) => String(value ?? '').trim();
+
+    if (!text(this.markName) || !text(this.markScore) || !text(this.markMaxScore)) {
+      return false;
+    }
+    // Editing keeps the student and course it was recorded against; only a new
+    // mark needs them chosen.
+    if (this.editingMarkId === null) {
+      return this.markCourseId !== null && this.markStudent.trim().length > 0;
+    }
+    return true;
+  }
+
+  onSaveMark(): void {
+    if (!this.canSaveMark) {
+      return;
+    }
+
+    const done = (verb: string) => () => {
+      this.markNotice = `Mark ${verb}.`;
+      this.errorMessage = null;
+      this.showMarkEntry = false;
+      this.editingMarkId = null;
+      this.loadMarks();
+    };
+
+    // Same coercion as canSaveMark, for the same reason.
+    const text = (value: unknown) => String(value ?? '').trim();
+
+    if (this.editingMarkId !== null) {
+      this.service.updateMark(this.editingMarkId, text(this.markName),
+                              text(this.markScore), text(this.markMaxScore))
+        .subscribe({
+          next: done('corrected'),
+          error: (err) => this.showError(err, 'Could not save the mark')
+        });
+      return;
+    }
+
+    this.service.recordMark(
+      this.markCourseId!, text(this.markStudent), text(this.markName),
+      text(this.markScore), text(this.markMaxScore), null
+    ).subscribe({
+      next: done('recorded'),
+      error: (err) => this.showError(err, 'Could not record the mark')
+    });
+  }
+
+  startEditMark(mark: Assessment): void {
+    this.showMarkEntry = true;
+    this.editingMarkId = mark.id;
+    this.markNotice = null;
+    this.markCourseId = mark.courseId;
+    this.markStudent = mark.studentUsername;
+    this.markName = mark.name;
+    this.markScore = mark.score;
+    this.markMaxScore = mark.maxScore;
+  }
+
+  onDeleteMark(mark: Assessment): void {
+    if (!confirm(`Delete "${mark.name}" for ${mark.studentUsername}? This cannot be undone.`)) {
+      return;
+    }
+    this.service.deleteMark(mark.id).subscribe({
+      next: () => {
+        this.markNotice = 'Mark deleted.';
+        this.loadMarks();
+      },
+      error: (err) => this.showError(err, 'Could not delete the mark')
     });
   }
 

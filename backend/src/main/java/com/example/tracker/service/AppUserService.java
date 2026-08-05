@@ -7,6 +7,7 @@ import com.example.tracker.repository.AppUserRepository;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.lang.NonNull;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -52,9 +53,17 @@ public class AppUserService {
      * already authenticated the name - so it means the row vanished mid-session.
      * That is a genuine fault and should not be quietly swallowed.
      */
+    /**
+     * Require.orThrow, not .orElseThrow(...) directly: java.util.Optional
+     * carries no null-safety annotations, so a method declared @NonNull that
+     * ended with .orElseThrow(...) would still be flagged at its own return
+     * statement. See Require for the full reasoning; every "look this up or
+     * fail" guard in the service layer now goes through it.
+     */
+    @NonNull
     public AppUser requireByUsername(String username) {
-        return users.findByUsername(username)
-                .orElseThrow(() -> new IllegalStateException(
+        return Require.orThrow(users.findByUsername(username),
+                () -> new IllegalStateException(
                         "Authenticated user '" + username + "' no longer exists."));
     }
 
@@ -66,9 +75,10 @@ public class AppUserService {
      * about a name somebody typed, so a miss is an ordinary bad request and must
      * surface as 400 rather than 500.
      */
+    @NonNull
     public AppUser findByUsernameOrReject(String username) {
-        return users.findByUsername(username)
-                .orElseThrow(() -> new IllegalArgumentException(
+        return Require.orThrow(users.findByUsername(username),
+                () -> new IllegalArgumentException(
                         "No account named '" + username + "'."));
     }
 

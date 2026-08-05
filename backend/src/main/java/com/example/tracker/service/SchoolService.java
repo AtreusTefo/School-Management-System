@@ -15,6 +15,7 @@ import com.example.tracker.repository.CourseRepository;
 import com.example.tracker.repository.EnrolmentRepository;
 import com.example.tracker.repository.SchoolClassRepository;
 import com.example.tracker.repository.SubjectRepository;
+import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -275,21 +276,27 @@ public class SchoolService {
      * would surface as a 500, which says "the server broke" about a mistake the
      * client made.
      */
+    @NonNull
     private SchoolClass requireClass(Long classId) {
         if (classId == null) {
             throw new IllegalArgumentException("Class id must not be null.");
         }
-        return classes.findById(classId)
-                .orElseThrow(() -> new ResourceNotFoundException("class", classId));
+        // Require.orThrow, not .orElseThrow(...) directly: java.util.Optional
+        // carries no null-safety annotations, so a method declared @NonNull that
+        // ended with .orElseThrow(...) would still be flagged at its own return
+        // statement. See Require for the full reasoning.
+        return Require.orThrow(classes.findById(classId),
+                () -> new ResourceNotFoundException("class", classId));
     }
 
     /** The same guard for subjects. */
+    @NonNull
     private Subject requireSubject(Long subjectId) {
         if (subjectId == null) {
             throw new IllegalArgumentException("Subject id must not be null.");
         }
-        return subjects.findById(subjectId)
-                .orElseThrow(() -> new ResourceNotFoundException("subject", subjectId));
+        return Require.orThrow(subjects.findById(subjectId),
+                () -> new ResourceNotFoundException("subject", subjectId));
     }
 
     /**

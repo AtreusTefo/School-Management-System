@@ -1,6 +1,7 @@
 package com.example.tracker;
 
 import com.example.tracker.model.AppUser;
+import com.example.tracker.model.Assessment;
 import com.example.tracker.model.Assignment;
 import com.example.tracker.model.Course;
 import com.example.tracker.model.Enrolment;
@@ -9,6 +10,7 @@ import com.example.tracker.model.SchoolClass;
 import com.example.tracker.model.Subject;
 import com.example.tracker.model.Submission;
 import com.example.tracker.repository.AppUserRepository;
+import com.example.tracker.repository.AssessmentRepository;
 import com.example.tracker.repository.AssignmentRepository;
 import com.example.tracker.repository.CourseRepository;
 import com.example.tracker.repository.EnrolmentRepository;
@@ -24,6 +26,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.core.annotation.Order;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
+import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -195,6 +199,61 @@ public class TrackerApplication {
             log.info("Seeded {} assignments and {} submissions",
                     assignments.count(), submissions.count());
         };
+    }
+
+    /**
+     * A few marks, so both portals show a real report rather than an empty one.
+     *
+     * The numbers are chosen to land in DIFFERENT performance bands, because
+     * seed data where every student sits in the same band cannot demonstrate
+     * that the banding works at all - and a report that looks plausible while
+     * being uniform is exactly the kind that hides an off-by-one in a threshold.
+     *
+     * student  ends up around 86%  (Outstanding)
+     * student2 ends up around 54%  (Adequate)
+     *
+     * It also deliberately gives one student two marks in the same subject with
+     * DIFFERENT maxima - 5/10 and 90/100 - because that is the case where a
+     * naive average disagrees with the correct one. Anyone changing the
+     * arithmetic will see the difference here first.
+     */
+    @Bean
+    @Order(4)
+    CommandLineRunner seedMarks(AssessmentRepository assessments,
+                                CourseRepository courses,
+                                SubjectRepository subjects,
+                                SchoolClassRepository classes,
+                                AppUserRepository users) {
+        return args -> {
+            if (assessments.count() > 0) {
+                return;
+            }
+
+            AppUser teacher = require(users, "teacher");
+            AppUser student = require(users, "student");
+            AppUser student2 = require(users, "student2");
+
+            Course mathsTenA = requireCourse(courses, subjects, classes, "MATH", "Grade 10A", teacher);
+            Course historyTenA = requireCourse(courses, subjects, classes, "HIST", "Grade 10A", teacher);
+
+            mark(assessments, student, mathsTenA, "Term 1 Test", "5", "10", teacher);
+            mark(assessments, student, mathsTenA, "Term 1 Exam", "90", "100", teacher);
+            mark(assessments, student, historyTenA, "Source analysis", "17", "20", teacher);
+
+            mark(assessments, student2, mathsTenA, "Term 1 Test", "6", "10", teacher);
+            mark(assessments, student2, mathsTenA, "Term 1 Exam", "53", "100", teacher);
+            mark(assessments, student2, historyTenA, "Source analysis", "9", "20", teacher);
+
+            log.info("Seeded {} marks", assessments.count());
+        };
+    }
+
+    private void mark(AssessmentRepository assessments, AppUser student, Course course,
+                      String name, String score, String maxScore, AppUser teacher) {
+        assessments.save(new Assessment(
+                student, course, null, name,
+                new BigDecimal(score), new BigDecimal(maxScore),
+                teacher, Instant.now()));
     }
 
     // ----- idempotent helpers --------------------------------------------------

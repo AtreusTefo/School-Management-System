@@ -8,9 +8,18 @@
 - **Main Goal:** A small, heavily commented full-stack application that tracks assignment submission state, built to demonstrate a strictly layered architecture. Both goals are real: the software must work, and the code must stay readable enough to teach from.
 
 ### Scope Guard - Read Before Adding Features
-The repository is named *School Management System*, but the delivered system is one slice of that idea: **assignment tracking with PDF hand-in**. Nine entities (`AppUser`, `Subject`, `SchoolClass`, `Enrolment`, `Course`, `Assignment`, `Submission`, `SubmissionFile`, plus the `Role`/`AssignmentStatus` enums), two roles (`TEACHER`, `STUDENT`).
+The repository is named *School Management System*, but the delivered system is one slice of that idea: **assignment tracking with PDF hand-in**. Ten entities (`AppUser`, `Subject`, `SchoolClass`, `Enrolment`, `Course`, `Assignment`, `Submission`, `SubmissionFile`, `Assessment`, plus the `Role`/`AssignmentStatus`/`PerformanceLevel` enums), two roles (`TEACHER`, `STUDENT`).
 
-There are **no** grades, marks, assessments, performance levels, audit logs, notifications, terms or timetable periods. Documentation describing such features was inherited from an unrelated ASP.NET project; do not reintroduce it, and do not assume a feature exists because a document once mentioned it. Verify against the code.
+There are **no** audit logs, notifications, terms or timetable periods. Documentation describing such features was inherited from an unrelated ASP.NET project; do not reintroduce it, and do not assume a feature exists because a document once mentioned it. Verify against the code.
+
+**Marks, percentages and performance levels DO exist now** (added 5 August 2026, `Assessment` + `PerformanceLevel`). Earlier revisions of this file said they did not, and that was true when written.
+
+Two rules about them matter more than the rest:
+
+- **A score can never exceed its maximum.** `ck_assessment_score_within_max`. "34 out of 20" is not a high mark, it is a corrupt row, and every average computed from it afterwards is silently wrong.
+- **Nothing derived is stored.** Percentages, totals, averages and performance levels are computed on read, every time. A stored average is wrong the moment one mark is corrected, and keeping it honest would need a trigger or a job somebody forgets to run. The bands live in one place: `PerformanceLevel`.
+
+A subject percentage is **total score over total maximum**, never the mean of the individual percentages. Those are different numbers: 5/10 and 90/100 is 95/110 = 86.36%, while averaging the percentages gives 70% and silently treats a ten-mark quiz as equal to a hundred-mark exam.
 
 **Subjects, classes and file uploads DO exist now** (added 4 August 2026). Earlier revisions of this file said they did not, and that was true when written - the model has since grown to carry them, because four requirements were unrepresentable without them:
 
@@ -56,12 +65,15 @@ School Management System/
 │       │   ├── TrackerApplication.java  # Entry point + seed runners: accounts, then
 │       │   │                            #   timetable, then assignments (@Order matters)
 │       │   ├── controller/     # AssignmentController, SubmissionController,
-│       │   │                   #   SchoolController, AuthController, UserController
+│       │   │                   #   SchoolController, AssessmentController,
+│       │   │                   #   AuthController, UserController
 │       │   ├── service/        # AssignmentService (fan-out), SubmissionService (PDF),
-│       │   │                   #   SchoolService (timetable), AppUserService
+│       │   │                   #   SchoolService (timetable), AssessmentService (marks),
+│       │   │                   #   AppUserService
 │       │   ├── repository/     # One per entity (Spring Data JPA)
 │       │   ├── model/          # AppUser, Role, Subject, SchoolClass, Enrolment, Course,
-│       │   │                   #   Assignment, Submission, SubmissionFile, AssignmentStatus
+│       │   │                   #   Assignment, Submission, SubmissionFile, AssignmentStatus,
+│       │   │                   #   Assessment, PerformanceLevel
 │       │   ├── dto/            # Records the API publishes - see SubjectView for why
 │       │   ├── config/         # SecurityConfig (auth, CSRF), CorsConfig (allowed origins)
 │       │   ├── security/       # AppUserDetailsService - loads accounts for Spring Security
@@ -71,7 +83,8 @@ School Management System/
 │       │   ├── application.properties
 │       │   └── db/migration/   # Flyway, SQL Server dialect - V1 baseline, V2 accounts and
 │       │                       #   ownership, V3 must-change-password, V4 subjects/classes/
-│       │                       #   courses/submissions, V5 timestamp column types
+│       │                       #   courses/submissions, V5 timestamp column types,
+│       │                       #   V6 assessment and marks
 │       └── test/
 │           ├── java/com/example/tracker/
 │           │   ├── AssignmentApiTest.java            # MockMvc, real security
@@ -100,7 +113,7 @@ School Management System/
 - **Build backend:** `.\mvnw.cmd clean package -DskipTests` produces `backend/target/tracker-0.0.1-SNAPSHOT.jar`.
 - **Build frontend:** `npm run build` in `frontend/tracker-ui`.
 - **Type-check frontend:** `npx tsc --noEmit -p tsconfig.app.json`.
-- **Run tests:** `.\mvnw.cmd test` - 69 tests, run against H2, no SQL Server needed.
+- **Run tests:** `.\mvnw.cmd test` - 85 tests, run against H2, no SQL Server needed.
 - **Database:** SQL Server, database `School Management System`, login `tracker_app`. The connection string in `application.properties` uses port 14333; confirm your instance actually listens there before assuming a failure is the application's fault. Query it with:
   `sqlcmd -S "tcp:localhost,14333" -U tracker_app -P 'Tracker!2026Dev' -d "School Management System"`
 - **Development accounts:** `teacher` and `student`, both password `password123`, reset at every startup.
@@ -133,6 +146,7 @@ between installations.
 - **Never wait on network idle** against the Angular dev server. Its live-reload websocket stays open, so that condition never arrives. Wait for the document instead.
 - **The editor may use a different TypeScript than the build.** `.vscode/settings.json` pins `typescript.tsdk` to the project copy; select "Use Workspace Version" once when prompted, or the editor will report errors the build does not.
 - **Do not round-trip UTF-8 files through PowerShell `Get-Content`/`Set-Content`.** It mangles the box-drawing characters in this file's directory tree. Edit Markdown with an editor or a tool that preserves encoding.
+- **A single NUL byte makes a source file invisible to `grep` and `ripgrep`.** They classify it as binary and skip it, so the file silently drops out of every code search - while `javac` compiles it without complaint. This happened for real in `AssessmentService.java`, where a separator in a map key came out as `"\0"` instead of `" "`. Symptom: `grep` prints `Binary file X matches` instead of the matching lines. Check with `python -c "print(open('F','rb').read().count(b'\x00'))"`, and prefer a structured map key - `List.of(a, b)` - over concatenating with a delimiter, since then there is no separator to get wrong.
 - **PowerShell's `-WebSession` persists headers between requests.** A probe that sets `X-XSRF-TOKEN` once will silently resend it forever, so a "no token" test passes for the wrong reason. Call `$session.Headers.Clear()` before asserting that a header is absent - but note that clearing it also strips the token from later writes, which then return `403` for CSRF reasons and are easily misread as an authorisation result.
 - **Register Playwright dialog handlers before navigating.** Playwright dismisses dialogs by default, so a late `page.on('dialog', ...)` means `confirm()` returns false and the action under test never runs.
 
@@ -165,6 +179,23 @@ Angular  --HTTP-->  Controller  -->  Service  -->  Repository  -->  Database
 
 ### Validation
 Validate at both the web edge and in the service, deliberately. `@Valid` plus `@NotBlank` on the request DTO guards the edge; the service guard protects the rule no matter who calls it. Never rely on the client alone, and never rely on a single layer.
+
+### Nullability - state the guarantee, do not suppress the warning
+The editor runs Eclipse's null analysis (`java.compile.nullAnalysis.mode`), and it has caught real gaps. When it reports **"needs unchecked conversion to conform to `@NonNull`"** in production code, the cause is almost always that *our own* declaration carries no contract, so the analysis cannot see a guarantee that is genuinely true.
+
+Annotate the declaration with `org.springframework.lang.NonNull` rather than silencing the call site:
+
+| Declaration | Why it is genuinely non-null |
+|---|---|
+| `FileDownload` components | every backing column is `NOT NULL`; the service throws rather than returning a hole |
+| Repository methods returning `List<T>` | Spring Data returns an empty list, never null |
+| Private `require*` guards | they return a real object or throw - that is what "require" means |
+
+**Annotating a `require*` guard `@NonNull` is not the end of it.** If the method body ends in `.orElseThrow(...)`, the warning does not disappear - it moves inside, to that return statement, because `java.util.Optional` is itself an unannotated JDK type and the compiler now has to verify the guarantee it was just told to trust. Route it through `service.Require.orThrow(optional, exceptionSupplier)` instead: it replaces `Optional`'s opaque generic return with a plain `if (value == null) throw ...;` check, which Eclipse's null-flow analysis verifies natively with no annotation involved at all. Every "look this up or fail" guard in the service layer (`AppUserService`, `AssessmentService`, `AssignmentService`, `SchoolService`, `SubmissionService`) goes through it - if you add a new one, use it from the start rather than rediscovering this.
+
+Two rules about this:
+- **Never annotate something `@NonNull` to quiet a warning when it can actually be null.** That converts a visible warning into a runtime NPE. If it can be null, say `@Nullable` and handle it - `MultipartFile.getOriginalFilename()` is a real example, and `SubmissionService.sanitiseFilename` handles it.
+- **`@SuppressWarnings("null")` is for TEST code only**, where the unannotated signatures belong to third-party libraries (Mockito, Hamcrest, Spring Test) and cannot be changed. Every use carries a written justification. In production code the answer is to fix the declaration - see `CorsConfig`, `SchoolService` and `FileDownload` for the precedent.
 
 ### Error handling contract
 The service signals problems by throwing. `GlobalExceptionHandler` translates exceptions into status codes. Never return a bare `500` for a client mistake.
@@ -203,9 +234,12 @@ Do not echo driver or stack-trace text to the client. Constraint-violation detai
 - **JPA cannot express those composite keys, so the H2 test schema is weaker than production.** Tests get the `CHECK` plus a single-column foreign key, which still refuses a row claiming a role it may not hold. What only SQL Server refuses is a row claiming STUDENT for a teacher's id. Verify that half with `sqlcmd`.
 - **Hibernate maps `java.time.Instant` to `datetimeoffset`, not `datetime2`.** Declaring a timestamp column as `DATETIME2` in a migration and mapping it from `Instant` fails at startup with `Schema-validation: wrong column type`. This is `ddl-auto=validate` doing its job - the alternative is times that silently lose their offset. Fixed in `V5__timestamp_columns_with_offset.sql`.
 - **Never edit an applied migration.** Flyway stores a checksum of every one precisely so an applied migration cannot be changed underneath a database that has run it. A correction gets its own version, even when the mistake is minutes old.
+- **Money-like values are `DECIMAL` and `BigDecimal`, never `FLOAT` or `double`.** Marks get added up and compared; binary floating point cannot represent 0.1 exactly, so totals drift and two equal marks can compare unequal. This extends to the browser: an `<input type="number">` bound with `[(ngModel)]` routes the value through a JavaScript double, which is why the mark fields are `type="text"` with `inputmode="decimal"` and are carried as strings all the way to the server.
+- **A `UNIQUE` constraint on a nullable column is not what you want in SQL Server.** It treats NULLs as equal, so it permits exactly ONE null row in the whole table. "At most one mark per submission, but many marks with no submission" needs a **filtered** unique index (`WHERE submission_id IS NOT NULL`).
+- **A filtered index makes `SET QUOTED_IDENTIFIER ON` mandatory for writes.** Any INSERT/UPDATE/DELETE on a table carrying one fails with error 1934 unless the session sets it. The JDBC driver sets it on connect, so the application is unaffected - but `sqlcmd` defaults it OFF, and the resulting failure looks exactly like the schema rejecting your data when it is really the session being misconfigured. Put `SET QUOTED_IDENTIFIER ON;` at the top of any ad-hoc script that writes to `assessment`.
 
 ### Testing Requirements
-There is an automated suite: `.\mvnw.cmd test` runs 36 tests, and `package` fails the build if any fail. Add to it rather than reverting to manual checks.
+There is an automated suite: `.\mvnw.cmd test` runs 85 tests, and `package` fails the build if any fail. Add to it rather than reverting to manual checks.
 
 - **Unit tests** (`AssignmentServiceTest`) - business rules with the repository mocked.
 - **Full-stack tests** (`AssignmentApiTest`) - MockMvc with real security; every status code in the error contract.

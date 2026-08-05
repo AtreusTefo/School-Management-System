@@ -52,6 +52,7 @@ document permitted to sit loose in `docs/`; everything else belongs in a subfold
 
 | Document | Contents |
 |----------|----------|
+| [`2026-08-05.md`](daily-reports/2026-08-05.md) | Work of 5 August 2026: marks, automatic scoring and performance levels; a report with PDF export for both roles; nothing derived stored; and the mark-ownership guard that stops a mark being attached to another student's work. |
 | [`2026-08-04.md`](daily-reports/2026-08-04.md) | Work of 4 August 2026: splitting `Assignment` into assignment and submission, adding subjects, classes, enrolment and courses, PDF upload and download, and making the role rules facts about the data through composite foreign keys. |
 | [`2026-07-29.md`](daily-reports/2026-07-29.md) | Work of 29 July 2026: separating the two halves for independent deployment, then completing the four remaining epics — SQL Server persistence, accounts and roles, the full assignment lifecycle, and a 36-test automated suite. |
 | [`2026-07-28.md`](daily-reports/2026-07-28.md) | Work of 28 July 2026: enforcing data integrity at the database, fixing a concurrency defect measured before and after, upgrading to Java 25 and Spring Boot 3.5.16, and replacing documentation that described an unrelated application. |

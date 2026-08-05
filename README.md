@@ -15,6 +15,12 @@ and an **Angular frontend**. Beginner-friendly, heavily commented.
 - **Reopen** handed-in work so a student can correct it (teachers only)
 - **Edit and delete** work that was set — refused once anybody has handed in
 - **Due dates**, with `OVERDUE` shown for work past its deadline
+- **Record marks**, with the percentage and performance level worked out
+  automatically. A teacher enters "34 out of 50"; the system does the rest
+- **A marks report** with sorting, search and **Export PDF** — for a teacher
+  across the courses they take, and for a student over their own results
+- **Performance per subject**: totals, percentage and level, derived from the
+  marks and stored nowhere
 - **Sort, search and filter** the list, with a summary of what is outstanding
 - **Change your own password**, and **create student accounts** (teachers only) that
   must have their temporary password replaced at first sign-in
@@ -73,15 +79,17 @@ School Management System/
 │   └── src/main/
 │       ├── java/com/example/tracker/
 │       │   ├── TrackerApplication.java  # startup + seed: accounts, timetable, work
-│       │   ├── model/          # MODEL layer - the nine entities
+│       │   ├── model/          # MODEL layer - the ten entities
 │       │   │   ├── AppUser.java, Role.java
 │       │   │   ├── Subject.java, SchoolClass.java, Enrolment.java, Course.java
-│       │   │   └── Assignment.java, Submission.java, SubmissionFile.java
+│       │   │   ├── Assignment.java, Submission.java, SubmissionFile.java
+│       │   │   └── Assessment.java, PerformanceLevel.java
 │       │   ├── repository/     # DATA ACCESS layer - one interface per entity
 │       │   ├── service/        # BUSINESS layer
 │       │   │   ├── AssignmentService.java   # sets work, fans out to the class
 │       │   │   ├── SubmissionService.java   # PDF upload, hand-in, download
 │       │   │   ├── SchoolService.java       # subjects, classes, enrolment, courses
+│       │   │   ├── AssessmentService.java   # marks, and the derived arithmetic
 │       │   │   └── AppUserService.java      # who is calling, passwords
 │       │   ├── controller/     # PRESENTATION layer - HTTP only, no rules
 │       │   ├── dto/            # the records the API publishes, never entities
@@ -91,7 +99,7 @@ School Management System/
 │       │       └── GlobalExceptionHandler.java       # exception -> HTTP status
 │       └── resources/
 │           ├── application.properties
-│           └── db/migration/   # Flyway, SQL Server dialect, V1 to V5
+│           └── db/migration/   # Flyway, SQL Server dialect, V1 to V6
 └── frontend/
     ├── tracker-ui/                 # ← THE RUNNABLE ANGULAR PROJECT (ng serve here)
     │   └── src/                    #   working copy of the files below
@@ -102,6 +110,7 @@ School Management System/
             ├── assignment.service.ts        # the only place that knows API URLs
             ├── csrf.interceptor.ts          # attaches X-XSRF-TOKEN cross-origin
             ├── submission-table.component.ts # DataTables owns this table
+            ├── marks-table.component.ts      # the report, with PDF export
             ├── app.component.ts             # UI logic
             └── app.component.html           # the tables, forms and banners
 ```
@@ -214,6 +223,27 @@ teacher is refused. That is the guarantee working — the alternative is a
 | Deleting a student who still has work | `fk_enrolment_student` |
 | A blank subject name, or a duplicate subject code | `CHECK` / `UNIQUE` |
 | A 300-character title | column length — **not** silent truncation |
+| **A score higher than its maximum** | `ck_assessment_score_within_max` |
+| A negative score, or a maximum of zero | `ck_assessment_score_not_negative` / `ck_assessment_max_positive` |
+| The same named assessment twice for one student | `uq_assessment_student_course_name` |
+| Marking a teacher, or a mark recorded by a student | composite FKs |
+| **A mark attached to another student's submission** | `fk_assessment_submission` (composite) |
+| Two marks on one submission | `uq_assessment_submission` (filtered index) |
+
+The score rule is the one worth dwelling on. "34 out of 20" is not a high mark —
+it is a corrupt row, and every average computed from it afterwards is silently
+wrong. That is why it is a `CHECK` constraint and not a validation message.
+
+The mark-ownership rule reuses the composite-key technique: `submission` carries
+`UNIQUE (id, student_id)`, and `assessment` points a two-column foreign key at
+it. A mark naming submission 7 and student 3 is only storable if submission 7
+really is student 3's work.
+
+> **Writing to `assessment` by hand?** Put `SET QUOTED_IDENTIFIER ON;` at the top
+> of your script. The table carries a filtered index, and SQL Server refuses any
+> write to such a table without it — with error 1934, which reads exactly like
+> the schema rejecting your data when it is really the session. The JDBC driver
+> sets it on connect, so the application is unaffected; `sqlcmd` does not.
 
 **Consistency** is separate again: `@Transactional` service methods plus a
 `@Version` column on every mutable entity. Twelve simultaneous hand-ins on one
@@ -259,6 +289,12 @@ requires the `X-XSRF-TOKEN` header.
 | GET | `/api/submissions/{id}/file` | Download the PDF |
 | PUT | `/api/submissions/{id}/submit` | Hand it in — requires an uploaded PDF |
 | PUT | `/api/submissions/{id}/unsubmit` | Reopen — teachers only |
+| GET | `/api/assessments` | Your own marks, or your mark book (scoped by role) |
+| GET | `/api/assessments/summary` | Performance per student per subject |
+| GET | `/api/assessments/course/{id}` | One course's mark book — teachers only |
+| POST | `/api/assessments` | Record a mark — teachers only |
+| PUT | `/api/assessments/{id}` | Correct a mark |
+| DELETE | `/api/assessments/{id}` | Remove a mark |
 
 Browse and try all of these at **http://localhost:8080/swagger-ui.html** while the
 backend is running. The description is generated from the controllers, so it cannot
@@ -308,10 +344,11 @@ cd "School Management System/backend"
 ./mvnw test
 ```
 
-69 tests: 17 unit tests of the business rules, 22 full-stack tests through MockMvc
+85 tests: 17 unit tests of the business rules, 22 full-stack tests through MockMvc
 with real security (including multipart upload and download), 18 covering
-concurrency and database integrity, and 12 covering account self-service. They run
-against H2, so **no SQL Server instance is needed** to run the suite.
+concurrency and database integrity, 16 covering marks and the scoring arithmetic,
+and 12 covering account self-service. They run against H2, so **no SQL Server
+instance is needed** to run the suite.
 
 `./mvnw package` runs them too, and fails the build if any test fails.
 

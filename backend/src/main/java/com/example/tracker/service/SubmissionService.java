@@ -15,6 +15,7 @@ import com.example.tracker.model.SubmissionFile;
 import com.example.tracker.repository.AssignmentRepository;
 import com.example.tracker.repository.CourseRepository;
 import com.example.tracker.repository.SubmissionRepository;
+import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -318,12 +319,21 @@ public class SubmissionService {
 
     // ----- shared guards -------------------------------------------------------
 
+    /**
+     * Require.orThrow, not .orElseThrow(...) directly: java.util.Optional
+     * carries no null-safety annotations, so a method declared @NonNull that
+     * ended with .orElseThrow(...) would still be flagged at its own return
+     * statement, unable to see past the JDK type. See Require for the full
+     * reasoning; every "look this up or 404" guard in this codebase now goes
+     * through it.
+     */
+    @NonNull
     private Submission requireSubmission(Long id) {
         if (id == null) {
             throw new IllegalArgumentException("Submission id must not be null.");
         }
-        return submissions.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("submission", id));
+        return Require.orThrow(submissions.findById(id),
+                () -> new ResourceNotFoundException("submission", id));
     }
 
     /**
@@ -347,12 +357,13 @@ public class SubmissionService {
         return submission;
     }
 
+    @NonNull
     private Assignment requireAssignment(Long id) {
         if (id == null) {
             throw new IllegalArgumentException("Assignment id must not be null.");
         }
-        return assignments.findById(id)
-                .orElseThrow(() -> new AssignmentNotFoundException(id));
+        return Require.orThrow(assignments.findById(id),
+                () -> new AssignmentNotFoundException(id));
     }
 
     /** The caller must teach this course. Explained in AssignmentService. */

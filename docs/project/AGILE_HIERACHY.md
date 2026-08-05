@@ -1372,7 +1372,68 @@ Every epic from the source map, and where it went. Nothing was dropped silently.
 | An `ADMIN` role | Nothing currently needs oversight across accounts; two roles cover the delivered behaviour |
 | Frontend component tests | Karma and Jasmine are installed but no specs exist |
 | ~~Classes, terms and subjects~~ | **Classes and subjects delivered** in Sprint 4 as EPIC-14. Terms remain outstanding (PRD R11). |
-| Marks and grading | A teacher can download a PDF to mark, but no result is recorded. The inherited hierarchy's EPIC-03 (Assessment) describes this; it is a decision, not an oversight. |
+| ~~Marks and grading~~ | **Delivered** in Sprint 5 as EPIC-16 - the inherited hierarchy's EPIC-03 (Assessment), translated. See the note below on which parts were taken and which were not. |
+| Assessment weighting | Marks count in proportion to their maximum. Declaring an exam worth 40% of the year is a further step (PRD R15). |
+
+---
+
+## Sprint 5 - Assessment
+
+**Dates:** 5 August 2026
+**Sprint Goal:** *Let a teacher record marks and have the arithmetic done for them,
+and let a student see where they stand.*
+
+### Translating the inherited EPIC-03
+
+The ASP.NET hierarchy's EPIC-03 (Assessment) described scores, averages and
+performance levels. Most of it translated directly; three things did not, and the
+differences are decisions rather than omissions.
+
+| Inherited task | What was built instead |
+|---|---|
+| `StudentAssessment` entity via EF Core migration | `Assessment` entity via Flyway migration V6. Entity Framework is .NET. |
+| "each with its own maximum score" | Taken as written, and it is the single best decision in the inherited document - it is what makes 34/50 and 68/100 distinguishable. |
+| `GetPerformanceLevel(percentage)` helper in the service | A `PerformanceLevel` enum owning its own thresholds. A helper in a service invites a second copy in a template; an enum has one home. |
+| Total, average **and percentage** stored on the student | Nothing derived is stored. All three are computed on read. |
+| Colour-coded badge CSS classes | Kept, but driven by the level the SERVER returned rather than by the browser re-deriving a band from a number. |
+
+### US-38: Have the percentage and level worked out automatically
+> **Story Points**: 5 | **Sprint**: 5 | **Status**: Done
+
+**As a** teacher,
+**I want** the system to calculate totals, percentages and performance levels,
+**so that** I do not do arithmetic by hand and nobody has to trust that I did it right.
+
+**Acceptance Criteria**
+- [x] A mark's percentage is derived from its own score and maximum.
+- [x] A subject percentage is **total score over total maximum**, not the mean of
+      the individual percentages.
+- [x] Nothing derived is stored, so correcting a mark corrects every figure above it.
+- [x] Performance bands are applied at their stated floors, inclusive.
+- [x] "No marks yet" returns no level, rather than the bottom band.
+
+> **Design note - the one that matters.** A student scoring 5/10 and 90/100 has 95
+> out of 110, which is 86.36%. Averaging the two percentages gives 70% and silently
+> treats a ten-mark quiz as equal in weight to a hundred-mark exam. Both numbers
+> look plausible on a report and only one is right, which is exactly the kind of
+> defect that survives review - so it has a test of its own, in the suite and in
+> the browser.
+
+**Tasks**
+- TASK-116: `PerformanceLevel` enum with the bands in one place
+- TASK-117: Derive percentage on `Assessment`, with explicit HALF_UP rounding
+- TASK-118: Group and total in `AssessmentService.summarise`
+- TASK-119: Assert the weighted average differs from the naive one
+
+### What went wrong, and what caught it
+
+| Problem | Caught by | Fix |
+|---|---|---|
+| `<input type="number">` with `[(ngModel)]` wrote a **number** into a field declared as a string, so `.trim()` threw and the Save button stayed permanently disabled | Driving the form in a browser | `type="text"` with `inputmode="decimal"` - which is also what the strings were for: a number input routes the value through a JavaScript double |
+| Every `sqlcmd` write to `assessment` failed with error 1934 | Running the integrity sweep | A filtered index requires `SET QUOTED_IDENTIFIER ON`. The JDBC driver sets it; `sqlcmd` does not. The failure reads exactly like a constraint rejection. |
+| A plain `UNIQUE` on `submission_id` would have allowed only ONE unlinked mark in the whole table | Thinking about NULL semantics before writing it | A filtered unique index, `WHERE submission_id IS NOT NULL` |
+| pdfmake put 1.9 MB into the initial bundle | The build failing its budget | `import()` on first click - the initial bundle went back to 519 kB |
+| A browser assertion counted table rows before DataTables had drawn them | Reading the failure rather than relaxing it | Wait for a row, not for the card |
 
 ---
 
@@ -1539,4 +1600,19 @@ of the data itself,
 | FEAT-23 | Feature | Integrity of the New Model | EPIC-15 | 8 | Done |
 | US-36 | User Story | Make role rules facts about the data, not checks in Java | FEAT-23 | 8 | Done |
 | **Subtotal** | | **2 Epics, 4 Features, 6 User Stories, 24 Tasks** | | **42 pts** | **42 delivered** |
-| **Totals** | | **15 Epics, 23 Features, 36 User Stories, 119 Tasks** | | **171 pts** | **163 delivered, US-30 outstanding** |
+
+### Sprint 5 - Assessment
+
+| ID | Type | Title | Parent | Points | Status |
+|----|------|-------|--------|--------|--------|
+| EPIC-16 | Epic | Assessment | Application | 26 | Done |
+| FEAT-24 | Feature | Recording Marks | EPIC-16 | 13 | Done |
+| US-37 | User Story | Record a mark against a named assessment | FEAT-24 | 5 | Done |
+| US-38 | User Story | Have the percentage and level worked out automatically | FEAT-24 | 5 | Done |
+| US-39 | User Story | Correct a mark entered wrong | FEAT-24 | 3 | Done |
+| FEAT-25 | Feature | Reporting | EPIC-16 | 13 | Done |
+| US-40 | User Story | See a sortable, searchable marks report | FEAT-25 | 5 | Done |
+| US-41 | User Story | Export the report as PDF | FEAT-25 | 5 | Done |
+| US-42 | User Story | See my own marks and performance as a student | FEAT-25 | 3 | Done |
+| **Subtotal** | | **1 Epic, 2 Features, 6 User Stories, 20 Tasks** | | **26 pts** | **26 delivered** |
+| **Totals** | | **16 Epics, 25 Features, 42 User Stories, 139 Tasks** | | **197 pts** | **189 delivered, US-30 outstanding** |

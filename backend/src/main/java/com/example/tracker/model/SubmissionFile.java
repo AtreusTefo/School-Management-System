@@ -19,6 +19,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import org.hibernate.annotations.Check;
 import org.hibernate.annotations.Checks;
+import org.springframework.lang.NonNull;
 
 import java.time.Instant;
 
@@ -180,10 +181,23 @@ public class SubmissionFile {
         return submission;
     }
 
+    /**
+     * WHY THESE THREE GETTERS ARE @NonNull
+     * ------------------------------------
+     * filename, contentType and content are each `@Column(nullable = false)`
+     * and validated with `@NotBlank`/`@NotNull` at construction - there is no
+     * constructor and no setter that can leave any of them empty on a persisted
+     * row. That is a real guarantee the schema and the constructor both hold,
+     * and stating it here is what lets SubmissionService.download hand these
+     * straight to FileDownload's own @NonNull components without a cast, a
+     * null check, or a suppression at the boundary between the two.
+     */
+    @NonNull
     public String getFilename() {
         return filename;
     }
 
+    @NonNull
     public String getContentType() {
         return contentType;
     }
@@ -196,6 +210,7 @@ public class SubmissionFile {
         return sha256;
     }
 
+    @NonNull
     public byte[] getContent() {
         return content;
     }

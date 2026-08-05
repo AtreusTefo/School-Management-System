@@ -100,6 +100,70 @@ export interface Submission {
 }
 
 /**
+ * The performance bands. Mirrors the backend PerformanceLevel enum.
+ *
+ * The thresholds live on the SERVER, not here. This type only names the bands
+ * so a typo is a compile error; deciding which band a percentage falls into is
+ * the server's job, and doing it in both places would be two implementations of
+ * one policy that could quietly disagree.
+ */
+export type PerformanceLevel =
+  | 'OUTSTANDING' | 'MERITORIOUS' | 'SUBSTANTIAL'
+  | 'ADEQUATE' | 'MODERATE' | 'ELEMENTARY' | 'NOT_ACHIEVED';
+
+/**
+ * One mark, as the API sends it.
+ *
+ * `percentage` and `level` arrive already computed. The browser never derives
+ * them, which is why the PDF export can simply dump what is on screen and still
+ * be the authoritative report.
+ *
+ * The numbers are strings, not numbers - Java sends BigDecimal as a JSON string
+ * to avoid the precision loss that turns 0.1 into 0.09999999999999999. Parse
+ * them for arithmetic if you must; for display, use them as they came.
+ */
+export interface Assessment {
+  id: number;
+  studentUsername: string;
+  courseId: number;
+  subjectCode: string;
+  subjectName: string;
+  className: string;
+  teacherUsername: string;
+  name: string;
+  score: string;
+  maxScore: string;
+  percentage: string | null;
+  level: PerformanceLevel | null;
+  levelDescription: string | null;
+  recordedByUsername: string;
+  recordedAt: string;
+  submissionId: number | null;
+}
+
+/**
+ * One student's standing in one subject.
+ *
+ * Every field is derived by the server from the marks; nothing is stored. A
+ * corrected mark corrects this the next time it is asked for, with nothing to
+ * recalculate.
+ */
+export interface Performance {
+  studentUsername: string;
+  courseId: number;
+  subjectCode: string;
+  subjectName: string;
+  className: string;
+  teacherUsername: string;
+  assessmentCount: number;
+  totalScore: string;
+  totalMaxScore: string;
+  percentage: string | null;
+  level: PerformanceLevel | null;
+  levelDescription: string | null;
+}
+
+/**
  * Who is signed in.
  *
  * `mustChangePassword` is true while the account still holds a password someone
@@ -306,6 +370,43 @@ export class AssignmentService {
   unsubmit(submissionId: number): Observable<Submission> {
     return this.http.put<Submission>(
       `${this.api}/api/submissions/${submissionId}/unsubmit`, {}, this.opts);
+  }
+
+  // ----- marks and performance -----------------------------------------------
+
+  /** A student's own marks, or a teacher's mark book. The server decides. */
+  getAssessments(): Observable<Assessment[]> {
+    return this.http.get<Assessment[]>(`${this.api}/api/assessments`, this.opts);
+  }
+
+  /** Performance per student per subject, derived server-side from the marks. */
+  getPerformance(): Observable<Performance[]> {
+    return this.http.get<Performance[]>(`${this.api}/api/assessments/summary`, this.opts);
+  }
+
+  /**
+   * Record a mark. Teacher only.
+   *
+   * score and maxScore are sent as STRINGS. A JavaScript number is a double, and
+   * routing a mark through one is how 34.5 becomes 34.499999999999996 on its way
+   * to a BigDecimal column. Keeping it as text means the server parses exactly
+   * what the teacher typed.
+   */
+  recordMark(courseId: number, studentUsername: string, name: string,
+             score: string, maxScore: string,
+             submissionId: number | null): Observable<Assessment> {
+    return this.http.post<Assessment>(`${this.api}/api/assessments`,
+      { courseId, studentUsername, name, score, maxScore, submissionId }, this.opts);
+  }
+
+  updateMark(id: number, name: string, score: string, maxScore: string)
+      : Observable<Assessment> {
+    return this.http.put<Assessment>(
+      `${this.api}/api/assessments/${id}`, { name, score, maxScore }, this.opts);
+  }
+
+  deleteMark(id: number): Observable<void> {
+    return this.http.delete<void>(`${this.api}/api/assessments/${id}`, this.opts);
   }
 
   /**

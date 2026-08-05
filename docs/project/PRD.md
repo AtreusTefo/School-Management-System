@@ -301,15 +301,29 @@ them with classes and subjects, and only the latter two were built.
 
 **~~R9 · Run the test suite in CI on every push.~~ Delivered** in Sprint 3.
 
+**~~R14 · Marks and grading.~~ Delivered** on 5 August 2026 as EPIC-16. A teacher
+records "34 out of 50" against a named assessment; the system derives the
+percentage, the subject total and a performance level. A student sees their own
+results; a teacher sees the mark book for the courses they take. Both can export
+the report as PDF.
+
+Two design points carried the requirement:
+
+| Decision | Why |
+|---|---|
+| `score` and `max_score`, not a stored percentage | 34/50 and 68/100 are both 68% but carry different weight when totalled. Recording the mark as given keeps the original fact. |
+| Nothing derived is stored | A stored average is wrong the moment one mark is corrected. Percentages, totals and levels are computed on read, so a correction corrects the report. |
+
 ### Still open
 
 | | Item |
 |---|---|
 | **R10** | Tests that exercise the SQL Server migrations, not just the entities |
-| **R11** | Terms — no academic calendar above a course |
+| **R11** | Terms — no academic calendar above a course, so marks accumulate for the life of the course |
 | **R12** | Students enrolled *after* work is set do not receive it retroactively |
-| **R13** | Frontend unit tests — the Angular half is verified by type-check, build and manual browser use only |
-| **R14** | Marks and grading — a teacher can download a PDF to mark, but the system records no result |
+| **R13** | Frontend unit tests — the Angular half is verified by type-check, build and browser automation only |
+| **R15** | Weighting between assessments — every mark counts in proportion to its maximum, with no way to say an exam is worth 40% of the year |
+| **R16** | Attendance — still no register of who was present |
 
 ## 8. Known limitations
 
@@ -329,6 +343,10 @@ Accepted for this release, recorded so they are chosen rather than discovered.
 | **L10** | Tests run against H2, not SQL Server | Two consequences. The Flyway migrations are never executed by the suite. And JPA cannot express a composite foreign key whose second column is pinned to a literal, so H2 gets the `CHECK` plus a single-column key — enough to refuse a row claiming a role it may not hold, but not enough to refuse one claiming `STUDENT` for a teacher's id. Both halves are verified by hand with `sqlcmd`; `ddl-auto=validate` catches drift between migrations and entities. |
 | **L11** | Uploaded PDFs are stored in the database | Chosen for transactional consistency — a file on disk plus a row pointing at it is two writes that can leave orphans either way. The cost is honest: a larger database and slower backups. Correct at 10 MB per assignment; wrong at video scale. |
 | **L12** | The PDF check is a magic-number check, not a virus scan | The first five bytes must be `%PDF-`, so a renamed executable is refused. A well-formed but malicious PDF is not detected, and this system does not claim to. |
+| **L13** | Performance bands are hard-coded | The seven levels in `PerformanceLevel` are the South African school scale. They are a policy choice, not arithmetic, and a school on a different scale edits that one enum - but it is a code change, not configuration. |
+| **L14** | Marks have no weighting beyond their maximum | A subject percentage is total score over total maximum, so an assessment marked out of 100 counts ten times an assessment marked out of 10. That is usually what is meant, but there is no way to say "the exam is worth 40% of the year" (R15). |
+| **L15** | The mark report is exported in the browser | `pdfmake` renders the PDF client-side from the table as drawn. It exports the server's percentages and levels, so the numbers are authoritative - but it is a 1.9 MB lazy-loaded chunk, fetched on first use. |
+| **L16** | Writing to `assessment` by hand needs `SET QUOTED_IDENTIFIER ON` | The table carries a filtered unique index, and SQL Server refuses writes to such a table without it. The JDBC driver sets it on connect; `sqlcmd` does not, and the resulting error 1934 reads like a constraint rejection. |
 
 ## 9. Acceptance criteria
 
