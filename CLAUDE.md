@@ -113,7 +113,7 @@ School Management System/
 - **Build backend:** `.\mvnw.cmd clean package -DskipTests` produces `backend/target/tracker-0.0.1-SNAPSHOT.jar`.
 - **Build frontend:** `npm run build` in `frontend/tracker-ui`.
 - **Type-check frontend:** `npx tsc --noEmit -p tsconfig.app.json`.
-- **Run tests:** `.\mvnw.cmd test` - 85 tests, run against H2, no SQL Server needed.
+- **Run tests:** `.\mvnw.cmd test` - 103 tests, run against H2, no SQL Server needed.
 - **Database:** SQL Server, database `School Management System`, login `tracker_app`. The connection string in `application.properties` uses port 14333; confirm your instance actually listens there before assuming a failure is the application's fault. Query it with:
   `sqlcmd -S "tcp:localhost,14333" -U tracker_app -P 'Tracker!2026Dev' -d "School Management System"`
 - **Development accounts:** `teacher` and `student`, both password `password123`, reset at every startup.
@@ -221,6 +221,21 @@ Do not echo driver or stack-trace text to the client. Constraint-violation detai
 - **Every `subscribe()` needs an error callback.** A failed request must reach the user; silent failure is a defect. Use the existing banner.
 - **Keep types aligned with the backend.** `AssignmentStatus` in TypeScript mirrors the Java enum. If one changes, change both.
 
+### Frontend input validation (added 6 August 2026)
+This app uses **template-driven forms** throughout (`[(ngModel)]`), not `ReactiveFormsModule` - a standing choice, not something a new form should quietly deviate from. Centralized validation is built on top of that, in three files:
+
+| File | Role |
+|---|---|
+| `validation.ts` | Every length/format constant, mirroring a real backend `@Size`/column bound (`USERNAME_MAX_LENGTH`, `ASSIGNMENT_TITLE_MAX_LENGTH`, ...); `checkDecimal()`; `fieldErrorMessage()` - the ONE function that turns a validator's error object into a sentence |
+| `decimal-validator.directive.ts` | `appDecimal` / `appDecimalPositive` - a `NG_VALIDATORS` directive for the mark score/maxScore text fields, checked against DECIMAL(6,2)'s actual shape rather than what a JS number allows |
+| `field-error.component.ts` | `<app-field-error [control]="xModel" label="X">` - the ONE place an inline error is drawn. Every validated field in every form uses this and nothing else. |
+
+**A field earns validation by three things, together:** a validator attribute (`required`, `[minlength]`, `[maxlength]`, `appDecimal`), a template reference (`#xModel="ngModel"`), and `<app-field-error [control]="xModel" label="...">` underneath it. Cross-field rules (passwords must match, a score cannot exceed its maximum, at least one class must be selected) have no single `ngModel` to attach to, so they stay plain component getters returning `string | null`, fed to `<app-field-error>` via `[externalError]`.
+
+**`[minlength]` / `[maxlength]`, never `[attr.minlength]` / `[attr.maxlength]`.** The two look interchangeable and are not. `[attr.X]` writes the raw DOM attribute directly, which native `maxlength` truncation happens to read - so a `maxlength` bound that way looks like it works - but it never reaches Angular's own `MinLengthValidator`/`MaxLengthValidator` directives, which read their value through a normal `@Input()` that only `[X]` (property binding) populates. Real defect, found by typing into the form in a browser: under `[attr.minlength]`, `errors.minlength` was never set, so a too-short password reported itself valid at any length with nothing to show for it. No unit test on either side would have caught this - it is a live DOM/directive-wiring behaviour, provable only by rendering the form.
+
+**A boolean directive input needs `transform: booleanAttribute`.** `<input appDecimalPositive>` (bare, like `<input required>`) binds the string `""` to a plain `@Input() appDecimalPositive = false`, and `Boolean('')` is `false` - the opposite of what the bare attribute means. `@Input({ transform: booleanAttribute })` is what makes presence mean `true`.
+
 ## Data Integrity, Referential Integrity and Consistency Standards
 - **Constrain at the database, not just in Java.** Application checks are policy that holds only while every writer goes through this code. Column constraints make the rule true of the data itself. `title` is `NOT NULL` with `length = 200`; `status` is an enum column restricted to its valid values.
 - **Use typed values for closed sets.** Status is an enum, stored with `EnumType.STRING` (never ordinal - positions shift when constants are reordered and silently reinterpret existing rows).
@@ -239,7 +254,7 @@ Do not echo driver or stack-trace text to the client. Constraint-violation detai
 - **A filtered index makes `SET QUOTED_IDENTIFIER ON` mandatory for writes.** Any INSERT/UPDATE/DELETE on a table carrying one fails with error 1934 unless the session sets it. The JDBC driver sets it on connect, so the application is unaffected - but `sqlcmd` defaults it OFF, and the resulting failure looks exactly like the schema rejecting your data when it is really the session being misconfigured. Put `SET QUOTED_IDENTIFIER ON;` at the top of any ad-hoc script that writes to `assessment`.
 
 ### Testing Requirements
-There is an automated suite: `.\mvnw.cmd test` runs 85 tests, and `package` fails the build if any fail. Add to it rather than reverting to manual checks.
+There is an automated suite: `.\mvnw.cmd test` runs 103 tests, and `package` fails the build if any fail. Add to it rather than reverting to manual checks.
 
 - **Unit tests** (`AssignmentServiceTest`) - business rules with the repository mocked.
 - **Full-stack tests** (`AssignmentApiTest`) - MockMvc with real security; every status code in the error contract.

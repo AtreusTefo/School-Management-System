@@ -1,29 +1,18 @@
-<!-- THE TEMPLATE (the "view")
-     It displays the component's data and wires controls to component methods.
-
-     Controls are shown or hidden by role and ownership. That is a courtesy, not
-     a security boundary: every rule reflected here is also enforced by the
-     server, because anyone can call the API directly.
-
-     Appearance lives in src/styles.css, not in style="..." attributes here.
-     Inline styles cannot be reused, cannot respond to screen width, and mixed
-     structure with presentation so thoroughly that the markup was hard to read.
-     Each element carries class names that describe what it IS; the stylesheet
-     decides what that looks like. -->
+<!-- THE SHELL'S TEMPLATE
+     Everything a routed page needs is either read from SessionService /
+     NotificationService (both injected as public fields so the template can
+     reach them directly) or lives inside <router-outlet> below. -->
 
 <div class="app-shell">
 
   <!-- ===== APP BAR =====
-       Sticky, so who you are signed in as and the way out remain reachable once
-       the list is long enough to scroll. -->
+       Sticky, so who you are signed in as, the navigation and the way out
+       remain reachable once a page is long enough to scroll. -->
   <header class="appbar">
     <div class="appbar__inner">
 
       <div class="brand">
         <span class="brand__mark" aria-hidden="true">
-          <!-- Icons are inline SVG rather than an icon font or an image file:
-               nothing extra to download, and they inherit the current text
-               colour, so they follow the theme without a second asset. -->
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
                stroke="currentColor" stroke-width="2" stroke-linecap="round"
                stroke-linejoin="round">
@@ -37,6 +26,23 @@
         </span>
       </div>
 
+      <!-- ===== NAVIGATION =====
+           Only shown once signed in with an active account - a signed-out
+           visitor or a pending-password account has nowhere to navigate TO,
+           since authGuard sends any attempt straight back here. -->
+      <nav class="nav" *ngIf="user && !mustChangePassword" aria-label="Main">
+        <a routerLink="/" routerLinkActive="nav__link--active"
+           [routerLinkActiveOptions]="{ exact: true }" class="nav__link">Dashboard</a>
+        <a *ngIf="isTeacher" routerLink="/assignments" routerLinkActive="nav__link--active"
+           class="nav__link">Work I have set</a>
+        <a routerLink="/marking-queue" routerLinkActive="nav__link--active" class="nav__link">
+          {{ isTeacher ? 'Marking queue' : 'My work' }}
+        </a>
+        <a routerLink="/reports" routerLinkActive="nav__link--active" class="nav__link">
+          Performance &amp; marks
+        </a>
+      </nav>
+
       <div class="appbar__actions" *ngIf="user">
         <div class="user-chip">
           <span class="avatar" aria-hidden="true">{{ userInitial }}</span>
@@ -45,9 +51,6 @@
             <span class="badge badge--role">{{ user.role }}</span>
           </span>
         </div>
-        <!-- Available to everyone, unlike creating accounts: your own password is
-             always yours to change. Hidden while a forced change is already on
-             screen, where it would just re-open the form the user is looking at. -->
         <button *ngIf="!mustChangePassword" type="button" class="btn btn--ghost"
                 (click)="openPasswordForm()">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
@@ -75,9 +78,10 @@
   <main class="container">
 
     <!-- ===== ERROR BANNER =====
-         Only rendered when the component has an errorMessage. Without this, a
-         failed request left the user staring at an unchanged screen. -->
-    <div *ngIf="errorMessage" class="alert" role="alert">
+         Shared by every page through NotificationService, so it survives a
+         navigation instead of vanishing the moment the page that raised it
+         is torn down. -->
+    <div *ngIf="notifications.message()" class="alert" role="alert">
       <svg class="alert__icon" width="18" height="18" viewBox="0 0 24 24" fill="none"
            stroke="currentColor" stroke-width="2" stroke-linecap="round"
            stroke-linejoin="round" aria-hidden="true">
@@ -86,18 +90,16 @@
       </svg>
       <div class="alert__body">
         <div class="alert__title">Something went wrong</div>
-        <div class="alert__text">{{ errorMessage }}</div>
+        <div class="alert__text">{{ notifications.message() }}</div>
         <div class="alert__actions">
-          <!-- Retry re-fetches the list. Without it, a failed initial load left an
-               empty table that never recovered, even after the backend came back. -->
-          <button type="button" class="btn btn--sm" (click)="retry()">Retry</button>
-          <button type="button" class="btn btn--sm btn--ghost" (click)="clearError()">Dismiss</button>
+          <button type="button" class="btn btn--sm" (click)="notifications.retry()">Retry</button>
+          <button type="button" class="btn btn--sm btn--ghost" (click)="notifications.clear()">Dismiss</button>
         </div>
       </div>
     </div>
 
-    <!-- Nothing is drawn until we know whether a session exists, so the login form
-         does not flash on screen for an already-signed-in user. -->
+    <!-- Nothing is drawn until we know whether a session exists, so the login
+         form does not flash on screen for an already-signed-in user. -->
     <div *ngIf="checkingSession" class="loading">
       <span class="spinner" aria-hidden="true"></span>
       <span>Checking your session...</span>
@@ -113,27 +115,42 @@
             <p>Use your school account to continue.</p>
           </div>
 
-          <form (ngSubmit)="onLogin()" class="auth__fields">
-            <!-- A real <label> tied to the input by id, rather than a placeholder
-                 doing double duty. A placeholder disappears the moment typing
-                 starts, which leaves the user with no way to check what a filled
-                 field was for, and screen readers do not treat it as a name. -->
+          <!-- Login failing with the WRONG credentials shows loginError
+               below, inline on this form. Every other kind of failure
+               (network, CORS, an actual server error) goes through the
+               shared banner above instead - see onLogin(). -->
+          <div *ngIf="loginError" class="alert alert--inline" role="alert">
+            <div class="alert__text">{{ loginError }}</div>
+          </div>
+
+          <!-- EVERY [minlength] / [maxlength] IN THIS APP IS A PROPERTY
+               BINDING, NEVER [attr.minlength] / [attr.maxlength] - see
+               validation.ts / CLAUDE.md for why the two are not
+               interchangeable, found by a real defect that only showed up by
+               typing into a rendered form. -->
+          <form #loginForm="ngForm" (ngSubmit)="onLogin()" class="auth__fields">
             <div class="field">
               <label class="field__label" for="loginUsername">Username</label>
               <input id="loginUsername" class="input" type="text" name="loginUsername"
+                     #loginUsernameModel="ngModel"
                      [(ngModel)]="loginUsername" autocomplete="username"
+                     required [maxlength]="usernameMaxLength"
                      placeholder="teacher" />
+              <app-field-error [control]="loginUsernameModel" label="Username" />
             </div>
 
             <div class="field">
               <label class="field__label" for="loginPassword">Password</label>
               <input id="loginPassword" class="input" type="password" name="loginPassword"
+                     #loginPasswordModel="ngModel"
                      [(ngModel)]="loginPassword" autocomplete="current-password"
+                     required
                      placeholder="Your password" />
+              <app-field-error [control]="loginPasswordModel" label="Password" />
             </div>
 
             <button type="submit" class="btn btn--primary btn--block"
-                    [disabled]="!loginUsername.trim() || !loginPassword || signingIn">
+                    [disabled]="loginForm.invalid || signingIn">
               <span *ngIf="signingIn" class="spinner" aria-hidden="true"></span>
               {{ signingIn ? 'Signing in...' : 'Sign in' }}
             </button>
@@ -152,9 +169,6 @@
     <!-- ===== SIGNED IN ===== -->
     <ng-container *ngIf="user">
 
-      <!-- A short confirmation after a successful account action. Separate from
-           the error banner: this is good news, and colouring it like a failure
-           would teach people to ignore the failure colour. -->
       <div *ngIf="passwordNotice" class="notice" role="status">
         <span>{{ passwordNotice }}</span>
         <button type="button" class="btn btn--sm btn--ghost"
@@ -162,10 +176,13 @@
       </div>
 
       <!-- ===== CHANGE PASSWORD (US-21, US-22) =====
-           Shown in two situations that look similar and are not: the user chose
-           to change their password, or the account cannot be used until they do.
-           The forced case hides the whole application behind this card and offers
-           no Cancel, because there is nothing else the account may do. -->
+           Shown in two situations that look similar and are not: the user
+           chose to change their password, or the account cannot be used
+           until they do. The forced case hides the whole application behind
+           this card and offers no Cancel, because there is nothing else the
+           account may do - in particular, no routed page renders behind it,
+           since authGuard refuses every route while mustChangePassword is
+           true. -->
       <section *ngIf="passwordFormVisible" class="auth">
         <div class="card auth__card">
           <div class="card__body">
@@ -181,30 +198,36 @@
               </p>
             </div>
 
-            <form (ngSubmit)="onChangePassword()" class="auth__fields">
+            <form #passwordForm="ngForm" (ngSubmit)="onChangePassword()" class="auth__fields">
               <div class="field">
                 <label class="field__label" for="currentPassword">Current password</label>
                 <input id="currentPassword" class="input" type="password" name="currentPassword"
-                       [(ngModel)]="currentPassword" autocomplete="current-password" />
+                       #currentPasswordModel="ngModel"
+                       [(ngModel)]="currentPassword" autocomplete="current-password"
+                       required />
+                <app-field-error [control]="currentPasswordModel" label="Current password" />
               </div>
 
               <div class="field">
                 <label class="field__label" for="newPassword">New password</label>
                 <input id="newPassword" class="input" type="password" name="newPassword"
-                       [(ngModel)]="newPassword" autocomplete="new-password" />
-                <!-- Stated up front rather than only after a rejected attempt. -->
-                <span class="field__hint">At least 8 characters.</span>
+                       #newPasswordModel="ngModel"
+                       [(ngModel)]="newPassword" autocomplete="new-password"
+                       required [minlength]="passwordMinLength" />
+                <span class="field__hint" *ngIf="newPasswordModel.valid || !(newPasswordModel.touched || newPasswordModel.dirty)">
+                  At least {{ passwordMinLength }} characters.
+                </span>
+                <app-field-error [control]="newPasswordModel" label="New password" />
               </div>
 
               <div class="field">
                 <label class="field__label" for="confirmPassword">Confirm new password</label>
                 <input id="confirmPassword" class="input" type="password" name="confirmPassword"
-                       [(ngModel)]="confirmPassword" autocomplete="new-password" />
-                <!-- A typing check, not a rule. The server never sees this field. -->
-                <span class="field__hint field__hint--warn"
-                      *ngIf="confirmPassword.length > 0 && !passwordsMatch">
-                  The two passwords do not match.
-                </span>
+                       #confirmPasswordModel="ngModel"
+                       [(ngModel)]="confirmPassword" autocomplete="new-password"
+                       required />
+                <app-field-error [control]="confirmPasswordModel" label="Confirm new password"
+                                 [externalError]="passwordsMatchError" />
               </div>
 
               <button type="submit" class="btn btn--primary btn--block"
@@ -213,7 +236,6 @@
                 {{ changingPassword ? 'Saving...' : 'Change password' }}
               </button>
 
-              <!-- No way out of the forced case: there is nothing else to go to. -->
               <button *ngIf="!mustChangePassword" type="button"
                       class="btn btn--ghost btn--block" (click)="closePasswordForm()">
                 Cancel
@@ -224,627 +246,13 @@
         </div>
       </section>
 
-      <!-- Everything below is the ordinary application, hidden entirely while an
-           account is pending. The server would refuse each of these calls anyway;
-           not drawing them keeps the user pointed at the one thing they can do. -->
-      <ng-container *ngIf="!mustChangePassword">
-
-      <!-- Counts are derived from the list already loaded, not fetched
-           separately, so they can never disagree with the rows beneath them. -->
-      <section class="stats" aria-label="Summary">
-        <div class="stat">
-          <div class="stat__label">Total</div>
-          <div class="stat__value">{{ submissions.length }}</div>
-        </div>
-        <div class="stat">
-          <div class="stat__label">In progress</div>
-          <div class="stat__value">{{ inProgressCount }}</div>
-        </div>
-        <div class="stat stat--done">
-          <div class="stat__label">Handed in</div>
-          <div class="stat__value">{{ submittedCount }}</div>
-        </div>
-        <div class="stat stat--overdue">
-          <div class="stat__label">Overdue</div>
-          <div class="stat__value">{{ overdueCount }}</div>
-        </div>
-      </section>
-
-      <!-- ===== MY TIMETABLE =====
-           For a student this panel IS the answer to two of the requirements:
-           the subjects they are taught, and the several teachers who teach them.
-           Both come from the one course list rather than separate requests,
-           because they are the same rows read from different columns. -->
-      <div class="card" *ngIf="courses.length > 0">
-        <div class="card__header">
-          <div class="card__title">
-            <h2>{{ isTeacher ? 'What I teach' : 'What I am taught' }}</h2>
-            <span class="badge badge--neutral">{{ courses.length }}</span>
-          </div>
-        </div>
-        <div class="card__body">
-          <p class="card__note">
-            <strong>{{ mySubjects.length }}</strong>
-            subject{{ mySubjects.length === 1 ? '' : 's' }}:
-            {{ mySubjects.join(', ') }}
-            <ng-container *ngIf="!isTeacher">
-              &nbsp;&middot;&nbsp;
-              <strong>{{ myTeachers.length }}</strong>
-              teacher{{ myTeachers.length === 1 ? '' : 's' }}:
-              {{ myTeachers.join(', ') }}
-            </ng-container>
-          </p>
-          <ul class="course-list">
-            <li *ngFor="let c of courses" class="course-list__item">
-              <span class="badge badge--neutral">{{ c.subjectCode }}</span>
-              <span>{{ c.subjectName }} &mdash; {{ c.className }}</span>
-              <span class="muted" *ngIf="!isTeacher">taught by {{ c.teacherUsername }}</span>
-            </li>
-          </ul>
-        </div>
-      </div>
-
-      <div class="card">
-
-        <div class="card__header">
-          <div class="card__title">
-            <h2>{{ isTeacher ? 'Marking queue' : 'My work' }}</h2>
-            <span class="badge badge--neutral">{{ visibleSubmissions.length }}</span>
-          </div>
-
-          <!-- There is no search box here any more: DataTables draws its own,
-               inside the table below. Two search boxes over the same rows would
-               have to be kept in agreement, and the loser is always the user.
-
-               The status filter stays, because it decides WHICH ROWS ARE GIVEN
-               to the table rather than searching the ones already there. Either
-               way it only changes what is LOOKED AT, never what is allowed to be
-               seen - the server still decides the scope of the list. -->
-          <div class="toolbar">
-            <!-- Real buttons, with aria-pressed carrying the selected state. The
-                 highlight alone tells a screen reader nothing. -->
-            <div class="segmented" role="group" aria-label="Filter by status">
-              <button type="button" class="segmented__btn"
-                      [attr.aria-pressed]="statusFilter === 'ALL'"
-                      (click)="setStatusFilter('ALL')">All</button>
-              <button type="button" class="segmented__btn"
-                      [attr.aria-pressed]="statusFilter === 'IN_PROGRESS'"
-                      (click)="setStatusFilter('IN_PROGRESS')">Open</button>
-              <button type="button" class="segmented__btn"
-                      [attr.aria-pressed]="statusFilter === 'SUBMITTED'"
-                      (click)="setStatusFilter('SUBMITTED')">Submitted</button>
-              <button type="button" class="segmented__btn"
-                      [attr.aria-pressed]="statusFilter === 'OVERDUE'"
-                      (click)="setStatusFilter('OVERDUE')">Overdue</button>
-            </div>
-          </div>
-        </div>
-
-        <p class="card__note" *ngIf="!isTeacher">
-          Upload a PDF against a piece of work, then hand it in. You can replace
-          the file as often as you like until you do &mdash; after that, ask your
-          teacher to reopen it.
-        </p>
-
-        <p class="card__note" *ngIf="isTeacher">
-          Every student's work across the courses you teach. Download a PDF to
-          mark it; reopen a submission to let a student correct it.
-          <!-- Only a teacher sees this, and the server refuses a student's attempt
-               regardless - the same courtesy-not-a-boundary rule as everywhere. -->
-          <button type="button" class="link-btn" (click)="openCreateUser()"
-                  *ngIf="!showCreateUser">Add a student account</button>
-        </p>
-
-        <div *ngIf="uploading" class="loading">
-          <span class="spinner" aria-hidden="true"></span>
-          <span>Uploading...</span>
-        </div>
-
-        <!-- ===== CREATE A STUDENT ACCOUNT (US-23) ===== -->
-        <div *ngIf="isTeacher && showCreateUser" class="subform">
-          <div class="subform__head">
-            <h3>New student account</h3>
-            <button type="button" class="btn btn--sm btn--ghost"
-                    (click)="closeCreateUser()">Close</button>
-          </div>
-
-          <div *ngIf="createUserNotice" class="notice notice--inline" role="status">
-            {{ createUserNotice }}
-          </div>
-
-          <form (ngSubmit)="onCreateUser()" class="create-form">
-            <div class="field">
-              <label class="field__label" for="newUsername">Username</label>
-              <input id="newUsername" class="input" type="text" name="newUsername"
-                     [(ngModel)]="newUsername" placeholder="e.g. jsmith"
-                     autocomplete="off" />
-            </div>
-            <div class="field">
-              <label class="field__label" for="newUserPassword">Temporary password</label>
-              <input id="newUserPassword" class="input" type="text" name="newUserPassword"
-                     [(ngModel)]="newUserPassword" placeholder="At least 8 characters"
-                     autocomplete="off" />
-              <!-- Shown as plain text on purpose: the teacher has to read this out
-                   or write it down to hand over. Masking a value whose whole
-                   purpose is to be communicated helps nobody. It stops being a
-                   secret worth hiding the moment the student replaces it. -->
-              <span class="field__hint">
-                Visible so you can pass it on. They must change it at first sign-in.
-              </span>
-            </div>
-            <button type="submit" class="btn btn--primary" [disabled]="!canCreateUser">
-              <span *ngIf="creatingUser" class="spinner" aria-hidden="true"></span>
-              {{ creatingUser ? 'Creating...' : 'Create account' }}
-            </button>
-          </form>
-        </div>
-
-        <!-- ===== LOADING ===== -->
-        <div *ngIf="loadingList" class="loading">
-          <span class="spinner" aria-hidden="true"></span>
-          <span>Loading...</span>
-        </div>
-
-        <!-- ===== EMPTY STATE =====
-             Only for the case where the account genuinely has no work.
-             "Your search matched nothing" is DataTables' job now, and it says so
-             inside the table itself - see the language options in the table
-             component. Showing the same sentence for both would send someone
-             hunting for missing data that is in fact one click away. -->
-        <div *ngIf="!loadingList && submissions.length === 0" class="empty">
-          <svg class="empty__icon" width="40" height="40" viewBox="0 0 24 24" fill="none"
-               stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
-               stroke-linejoin="round" aria-hidden="true">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-            <path d="M14 2v6h6M9 15h6M9 11h3" />
-          </svg>
-          <div class="empty__title">Nothing here yet</div>
-          <p class="empty__text">
-            {{ isTeacher
-               ? 'Set work for one of your classes and it will appear here, one row per student.'
-               : 'Nothing has been set for your classes yet.' }}
-          </p>
-        </div>
-
-        <!-- ===== SUBMISSION TABLE =====
-             DataTables draws this, not Angular. All this template does is hand
-             over the rows and listen for what the user asked to do with one.
-             See SubmissionTableComponent for why ownership is split that way. -->
-        <app-submission-table
-          *ngIf="!loadingList && submissions.length > 0"
-          [submissions]="visibleSubmissions"
-          [isTeacher]="isTeacher"
-          (submitWork)="onSubmitWork($event)"
-          (unsubmitWork)="onUnsubmitWork($event)"
-          (downloadFile)="onDownload($event)"
-          (fileChosen)="onFileChosen($event)">
-        </app-submission-table>
-
-      </div>
-
-      <!-- ===== PERFORMANCE SUMMARY =====
-           Every number here is derived by the SERVER from the marks. Nothing is
-           stored, so nothing can disagree with the marks it came from, and a
-           corrected mark corrects this the next time it is loaded.
-
-           The percentage is a ratio of totals, not the mean of the individual
-           percentages - see PerformanceView on the backend for why those are
-           different numbers and only one of them is right. -->
-      <div class="card" *ngIf="performance.length > 0">
-        <div class="card__header">
-          <div class="card__title">
-            <h2>{{ isTeacher ? 'Performance by student' : 'My performance' }}</h2>
-            <span class="badge badge--neutral">{{ performance.length }}</span>
-          </div>
-        </div>
-        <div class="card__body">
-          <table class="table table--plain">
-            <thead>
-              <tr>
-                <th *ngIf="isTeacher">Student</th>
-                <th>Subject</th>
-                <th>Class</th>
-                <th>Marks</th>
-                <th>Total</th>
-                <th>%</th>
-                <th>Level</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr *ngFor="let p of performance">
-                <td *ngIf="isTeacher">{{ p.studentUsername }}</td>
-                <td>{{ p.subjectName }}</td>
-                <td>{{ p.className }}</td>
-                <td>{{ p.assessmentCount }}</td>
-                <td>{{ p.totalScore }} / {{ p.totalMaxScore }}</td>
-                <td><strong>{{ p.percentage }}</strong></td>
-                <td>
-                  <span class="badge"
-                        [class.badge--done]="p.level === 'OUTSTANDING' || p.level === 'MERITORIOUS'"
-                        [class.badge--overdue]="p.level === 'ELEMENTARY' || p.level === 'NOT_ACHIEVED' || p.level === 'MODERATE'"
-                        [title]="p.levelDescription">
-                    {{ p.level }}
-                  </span>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- ===== MARKS =====
-           The DataTable report, with Export PDF and Print along the top. The
-           export sends the CELLS AS DRAWN, which are the server's percentages
-           and levels - the browser never recomputes a mark, so the exported
-           document and the stored data cannot disagree. -->
-      <div class="card">
-        <div class="card__header">
-          <div class="card__title">
-            <h2>{{ isTeacher ? 'Mark book' : 'My marks' }}</h2>
-            <span class="badge badge--neutral">{{ marks.length }}</span>
-          </div>
-          <div class="toolbar" *ngIf="isTeacher">
-            <button type="button" class="btn btn--primary" (click)="openMarkEntry()"
-                    *ngIf="!showMarkEntry" [disabled]="courses.length === 0">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-                   stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                   stroke-linejoin="round" aria-hidden="true">
-                <path d="M12 5v14M5 12h14" />
-              </svg>
-              Enter a mark
-            </button>
-          </div>
-        </div>
-
-        <div *ngIf="markNotice" class="notice notice--inline" role="status">
-          {{ markNotice }}
-        </div>
-
-        <p class="card__note" *ngIf="!isTeacher">
-          Your marks, and what they come to. The percentage for a subject is your
-          total score over the total it was marked out of, so a large assessment
-          counts for more than a small one.
-        </p>
-
-        <!-- ===== ENTER OR CORRECT A MARK ===== -->
-        <div *ngIf="isTeacher && showMarkEntry" class="subform">
-          <div class="subform__head">
-            <h3>{{ editingMarkId === null ? 'Enter a mark' : 'Correct a mark' }}</h3>
-            <button type="button" class="btn btn--sm btn--ghost"
-                    (click)="closeMarkEntry()">Close</button>
-          </div>
-
-          <form (ngSubmit)="onSaveMark()">
-            <div class="create-form">
-              <div class="field">
-                <label class="field__label" for="markCourse">Course</label>
-                <select id="markCourse" class="input" name="markCourse"
-                        [(ngModel)]="markCourseId" (ngModelChange)="onMarkCourseChange()"
-                        [disabled]="editingMarkId !== null">
-                  <option [ngValue]="null">Choose a course</option>
-                  <option *ngFor="let c of courses" [ngValue]="c.id">{{ c.label }}</option>
-                </select>
-              </div>
-
-              <div class="field">
-                <label class="field__label" for="markStudent">Student</label>
-                <!-- Only students actually enrolled in the class are offered,
-                     which matches what the server accepts. Offering everyone and
-                     letting the save fail would be a worse way to learn the rule. -->
-                <select id="markStudent" class="input" name="markStudent"
-                        [(ngModel)]="markStudent" *ngIf="editingMarkId === null">
-                  <option value="">Choose a student</option>
-                  <option *ngFor="let s of markCandidates" [value]="s">{{ s }}</option>
-                </select>
-                <input class="input" type="text" *ngIf="editingMarkId !== null"
-                       [value]="markStudent" disabled />
-              </div>
-            </div>
-
-            <div class="create-form">
-              <div class="field">
-                <label class="field__label" for="markName">Assessment</label>
-                <input id="markName" class="input" type="text" name="markName"
-                       [(ngModel)]="markName" placeholder="e.g. Term 1 Test" />
-              </div>
-              <!-- type="text" with inputmode="decimal", NOT type="number".
-                   Angular binds a number input through NumberValueAccessor, which
-                   writes a JavaScript double into the model - the exact
-                   round-trip these fields are kept as strings to avoid, and how
-                   34.5 becomes 34.499999999999996 on its way to a DECIMAL column.
-                   inputmode still brings up the numeric keypad on a phone. -->
-              <div class="field">
-                <label class="field__label" for="markScore">Score</label>
-                <input id="markScore" class="input" type="text" inputmode="decimal"
-                       name="markScore" [(ngModel)]="markScore" placeholder="34" />
-              </div>
-              <div class="field">
-                <label class="field__label" for="markMaxScore">Out of</label>
-                <input id="markMaxScore" class="input" type="text" inputmode="decimal"
-                       name="markMaxScore" [(ngModel)]="markMaxScore" placeholder="50" />
-                <!-- The server refuses a score above the maximum, and so does the
-                     database - ck_assessment_score_within_max. "34 out of 20" is
-                     not a high mark, it is a corrupt row, and every average
-                     computed from it afterwards would be silently wrong. -->
-                <span class="field__hint">A score cannot be higher than this.</span>
-              </div>
-            </div>
-
-            <button type="submit" class="btn btn--primary" [disabled]="!canSaveMark">
-              {{ editingMarkId === null ? 'Record mark' : 'Save correction' }}
-            </button>
-          </form>
-        </div>
-
-        <div *ngIf="marks.length === 0" class="empty">
-          <svg class="empty__icon" width="40" height="40" viewBox="0 0 24 24" fill="none"
-               stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
-               stroke-linejoin="round" aria-hidden="true">
-            <path d="M9 11l3 3L22 4" />
-            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
-          </svg>
-          <div class="empty__title">No marks yet</div>
-          <p class="empty__text">
-            {{ isTeacher
-               ? 'Enter a mark and it will appear here, with the percentage and level worked out.'
-               : 'Nothing has been marked for you yet.' }}
-          </p>
-        </div>
-
-        <app-marks-table
-          *ngIf="marks.length > 0"
-          [marks]="marks"
-          [isTeacher]="isTeacher"
-          [reportTitle]="markReportTitle"
-          (editMark)="startEditMark($event)"
-          (deleteMark)="onDeleteMark($event)"
-          (exportFailed)="errorMessage = $event">
-        </app-marks-table>
-      </div>
-
-      <!-- ===== WORK I HAVE SET (teachers) =====
-           Separate from the marking queue above because it answers a different
-           question. That table is "how is each student getting on"; this one is
-           "what have I set, and to whom" - which is where creating, correcting
-           and deleting belong. One row per assignment, not per student. -->
-      <div class="card" *ngIf="isTeacher">
-        <div class="card__header">
-          <div class="card__title">
-            <h2>Work I have set</h2>
-            <span class="badge badge--neutral">{{ assignments.length }}</span>
-          </div>
-          <div class="toolbar">
-            <button type="button" class="btn btn--primary" (click)="openSetWork()"
-                    *ngIf="!showSetWork" [disabled]="courses.length === 0">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-                   stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                   stroke-linejoin="round" aria-hidden="true">
-                <path d="M12 5v14M5 12h14" />
-              </svg>
-              Set work
-            </button>
-            <button type="button" class="btn btn--ghost" (click)="openTimetable()"
-                    *ngIf="!showTimetable">Timetable</button>
-          </div>
-        </div>
-
-        <div *ngIf="timetableNotice" class="notice notice--inline" role="status">
-          {{ timetableNotice }}
-        </div>
-
-        <p class="card__note" *ngIf="courses.length === 0">
-          You do not teach any courses yet. Open <strong>Timetable</strong> to add a
-          subject, a class, and the course that joins them.
-        </p>
-
-        <!-- ===== SET WORK ===== -->
-        <div *ngIf="showSetWork" class="subform">
-          <div class="subform__head">
-            <h3>Set new work</h3>
-            <button type="button" class="btn btn--sm btn--ghost"
-                    (click)="closeSetWork()">Close</button>
-          </div>
-
-          <form (ngSubmit)="onSetWork()">
-            <div class="create-form">
-              <div class="field">
-                <label class="field__label" for="newTitle">Title</label>
-                <input id="newTitle" class="input" type="text" name="newTitle"
-                       [(ngModel)]="newTitle" placeholder="What needs to be done" />
-              </div>
-              <div class="field">
-                <label class="field__label" for="newDueDate">Due date</label>
-                <input id="newDueDate" class="input" type="date" name="newDueDate"
-                       [(ngModel)]="newDueDate" />
-              </div>
-            </div>
-
-            <div class="field">
-              <label class="field__label" for="newDescription">Instructions</label>
-              <input id="newDescription" class="input" type="text" name="newDescription"
-                     [(ngModel)]="newDescription"
-                     placeholder="Optional - what the students need to do" />
-            </div>
-
-            <!-- Checkboxes rather than a single dropdown, because setting the
-                 same task for several classes at once is the point. Each ticked
-                 course becomes its own assignment with its own register. -->
-            <fieldset class="field">
-              <legend class="field__label">Which classes?</legend>
-              <div class="course-picker">
-                <label *ngFor="let c of courses" class="course-picker__option">
-                  <input type="checkbox"
-                         [checked]="isCourseSelected(c.id)"
-                         (change)="toggleCourse(c.id)" />
-                  <span>{{ c.subjectName }} &mdash; {{ c.className }}</span>
-                </label>
-              </div>
-              <span class="field__hint">
-                Every student enrolled in the class gets their own copy to hand in.
-              </span>
-            </fieldset>
-
-            <button type="submit" class="btn btn--primary" [disabled]="!canSetWork">
-              Set work for {{ selectedCourseIds.size }}
-              class{{ selectedCourseIds.size === 1 ? '' : 'es' }}
-            </button>
-          </form>
-        </div>
-
-        <!-- ===== TIMETABLE ADMIN ===== -->
-        <div *ngIf="showTimetable" class="subform">
-          <div class="subform__head">
-            <h3>Timetable</h3>
-            <button type="button" class="btn btn--sm btn--ghost"
-                    (click)="closeTimetable()">Close</button>
-          </div>
-
-          <form (ngSubmit)="onCreateSubject()" class="create-form">
-            <div class="field">
-              <label class="field__label" for="newSubjectCode">Subject code</label>
-              <input id="newSubjectCode" class="input" type="text" name="newSubjectCode"
-                     [(ngModel)]="newSubjectCode" placeholder="e.g. GEOG" />
-            </div>
-            <div class="field">
-              <label class="field__label" for="newSubjectName">Subject name</label>
-              <input id="newSubjectName" class="input" type="text" name="newSubjectName"
-                     [(ngModel)]="newSubjectName" placeholder="e.g. Geography" />
-            </div>
-            <button type="submit" class="btn btn--sm">Add subject</button>
-          </form>
-
-          <form (ngSubmit)="onCreateClass()" class="create-form">
-            <div class="field">
-              <label class="field__label" for="newClassName">Class name</label>
-              <input id="newClassName" class="input" type="text" name="newClassName"
-                     [(ngModel)]="newClassName" placeholder="e.g. Grade 11A" />
-            </div>
-            <button type="submit" class="btn btn--sm">Add class</button>
-          </form>
-
-          <form (ngSubmit)="onCreateCourse()" class="create-form">
-            <div class="field">
-              <label class="field__label" for="courseSubject">I teach</label>
-              <select id="courseSubject" class="input" name="courseSubject"
-                      [(ngModel)]="courseSubjectId">
-                <option [ngValue]="null">Choose a subject</option>
-                <option *ngFor="let s of subjects" [ngValue]="s.id">{{ s.name }}</option>
-              </select>
-            </div>
-            <div class="field">
-              <label class="field__label" for="courseClass">to</label>
-              <select id="courseClass" class="input" name="courseClass"
-                      [(ngModel)]="courseClassId">
-                <option [ngValue]="null">Choose a class</option>
-                <option *ngFor="let c of classes" [ngValue]="c.id">{{ c.name }}</option>
-              </select>
-            </div>
-            <button type="submit" class="btn btn--sm btn--primary"
-                    [disabled]="courseSubjectId === null || courseClassId === null">
-              Add course
-            </button>
-          </form>
-
-          <form (ngSubmit)="onEnrol()" class="create-form">
-            <div class="field">
-              <label class="field__label" for="enrolClass">Enrol into</label>
-              <select id="enrolClass" class="input" name="enrolClass"
-                      [(ngModel)]="enrolClassId">
-                <option [ngValue]="null">Choose a class</option>
-                <option *ngFor="let c of classes" [ngValue]="c.id">
-                  {{ c.name }} ({{ c.studentCount }})
-                </option>
-              </select>
-            </div>
-            <div class="field">
-              <label class="field__label" for="enrolUsername">Student</label>
-              <input id="enrolUsername" class="input" type="text" name="enrolUsername"
-                     [(ngModel)]="enrolUsername" placeholder="Username" />
-              <!-- The server refuses a teacher here, and so does the database:
-                   only a STUDENT can be enrolled, enforced by a composite foreign
-                   key rather than by this form being careful. -->
-              <span class="field__hint">Only a student account can be enrolled.</span>
-            </div>
-            <button type="submit" class="btn btn--sm"
-                    [disabled]="enrolClassId === null || !enrolUsername.trim()">
-              Enrol
-            </button>
-          </form>
-        </div>
-
-        <!-- One row per assignment, with progress. Plain Angular rather than
-             DataTables: this list is short by nature, and a second DataTables
-             instance on the same page buys sorting nobody asked for. -->
-        <div class="card__body" *ngIf="assignments.length > 0">
-          <table class="table table--plain">
-            <thead>
-              <tr>
-                <th>Title</th>
-                <th>Subject</th>
-                <th>Class</th>
-                <th>Due</th>
-                <th>Handed in</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              <ng-container *ngFor="let a of assignments">
-                <tr *ngIf="editingAssignmentId !== a.id">
-                  <td>{{ a.title }}</td>
-                  <td>{{ a.subjectName }}</td>
-                  <td>{{ a.className }}</td>
-                  <td>
-                    <span *ngIf="a.dueDate; else noDue"
-                          [class.badge--overdue]="a.pastDue">{{ a.dueDate }}</span>
-                    <ng-template #noDue><span class="muted">none</span></ng-template>
-                  </td>
-                  <td>{{ a.submittedCount }} of {{ a.studentCount }}</td>
-                  <td class="col-actions">
-                    <div class="row-actions">
-                      <button type="button" class="btn btn--sm"
-                              (click)="startEditAssignment(a)">Edit</button>
-                      <button type="button" class="btn btn--sm btn--danger"
-                              (click)="onDeleteAssignment(a)"
-                              title="Work that has been handed in must be reopened first">
-                        Delete
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-                <tr *ngIf="editingAssignmentId === a.id">
-                  <td colspan="6">
-                    <div class="create-form">
-                      <div class="field">
-                        <label class="field__label" [attr.for]="'editTitle' + a.id">Title</label>
-                        <input [id]="'editTitle' + a.id" class="input" type="text"
-                               name="editTitle" [(ngModel)]="editTitle" />
-                      </div>
-                      <div class="field">
-                        <label class="field__label" [attr.for]="'editDue' + a.id">Due</label>
-                        <input [id]="'editDue' + a.id" class="input" type="date"
-                               name="editDueDate" [(ngModel)]="editDueDate" />
-                      </div>
-                      <div class="field">
-                        <label class="field__label" [attr.for]="'editDesc' + a.id">Instructions</label>
-                        <input [id]="'editDesc' + a.id" class="input" type="text"
-                               name="editDescription" [(ngModel)]="editDescription" />
-                      </div>
-                      <div class="row-actions">
-                        <button type="button" class="btn btn--sm btn--primary"
-                                [disabled]="!editTitle.trim()"
-                                (click)="saveEditAssignment(a.id)">Save</button>
-                        <button type="button" class="btn btn--sm btn--ghost"
-                                (click)="cancelEditAssignment()">Cancel</button>
-                      </div>
-                    </div>
-                  </td>
-                </tr>
-              </ng-container>
-            </tbody>
-          </table>
-        </div>
-      </div>
-      </ng-container>
+      <!-- ===== THE ROUTED PAGE =====
+           Dashboard, "Work I have set", the marking queue or the reports
+           page - whichever the URL and the nav bar above selected. Hidden
+           entirely while an account is pending, for the same reason nothing
+           else renders in that state: the server would refuse every one of
+           these pages' requests with 403 regardless. -->
+      <router-outlet *ngIf="!mustChangePassword"></router-outlet>
     </ng-container>
 
   </main>

@@ -88,6 +88,20 @@
             <version>2.8.6</version>
         </dependency>
 
+        <!-- APACHE POI (ooxml): builds the .xlsx marks/performance report.
+             This is why the export is generated here rather than in the
+             browser - AssessmentReportService calls the exact same
+             AssessmentService methods the JSON endpoints call, so the
+             workbook can never contain a row the caller could not already
+             see through the API. A client-side export library would have to
+             re-fetch and re-scope the same data through a second path, which
+             is a second place that scoping rule could drift from the first. -->
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+            <version>5.3.0</version>
+        </dependency>
+
         <!-- H2: no longer the application database. Kept for TESTS only, so the
              suite runs fast and needs no SQL Server instance to be up. -->
         <dependency>

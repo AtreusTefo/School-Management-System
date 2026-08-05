@@ -1,0 +1,187 @@
+<div class="card">
+  <div class="card__header">
+    <div class="card__title">
+      <h2>Work I have set</h2>
+      <span class="badge badge--neutral">{{ assignments.length }}</span>
+    </div>
+    <div class="toolbar">
+      <button type="button" class="btn btn--primary" (click)="openSetWork()"
+              *ngIf="!showSetWork" [disabled]="courses.length === 0">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2" stroke-linecap="round"
+             stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 5v14M5 12h14" />
+        </svg>
+        Set work
+      </button>
+    </div>
+  </div>
+
+  <div *ngIf="notice" class="notice notice--inline" role="status">
+    {{ notice }}
+  </div>
+
+  <p class="card__note" *ngIf="courses.length === 0">
+    You do not teach any courses yet. Open <strong>Timetable</strong> on the dashboard to
+    add a subject, a class, and the course that joins them.
+  </p>
+
+  <!-- ===== SET WORK ===== -->
+  <div *ngIf="showSetWork" class="subform">
+    <div class="subform__head">
+      <h3>Set new work</h3>
+      <button type="button" class="btn btn--sm btn--ghost"
+              (click)="closeSetWork()">Close</button>
+    </div>
+
+    <form #setWorkForm="ngForm" (ngSubmit)="onSetWork()">
+      <div class="create-form">
+        <div class="field">
+          <label class="field__label" for="newTitle">Title</label>
+          <input id="newTitle" class="input" type="text" name="newTitle"
+                 #newTitleModel="ngModel"
+                 [(ngModel)]="newTitle" placeholder="What needs to be done"
+                 required [maxlength]="titleMaxLength" />
+          <app-field-error [control]="newTitleModel" label="Title" />
+        </div>
+        <div class="field">
+          <label class="field__label" for="newDueDate">Due date</label>
+          <input id="newDueDate" class="input" type="date" name="newDueDate"
+                 [(ngModel)]="newDueDate" />
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="field__label" for="newDescription">Instructions</label>
+        <input id="newDescription" class="input" type="text" name="newDescription"
+               #newDescriptionModel="ngModel"
+               [(ngModel)]="newDescription"
+               [maxlength]="descriptionMaxLength"
+               placeholder="Optional - what the students need to do" />
+        <app-field-error [control]="newDescriptionModel" label="Instructions" />
+      </div>
+
+      <!-- Checkboxes rather than a single dropdown, because setting the same
+           task for several classes at once is the point. Each ticked course
+           becomes its own assignment with its own register. -->
+      <fieldset class="field">
+        <legend class="field__label">Which classes?</legend>
+        <div class="course-picker">
+          <label *ngFor="let c of courses" class="course-picker__option">
+            <input type="checkbox"
+                   [checked]="isCourseSelected(c.id)"
+                   (change)="toggleCourse(c.id)" />
+            <span>{{ c.subjectName }} &mdash; {{ c.className }}</span>
+          </label>
+        </div>
+        <span class="field__hint" *ngIf="!noCourseSelectedError">
+          Every student enrolled in the class gets their own copy to hand in.
+        </span>
+        <span class="field__hint field__hint--warn" *ngIf="noCourseSelectedError" role="alert">
+          {{ noCourseSelectedError }}
+        </span>
+      </fieldset>
+
+      <button type="submit" class="btn btn--primary" [disabled]="!canSetWork">
+        Set work for {{ selectedCourseIds.size }}
+        class{{ selectedCourseIds.size === 1 ? '' : 'es' }}
+      </button>
+    </form>
+  </div>
+
+  <!-- ===== LOADING ===== -->
+  <div *ngIf="loading" class="loading">
+    <span class="spinner" aria-hidden="true"></span>
+    <span>Loading...</span>
+  </div>
+
+  <!-- ===== EMPTY STATE ===== -->
+  <div *ngIf="!loading && assignments.length === 0" class="empty">
+    <svg class="empty__icon" width="40" height="40" viewBox="0 0 24 24" fill="none"
+         stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+         stroke-linejoin="round" aria-hidden="true">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <path d="M14 2v6h6M9 15h6M9 11h3" />
+    </svg>
+    <div class="empty__title">No assignments yet</div>
+    <p class="empty__text">Use the form above to set the first piece of work.</p>
+  </div>
+
+  <!-- One row per assignment, with progress. Plain Angular rather than
+       DataTables: this list is short by nature, and a DataTables instance
+       here would add sorting nobody asked for. -->
+  <div class="card__body" *ngIf="!loading && assignments.length > 0">
+    <table class="table table--plain">
+      <thead>
+        <tr>
+          <th>Title</th>
+          <th>Subject</th>
+          <th>Class</th>
+          <th>Due</th>
+          <th>Handed in</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <ng-container *ngFor="let a of assignments">
+          <tr *ngIf="editingAssignmentId !== a.id">
+            <td>{{ a.title }}</td>
+            <td>{{ a.subjectName }}</td>
+            <td>{{ a.className }}</td>
+            <td>
+              <span *ngIf="a.dueDate; else noDue"
+                    [class.badge--overdue]="a.pastDue">{{ a.dueDate }}</span>
+              <ng-template #noDue><span class="muted">none</span></ng-template>
+            </td>
+            <td>{{ a.submittedCount }} of {{ a.studentCount }}</td>
+            <td class="col-actions">
+              <div class="row-actions">
+                <button type="button" class="btn btn--sm"
+                        (click)="startEditAssignment(a)">Edit</button>
+                <button type="button" class="btn btn--sm btn--danger"
+                        (click)="onDeleteAssignment(a)"
+                        title="Work that has been handed in must be reopened first">
+                  Delete
+                </button>
+              </div>
+            </td>
+          </tr>
+          <tr *ngIf="editingAssignmentId === a.id">
+            <td colspan="6">
+              <div class="create-form">
+                <div class="field">
+                  <label class="field__label" [attr.for]="'editTitle' + a.id">Title</label>
+                  <input [id]="'editTitle' + a.id" class="input" type="text"
+                         name="editTitle" #editTitleModel="ngModel"
+                         [(ngModel)]="editTitle"
+                         required [maxlength]="titleMaxLength" />
+                  <app-field-error [control]="editTitleModel" label="Title" />
+                </div>
+                <div class="field">
+                  <label class="field__label" [attr.for]="'editDue' + a.id">Due</label>
+                  <input [id]="'editDue' + a.id" class="input" type="date"
+                         name="editDueDate" [(ngModel)]="editDueDate" />
+                </div>
+                <div class="field">
+                  <label class="field__label" [attr.for]="'editDesc' + a.id">Instructions</label>
+                  <input [id]="'editDesc' + a.id" class="input" type="text"
+                         name="editDescription" #editDescriptionModel="ngModel"
+                         [(ngModel)]="editDescription"
+                         [maxlength]="descriptionMaxLength" />
+                  <app-field-error [control]="editDescriptionModel" label="Instructions" />
+                </div>
+                <div class="row-actions">
+                  <button type="button" class="btn btn--sm btn--primary"
+                          [disabled]="editTitleModel.invalid"
+                          (click)="saveEditAssignment(a.id)">Save</button>
+                  <button type="button" class="btn btn--sm btn--ghost"
+                          (click)="cancelEditAssignment()">Cancel</button>
+                </div>
+              </div>
+            </td>
+          </tr>
+        </ng-container>
+      </tbody>
+    </table>
+  </div>
+</div>

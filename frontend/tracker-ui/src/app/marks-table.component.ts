@@ -8,61 +8,7 @@ import 'datatables.net-buttons-dt';
 import 'datatables.net-buttons/js/buttons.html5.mjs';
 import 'datatables.net-buttons/js/buttons.print.mjs';
 import { Assessment } from './assignment.service';
-
-/**
- * pdfmake, loaded ONLY when somebody actually exports.
- *
- * WHY THIS IS NOT A NORMAL IMPORT
- * pdfmake plus its embedded Roboto fonts is about 1.9 MB - more than four times
- * the rest of this application put together. Importing it at the top of the file
- * puts all of it in the initial bundle, so every student who signs in to look at
- * their marks downloads a PDF generator they may never use, on whatever
- * connection they have.
- *
- * A dynamic import() makes it a separate chunk that is fetched on the first
- * click of Export PDF and cached thereafter. The initial bundle went from
- * 2.41 MB back to roughly 450 kB.
- *
- * The promise is cached rather than the module, so two quick clicks share one
- * download instead of starting two.
- */
-let pdfMakeReady: Promise<unknown> | null = null;
-
-function loadPdfMake(): Promise<unknown> {
-  if (pdfMakeReady) {
-    return pdfMakeReady;
-  }
-
-  pdfMakeReady = Promise.all([
-    import('pdfmake/build/pdfmake'),
-    import('pdfmake/build/vfs_fonts')
-  ]).then(([pdfMakeModule, vfsModule]) => {
-    const pdfMake = (pdfMakeModule as any).default ?? pdfMakeModule;
-    const vfs = (vfsModule as any).default ?? vfsModule;
-
-    /*
-     * pdfmake 0.3 replaced "assign to .vfs" with addVirtualFileSystem(). Both
-     * are handled, so an upgrade that moves it again degrades to a PDF button
-     * that reports a failure rather than a page that will not load.
-     */
-    if (typeof pdfMake.addVirtualFileSystem === 'function') {
-      pdfMake.addVirtualFileSystem(vfs);
-    } else {
-      pdfMake.vfs = vfs;
-    }
-
-    // DataTables Buttons has to be handed the instance explicitly; it does not
-    // look for a global.
-    const dt = DataTable as unknown as {
-      Buttons?: { pdfMake?: (instance: unknown) => void };
-    };
-    dt.Buttons?.pdfMake?.(pdfMake);
-
-    return pdfMake;
-  });
-
-  return pdfMakeReady;
-}
+import { exportPdfAction } from './report-export';
 
 /**
  * THE MARKS REPORT
@@ -136,39 +82,10 @@ export class MarksTableComponent implements AfterViewInit, OnChanges, OnDestroy 
           // before the library existed.
           text: 'Export PDF',
           className: 'btn btn--sm btn--primary',
-          action: (e: any, dt: any, node: any, config: any) => {
-            const button = node?.[0] ?? node;
-            const original = button?.textContent;
-            if (button) {
-              button.textContent = 'Preparing...';
-            }
-
-            loadPdfMake().then(() => {
-              const pdfAction = (DataTable as any).ext?.buttons?.pdfHtml5?.action;
-              if (typeof pdfAction !== 'function') {
-                throw new Error('The PDF export is unavailable in this build.');
-              }
-              pdfAction.call(this, e, dt, node, {
-                ...config,
-                extend: 'pdfHtml5',
-                orientation: 'landscape',
-                pageSize: 'A4',
-                title: this.reportTitle,
-                // The Actions column holds buttons, which mean nothing on paper.
-                exportOptions: { columns: ':not(.col-actions)' }
-              });
-            }).catch((error: unknown) => {
-              // Every failure must reach the user. A button that silently does
-              // nothing is worse than one that says why.
-              this.zone.run(() => this.exportFailed.emit(
-                error instanceof Error ? error.message
-                                       : 'The PDF export could not be loaded.'));
-            }).finally(() => {
-              if (button && original !== undefined) {
-                button.textContent = original;
-              }
-            });
-          }
+          action: exportPdfAction(
+            () => this.reportTitle,
+            (message) => this.zone.run(() => this.exportFailed.emit(message))
+          )
         },
         {
           // Print needs no extra library, so it stays a stock button.

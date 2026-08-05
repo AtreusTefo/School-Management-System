@@ -422,4 +422,25 @@ export class AssignmentService {
       responseType: 'blob'
     });
   }
+
+  /**
+   * Fetch the combined marks-and-performance workbook as a Blob.
+   *
+   * BUILT ON THE SERVER, DELIBERATELY. The alternative - a JavaScript library
+   * turning already-loaded JSON into a workbook here in the browser - would
+   * have to re-derive the same scoping AssessmentService already applies to
+   * every mark and every summary row, as a SECOND implementation of that rule
+   * that could drift from the first. Asking the server for the finished file
+   * means the download can never contain a row the JSON endpoints would not
+   * already have shown this caller.
+   *
+   * Same 'blob' responseType as downloadFile, for the same reason: the
+   * default would try to parse .xlsx bytes as JSON and fail on the first one.
+   */
+  downloadExcelReport(): Observable<Blob> {
+    return this.http.get(`${this.api}/api/assessments/report.xlsx`, {
+      withCredentials: true,
+      responseType: 'blob'
+    });
+  }
 }

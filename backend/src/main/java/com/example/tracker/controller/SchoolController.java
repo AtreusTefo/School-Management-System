@@ -153,7 +153,17 @@ public class SchoolController {
 
     static class EnrolRequest {
 
+        /**
+         * @Size mirrors app_user.username NVARCHAR(50) - the same bound every
+         * other username field in this application carries (UserController,
+         * AuthController). Without it, this was the one place a client could
+         * send an arbitrarily long username past bean validation; it would
+         * still be refused, but only by the database's column length, several
+         * layers further in and with a generic "violates a data constraint"
+         * message rather than one naming the actual limit.
+         */
         @NotBlank(message = "Username must not be blank")
+        @Size(max = 50, message = "Username must be at most 50 characters")
         private String username;
 
         public String getUsername() {

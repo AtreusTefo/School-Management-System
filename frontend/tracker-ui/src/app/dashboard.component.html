@@ -1,0 +1,226 @@
+<!-- ===== MY TIMETABLE =====
+     For a student this panel IS the answer to two of the requirements: the
+     subjects they are taught, and the several teachers who teach them. Both
+     come from the one course list rather than separate requests, because
+     they are the same rows read from different columns. -->
+<div class="card" *ngIf="courses.length > 0">
+  <div class="card__header">
+    <div class="card__title">
+      <h2>{{ isTeacher ? 'What I teach' : 'What I am taught' }}</h2>
+      <span class="badge badge--neutral">{{ courses.length }}</span>
+    </div>
+  </div>
+  <div class="card__body">
+    <p class="card__note">
+      <strong>{{ mySubjects.length }}</strong>
+      subject{{ mySubjects.length === 1 ? '' : 's' }}:
+      {{ mySubjects.join(', ') }}
+      <ng-container *ngIf="!isTeacher">
+        &nbsp;&middot;&nbsp;
+        <strong>{{ myTeachers.length }}</strong>
+        teacher{{ myTeachers.length === 1 ? '' : 's' }}:
+        {{ myTeachers.join(', ') }}
+      </ng-container>
+    </p>
+    <ul class="course-list">
+      <li *ngFor="let c of courses" class="course-list__item">
+        <span class="badge badge--neutral">{{ c.subjectCode }}</span>
+        <span>{{ c.subjectName }} &mdash; {{ c.className }}</span>
+        <span class="muted" *ngIf="!isTeacher">taught by {{ c.teacherUsername }}</span>
+      </li>
+    </ul>
+  </div>
+</div>
+
+<!-- ===== QUICK LINKS =====
+     The nav bar in the header already reaches every page; this is the same
+     three destinations again as cards, because a fresh dashboard with
+     nothing else on it otherwise reads as a dead end rather than a starting
+     point. -->
+<section class="quick-links">
+  <a routerLink="/marking-queue" class="quick-link">
+    <span class="quick-link__title">{{ isTeacher ? 'Marking queue' : 'My work' }}</span>
+    <span class="quick-link__hint">
+      {{ isTeacher ? "See every student's submissions across your courses"
+                   : 'Upload and hand in your work' }}
+    </span>
+  </a>
+  <a routerLink="/reports" class="quick-link">
+    <span class="quick-link__title">Performance &amp; marks</span>
+    <span class="quick-link__hint">
+      {{ isTeacher ? 'Enter marks and export the full report' : 'See your marks and how you are doing' }}
+    </span>
+  </a>
+  <a *ngIf="isTeacher" routerLink="/assignments" class="quick-link">
+    <span class="quick-link__title">Work I have set</span>
+    <span class="quick-link__hint">Set new work, or edit and delete what you have set</span>
+  </a>
+</section>
+
+<!-- ===== ACCOUNT MANAGEMENT AND TIMETABLE (teachers only) ===== -->
+<div class="card" *ngIf="isTeacher">
+  <div class="card__header">
+    <div class="card__title">
+      <h2>Manage</h2>
+    </div>
+    <div class="toolbar">
+      <button type="button" class="btn btn--ghost" (click)="openCreateUser()"
+              *ngIf="!showCreateUser">Add a student account</button>
+      <button type="button" class="btn btn--ghost" (click)="openTimetable()"
+              *ngIf="!showTimetable">Timetable</button>
+    </div>
+  </div>
+
+  <div *ngIf="timetableNotice" class="notice notice--inline" role="status">
+    {{ timetableNotice }}
+  </div>
+
+  <p class="card__note" *ngIf="courses.length === 0">
+    You do not teach any courses yet. Open <strong>Timetable</strong> below to add a
+    subject, a class, and the course that joins them.
+  </p>
+
+  <!-- ===== CREATE A STUDENT ACCOUNT (US-23) ===== -->
+  <div *ngIf="showCreateUser" class="subform">
+    <div class="subform__head">
+      <h3>New student account</h3>
+      <button type="button" class="btn btn--sm btn--ghost"
+              (click)="closeCreateUser()">Close</button>
+    </div>
+
+    <div *ngIf="createUserNotice" class="notice notice--inline" role="status">
+      {{ createUserNotice }}
+    </div>
+
+    <form (ngSubmit)="onCreateUser()" class="create-form">
+      <div class="field">
+        <label class="field__label" for="newUsername">Username</label>
+        <input id="newUsername" class="input" type="text" name="newUsername"
+               #newUsernameModel="ngModel"
+               [(ngModel)]="newUsername" placeholder="e.g. jsmith"
+               required [maxlength]="usernameMaxLength"
+               autocomplete="off" />
+        <app-field-error [control]="newUsernameModel" label="Username" />
+      </div>
+      <div class="field">
+        <label class="field__label" for="newUserPassword">Temporary password</label>
+        <input id="newUserPassword" class="input" type="text" name="newUserPassword"
+               #newUserPasswordModel="ngModel"
+               [(ngModel)]="newUserPassword" placeholder="At least 8 characters"
+               required [minlength]="passwordMinLength"
+               autocomplete="off" />
+        <!-- Shown as plain text on purpose: the teacher has to read this out
+             or write it down to hand over. Masking a value whose whole
+             purpose is to be communicated helps nobody. It stops being a
+             secret worth hiding the moment the student replaces it. -->
+        <span class="field__hint"
+              *ngIf="newUserPasswordModel.valid || !(newUserPasswordModel.touched || newUserPasswordModel.dirty)">
+          Visible so you can pass it on. They must change it at first sign-in.
+        </span>
+        <app-field-error [control]="newUserPasswordModel" label="Temporary password" />
+      </div>
+      <button type="submit" class="btn btn--primary" [disabled]="!canCreateUser">
+        <span *ngIf="creatingUser" class="spinner" aria-hidden="true"></span>
+        {{ creatingUser ? 'Creating...' : 'Create account' }}
+      </button>
+    </form>
+  </div>
+
+  <!-- ===== TIMETABLE ADMIN ===== -->
+  <div *ngIf="showTimetable" class="subform">
+    <div class="subform__head">
+      <h3>Timetable</h3>
+      <button type="button" class="btn btn--sm btn--ghost"
+              (click)="closeTimetable()">Close</button>
+    </div>
+
+    <form #subjectForm="ngForm" (ngSubmit)="onCreateSubject()" class="create-form">
+      <div class="field">
+        <label class="field__label" for="newSubjectCode">Subject code</label>
+        <input id="newSubjectCode" class="input" type="text" name="newSubjectCode"
+               #newSubjectCodeModel="ngModel"
+               [(ngModel)]="newSubjectCode" placeholder="e.g. GEOG"
+               required [maxlength]="subjectCodeMaxLength" />
+        <app-field-error [control]="newSubjectCodeModel" label="Subject code" />
+      </div>
+      <div class="field">
+        <label class="field__label" for="newSubjectName">Subject name</label>
+        <input id="newSubjectName" class="input" type="text" name="newSubjectName"
+               #newSubjectNameModel="ngModel"
+               [(ngModel)]="newSubjectName" placeholder="e.g. Geography"
+               required [maxlength]="subjectNameMaxLength" />
+        <app-field-error [control]="newSubjectNameModel" label="Subject name" />
+      </div>
+      <button type="submit" class="btn btn--sm" [disabled]="subjectForm.invalid">Add subject</button>
+    </form>
+
+    <form #classForm="ngForm" (ngSubmit)="onCreateClass()" class="create-form">
+      <div class="field">
+        <label class="field__label" for="newClassName">Class name</label>
+        <input id="newClassName" class="input" type="text" name="newClassName"
+               #newClassNameModel="ngModel"
+               [(ngModel)]="newClassName" placeholder="e.g. Grade 11A"
+               required [maxlength]="classNameMaxLength" />
+        <app-field-error [control]="newClassNameModel" label="Class name" />
+      </div>
+      <button type="submit" class="btn btn--sm" [disabled]="classForm.invalid">Add class</button>
+    </form>
+
+    <form (ngSubmit)="onCreateCourse()" class="create-form">
+      <div class="field">
+        <label class="field__label" for="courseSubject">I teach</label>
+        <select id="courseSubject" class="input" name="courseSubject"
+                required
+                [(ngModel)]="courseSubjectId">
+          <option [ngValue]="null">Choose a subject</option>
+          <option *ngFor="let s of subjects" [ngValue]="s.id">{{ s.name }}</option>
+        </select>
+      </div>
+      <div class="field">
+        <label class="field__label" for="courseClass">to</label>
+        <select id="courseClass" class="input" name="courseClass"
+                required
+                [(ngModel)]="courseClassId">
+          <option [ngValue]="null">Choose a class</option>
+          <option *ngFor="let c of classes" [ngValue]="c.id">{{ c.name }}</option>
+        </select>
+      </div>
+      <button type="submit" class="btn btn--sm btn--primary"
+              [disabled]="courseSubjectId === null || courseClassId === null">
+        Add course
+      </button>
+    </form>
+
+    <form #enrolForm="ngForm" (ngSubmit)="onEnrol()" class="create-form">
+      <div class="field">
+        <label class="field__label" for="enrolClass">Enrol into</label>
+        <select id="enrolClass" class="input" name="enrolClass"
+                required
+                [(ngModel)]="enrolClassId">
+          <option [ngValue]="null">Choose a class</option>
+          <option *ngFor="let c of classes" [ngValue]="c.id">
+            {{ c.name }} ({{ c.studentCount }})
+          </option>
+        </select>
+      </div>
+      <div class="field">
+        <label class="field__label" for="enrolUsername">Student</label>
+        <input id="enrolUsername" class="input" type="text" name="enrolUsername"
+               #enrolUsernameModel="ngModel"
+               [(ngModel)]="enrolUsername" placeholder="Username"
+               required [maxlength]="usernameMaxLength" />
+        <!-- The server refuses a teacher here, and so does the database: only
+             a STUDENT can be enrolled, enforced by a composite foreign key
+             rather than by this form being careful. -->
+        <span class="field__hint"
+              *ngIf="enrolUsernameModel.valid || !(enrolUsernameModel.touched || enrolUsernameModel.dirty)">
+          Only a student account can be enrolled.
+        </span>
+        <app-field-error [control]="enrolUsernameModel" label="Student username" />
+      </div>
+      <button type="submit" class="btn btn--sm" [disabled]="enrolForm.invalid">
+        Enrol
+      </button>
+    </form>
+  </div>
+</div>

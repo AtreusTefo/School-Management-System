@@ -1,20 +1,15 @@
 import { bootstrapApplication } from '@angular/platform-browser';
-import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { AppComponent } from './app/app.component';
-import { csrfInterceptor } from './app/csrf.interceptor';
+import { appConfig } from './app/app.config';
 
 /**
  * Bootstraps the standalone Angular app.
  *
- * provideHttpClient() makes HttpClient available everywhere so our
- * AssignmentService can make API calls.
- *
- * csrfInterceptor forwards the CSRF token to our API. Angular's built-in XSRF
- * support deliberately covers same-origin requests only, and in development the
- * API is on a different port - see the interceptor for the full explanation.
+ * Providers now live in app.config.ts rather than inline here, because there
+ * is more than one of them worth naming on its own - provideRouter(routes) is
+ * what turns the four page components in app.routes.ts into actual
+ * navigation, alongside the HTTP client and its CSRF interceptor that were
+ * already here.
  */
-bootstrapApplication(AppComponent, {
-  providers: [
-    provideHttpClient(withInterceptors([csrfInterceptor]))
-  ]
-}).catch((err) => console.error(err));
+bootstrapApplication(AppComponent, appConfig)
+  .catch((err) => console.error(err));

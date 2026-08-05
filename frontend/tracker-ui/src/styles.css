@@ -1136,3 +1136,131 @@ table.dataTable .input { min-width: 140px; }
 .card__body:has(.table--plain) {
   overflow-x: auto;
 }
+
+/* ============================================================================
+   NAVIGATION AND MULTI-PAGE LAYOUT
+   Added when the single-page dashboard split into four routed pages
+   (Dashboard, Work I have set, Marking queue, Reports). Uses the same tokens
+   as everything above.
+   ========================================================================= */
+
+/* Sits between .brand and .appbar__actions in .appbar__inner, which is
+   already display:flex - flex:1 lets it take the middle space on a wide
+   screen, and it wraps onto its own row rather than squeezing the brand or
+   the user chip on a narrow one. */
+.nav {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.nav__link {
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.nav__link:hover {
+  background: var(--surface-muted);
+  color: var(--text);
+}
+
+.nav__link:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+/* routerLinkActive adds this class - the exact match on "/" (see
+   [routerLinkActiveOptions]="{ exact: true }" in app.component.html) is what
+   stops the Dashboard link staying highlighted on every other page, since
+   every route's path technically starts with "/". */
+.nav__link--active {
+  background: var(--brand-soft);
+  color: var(--brand-text, var(--brand));
+}
+
+/* An inline variant of .alert for the login screen's wrong-password message -
+   same visual language, without the Retry/Dismiss actions a login attempt
+   that never succeeded has no use for. */
+.alert--inline {
+  margin-bottom: 16px;
+  padding: 10px 14px;
+}
+.alert--inline .alert__text {
+  font-size: 0.88rem;
+}
+
+/* The dashboard's three cards pointing at the routed pages. */
+.quick-links {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+.quick-link {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px 18px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  text-decoration: none;
+  transition: border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+}
+
+.quick-link:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow);
+  transform: translateY(-1px);
+}
+
+.quick-link:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+.quick-link__title {
+  font-weight: 650;
+  color: var(--text);
+}
+
+.quick-link__hint {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+/* The Reports page's "export everything" banner: text on the left, one
+   prominent button on the right, wrapping to stack on a narrow screen rather
+   than squeezing the button under the description. */
+.export-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.export-banner__title {
+  margin: 0 0 4px;
+}
+
+@media (max-width: 640px) {
+  .nav {
+    order: 3;
+    width: 100%;
+    justify-content: flex-start;
+    padding-top: 4px;
+    border-top: 1px solid var(--border);
+    margin-top: 8px;
+  }
+}

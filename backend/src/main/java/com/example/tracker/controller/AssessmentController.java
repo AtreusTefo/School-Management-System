@@ -2,16 +2,24 @@ package com.example.tracker.controller;
 
 import com.example.tracker.dto.AssessmentView;
 import com.example.tracker.dto.PerformanceView;
+import com.example.tracker.service.AssessmentReportService;
 import com.example.tracker.service.AssessmentService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.core.io.Resource;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 /**
@@ -33,9 +41,11 @@ import java.util.List;
 public class AssessmentController {
 
     private final AssessmentService assessments;
+    private final AssessmentReportService reports;
 
-    public AssessmentController(AssessmentService assessments) {
+    public AssessmentController(AssessmentService assessments, AssessmentReportService reports) {
         this.assessments = assessments;
+        this.reports = reports;
     }
 
     /**
@@ -64,6 +74,37 @@ public class AssessmentController {
     @GetMapping("/course/{courseId}")
     public List<AssessmentView> forCourse(@PathVariable Long courseId) {
         return assessments.listForCourse(courseId);
+    }
+
+    /**
+     * GET /api/assessments/report.xlsx - the same marks and performance data,
+     * as one downloadable spreadsheet with two sheets.
+     *
+     * "Performance by student" and "Mark book" are two views of the same
+     * underlying marks - one summarised, one detailed - so this is one file
+     * rather than two: a teacher who wants to work with the numbers in Excel
+     * should not have to download and stitch together two separate exports.
+     *
+     * Built by AssessmentReportService calling the exact same
+     * AssessmentService methods list() and summary() above call, so the
+     * workbook is bounded by the same authority those JSON endpoints already
+     * enforce - there is no separate export-scoped query that could disagree
+     * with what the caller sees on screen.
+     */
+    @GetMapping("/report.xlsx")
+    public ResponseEntity<Resource> report() {
+        byte[] workbook = reports.buildWorkbook();
+
+        ContentDisposition disposition = ContentDisposition.attachment()
+                .filename(reports.suggestedFilename(), StandardCharsets.UTF_8)
+                .build();
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, disposition.toString())
+                .contentType(MediaType.parseMediaType(
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .contentLength(workbook.length)
+                .body(new ByteArrayResource(workbook));
     }
 
     /** POST /api/assessments - record a mark. Teacher only. */

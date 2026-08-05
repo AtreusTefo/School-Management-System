@@ -1,0 +1,106 @@
+<!-- Counts are derived from the list already loaded, not fetched separately,
+     so they can never disagree with the rows beneath them. -->
+<section class="stats" aria-label="Summary">
+  <div class="stat">
+    <div class="stat__label">Total</div>
+    <div class="stat__value">{{ submissions.length }}</div>
+  </div>
+  <div class="stat">
+    <div class="stat__label">In progress</div>
+    <div class="stat__value">{{ inProgressCount }}</div>
+  </div>
+  <div class="stat stat--done">
+    <div class="stat__label">Handed in</div>
+    <div class="stat__value">{{ submittedCount }}</div>
+  </div>
+  <div class="stat stat--overdue">
+    <div class="stat__label">Overdue</div>
+    <div class="stat__value">{{ overdueCount }}</div>
+  </div>
+</section>
+
+<div class="card">
+
+  <div class="card__header">
+    <div class="card__title">
+      <h2>{{ isTeacher ? 'Marking queue' : 'My work' }}</h2>
+      <span class="badge badge--neutral">{{ visibleSubmissions.length }}</span>
+    </div>
+
+    <!-- No search box here: DataTables draws its own, inside the table below.
+         The status filter stays, because it decides WHICH ROWS ARE GIVEN to
+         the table rather than searching the ones already there - it only
+         changes what is LOOKED AT, never what is allowed to be seen. -->
+    <div class="toolbar">
+      <div class="segmented" role="group" aria-label="Filter by status">
+        <button type="button" class="segmented__btn"
+                [attr.aria-pressed]="statusFilter === 'ALL'"
+                (click)="setStatusFilter('ALL')">All</button>
+        <button type="button" class="segmented__btn"
+                [attr.aria-pressed]="statusFilter === 'IN_PROGRESS'"
+                (click)="setStatusFilter('IN_PROGRESS')">Open</button>
+        <button type="button" class="segmented__btn"
+                [attr.aria-pressed]="statusFilter === 'SUBMITTED'"
+                (click)="setStatusFilter('SUBMITTED')">Submitted</button>
+        <button type="button" class="segmented__btn"
+                [attr.aria-pressed]="statusFilter === 'OVERDUE'"
+                (click)="setStatusFilter('OVERDUE')">Overdue</button>
+      </div>
+    </div>
+  </div>
+
+  <p class="card__note" *ngIf="!isTeacher">
+    Upload a PDF against a piece of work, then hand it in. You can replace the
+    file as often as you like until you do &mdash; after that, ask your
+    teacher to reopen it.
+  </p>
+
+  <p class="card__note" *ngIf="isTeacher">
+    Every student's work across the courses you teach. Download a PDF to mark
+    it; reopen a submission to let a student correct it.
+  </p>
+
+  <div *ngIf="uploading" class="loading">
+    <span class="spinner" aria-hidden="true"></span>
+    <span>Uploading...</span>
+  </div>
+
+  <!-- ===== LOADING ===== -->
+  <div *ngIf="loading" class="loading">
+    <span class="spinner" aria-hidden="true"></span>
+    <span>Loading...</span>
+  </div>
+
+  <!-- ===== EMPTY STATE =====
+       "Your search matched nothing" is DataTables' job, and it says so
+       inside the table itself. Showing the same sentence for both would send
+       someone hunting for missing data that is in fact one click away. -->
+  <div *ngIf="!loading && submissions.length === 0" class="empty">
+    <svg class="empty__icon" width="40" height="40" viewBox="0 0 24 24" fill="none"
+         stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+         stroke-linejoin="round" aria-hidden="true">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <path d="M14 2v6h6M9 15h6M9 11h3" />
+    </svg>
+    <div class="empty__title">Nothing here yet</div>
+    <p class="empty__text">
+      {{ isTeacher
+         ? 'Set work for one of your classes and it will appear here, one row per student.'
+         : 'Nothing has been set for your classes yet.' }}
+    </p>
+  </div>
+
+  <!-- ===== SUBMISSION TABLE =====
+       DataTables draws this, not Angular. This template only hands over the
+       rows and listens for what the user asked to do with one. -->
+  <app-submission-table
+    *ngIf="!loading && submissions.length > 0"
+    [submissions]="visibleSubmissions"
+    [isTeacher]="isTeacher"
+    (submitWork)="onSubmitWork($event)"
+    (unsubmitWork)="onUnsubmitWork($event)"
+    (downloadFile)="onDownload($event)"
+    (fileChosen)="onFileChosen($event)">
+  </app-submission-table>
+
+</div>

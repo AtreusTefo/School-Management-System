@@ -1,0 +1,197 @@
+<!-- ===== EXPORT THE FULL REPORT (EXCEL) =====
+     Built on the server - see AssessmentReportService - so the download is
+     bounded by the exact same authority as everything else on this page, and
+     covers every row the caller may see, not just what happens to be loaded
+     or paged on screen right now. One workbook, two sheets: Performance
+     Summary, then Marks - the same order the two tables appear in below. -->
+<div class="card">
+  <div class="card__body export-banner">
+    <div>
+      <h2 class="export-banner__title">Full report</h2>
+      <p class="card__note">
+        Performance summary and every mark, in one spreadsheet with two
+        sheets - built fresh from the database each time, so it is never
+        limited to what is currently on screen.
+      </p>
+    </div>
+    <button type="button" class="btn btn--primary" (click)="onExportExcel()"
+            [disabled]="exportingExcel">
+      <span *ngIf="exportingExcel" class="spinner" aria-hidden="true"></span>
+      {{ exportingExcel ? 'Preparing...' : 'Export Excel (full report)' }}
+    </button>
+  </div>
+</div>
+
+<!-- ===== PERFORMANCE SUMMARY =====
+     Every number here is derived by the SERVER from the marks. Nothing is
+     stored, so nothing can disagree with the marks it came from, and a
+     corrected mark corrects this the next time it is loaded.
+
+     The percentage is a ratio of totals, not the mean of the individual
+     percentages - see PerformanceView on the backend for why those are
+     different numbers and only one of them is right. -->
+<div class="card" *ngIf="!loading && performance.length > 0">
+  <div class="card__header">
+    <div class="card__title">
+      <h2>{{ isTeacher ? 'Performance by student' : 'My performance' }}</h2>
+      <span class="badge badge--neutral">{{ performance.length }}</span>
+    </div>
+  </div>
+  <app-performance-table
+    [performance]="performance"
+    [isTeacher]="isTeacher"
+    [reportTitle]="performanceReportTitle"
+    (exportFailed)="onExportFailed($event)">
+  </app-performance-table>
+</div>
+
+<!-- ===== MARKS =====
+     The DataTable report, with its own Export PDF and Print along the top.
+     The export sends the CELLS AS DRAWN, which are the server's percentages
+     and levels - the browser never recomputes a mark, so the exported
+     document and the stored data cannot disagree. -->
+<div class="card">
+  <div class="card__header">
+    <div class="card__title">
+      <h2>{{ isTeacher ? 'Mark book' : 'My marks' }}</h2>
+      <span class="badge badge--neutral">{{ marks.length }}</span>
+    </div>
+    <div class="toolbar" *ngIf="isTeacher">
+      <button type="button" class="btn btn--primary" (click)="openMarkEntry()"
+              *ngIf="!showMarkEntry" [disabled]="courses.length === 0">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2" stroke-linecap="round"
+             stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 5v14M5 12h14" />
+        </svg>
+        Enter a mark
+      </button>
+    </div>
+  </div>
+
+  <div *ngIf="notice" class="notice notice--inline" role="status">
+    {{ notice }}
+  </div>
+
+  <p class="card__note" *ngIf="!isTeacher">
+    Your marks, and what they come to. The percentage for a subject is your
+    total score over the total it was marked out of, so a large assessment
+    counts for more than a small one.
+  </p>
+
+  <!-- ===== ENTER OR CORRECT A MARK ===== -->
+  <div *ngIf="isTeacher && showMarkEntry" class="subform">
+    <div class="subform__head">
+      <h3>{{ editingMarkId === null ? 'Enter a mark' : 'Correct a mark' }}</h3>
+      <button type="button" class="btn btn--sm btn--ghost"
+              (click)="closeMarkEntry()">Close</button>
+    </div>
+
+    <form (ngSubmit)="onSaveMark()">
+      <div class="create-form">
+        <div class="field">
+          <label class="field__label" for="markCourse">Course</label>
+          <select id="markCourse" class="input" name="markCourse"
+                  required
+                  [(ngModel)]="markCourseId" (ngModelChange)="onMarkCourseChange()"
+                  [disabled]="editingMarkId !== null">
+            <option [ngValue]="null">Choose a course</option>
+            <option *ngFor="let c of courses" [ngValue]="c.id">{{ c.label }}</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label class="field__label" for="markStudent">Student</label>
+          <!-- Only students actually enrolled in the class are offered, which
+               matches what the server accepts. Offering everyone and letting
+               the save fail would be a worse way to learn the same rule. -->
+          <select id="markStudent" class="input" name="markStudent"
+                  required
+                  [(ngModel)]="markStudent" *ngIf="editingMarkId === null">
+            <option value="">Choose a student</option>
+            <option *ngFor="let s of markCandidates" [value]="s">{{ s }}</option>
+          </select>
+          <input class="input" type="text" *ngIf="editingMarkId !== null"
+                 [value]="markStudent" disabled />
+        </div>
+      </div>
+
+      <div class="create-form">
+        <div class="field">
+          <label class="field__label" for="markName">Assessment</label>
+          <input id="markName" class="input" type="text" name="markName"
+                 #markNameModel="ngModel"
+                 [(ngModel)]="markName" placeholder="e.g. Term 1 Test"
+                 required [maxlength]="assessmentNameMaxLength" />
+          <app-field-error [control]="markNameModel" label="Assessment name" />
+        </div>
+        <!-- type="text" with inputmode="decimal", NOT type="number" - see
+             validation.ts / decimal-validator.directive.ts for why marks stay
+             text end to end. appDecimal checks the same shape the database
+             column (DECIMAL(6,2)) accepts, live, as this is typed. -->
+        <div class="field">
+          <label class="field__label" for="markScore">Score</label>
+          <input id="markScore" class="input" type="text" inputmode="decimal"
+                 name="markScore" #markScoreModel="ngModel"
+                 [(ngModel)]="markScore" placeholder="34"
+                 required appDecimal />
+          <app-field-error [control]="markScoreModel" label="Score" />
+        </div>
+        <div class="field">
+          <label class="field__label" for="markMaxScore">Out of</label>
+          <input id="markMaxScore" class="input" type="text" inputmode="decimal"
+                 name="markMaxScore" #markMaxScoreModel="ngModel"
+                 [(ngModel)]="markMaxScore" placeholder="50"
+                 required appDecimal appDecimalPositive />
+          <!-- The server refuses a score above the maximum, and so does the
+               database - ck_assessment_score_within_max. This is the one
+               cross-field rule in the app that mirrors an actual database
+               CHECK constraint rather than a formatting preference, so it is
+               worth catching here, live, rather than only after the server
+               refuses it. -->
+          <span class="field__hint"
+                *ngIf="!scoreExceedsMaxError && (markMaxScoreModel.valid || !(markMaxScoreModel.touched || markMaxScoreModel.dirty))">
+            A score cannot be higher than this.
+          </span>
+          <app-field-error [control]="markMaxScoreModel" label="Maximum score"
+                           [externalError]="scoreExceedsMaxError" />
+        </div>
+      </div>
+
+      <button type="submit" class="btn btn--primary" [disabled]="!canSaveMark">
+        {{ editingMarkId === null ? 'Record mark' : 'Save correction' }}
+      </button>
+    </form>
+  </div>
+
+  <!-- ===== LOADING ===== -->
+  <div *ngIf="loading" class="loading">
+    <span class="spinner" aria-hidden="true"></span>
+    <span>Loading...</span>
+  </div>
+
+  <div *ngIf="!loading && marks.length === 0" class="empty">
+    <svg class="empty__icon" width="40" height="40" viewBox="0 0 24 24" fill="none"
+         stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+         stroke-linejoin="round" aria-hidden="true">
+      <path d="M9 11l3 3L22 4" />
+      <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+    </svg>
+    <div class="empty__title">No marks yet</div>
+    <p class="empty__text">
+      {{ isTeacher
+         ? 'Enter a mark and it will appear here, with the percentage and level worked out.'
+         : 'Nothing has been marked for you yet.' }}
+    </p>
+  </div>
+
+  <app-marks-table
+    *ngIf="!loading && marks.length > 0"
+    [marks]="marks"
+    [isTeacher]="isTeacher"
+    [reportTitle]="markReportTitle"
+    (editMark)="startEditMark($event)"
+    (deleteMark)="onDeleteMark($event)"
+    (exportFailed)="onExportFailed($event)">
+  </app-marks-table>
+</div>
