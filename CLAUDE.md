@@ -69,7 +69,8 @@ School Management System/
 │       │   │                   #   AuthController, UserController
 │       │   ├── service/        # AssignmentService (fan-out), SubmissionService (PDF),
 │       │   │                   #   SchoolService (timetable), AssessmentService (marks),
-│       │   │                   #   AppUserService
+│       │   │                   #   AssessmentReportService (the Excel workbook, built
+│       │   │                   #   from AssessmentService's own methods), AppUserService
 │       │   ├── repository/     # One per entity (Spring Data JPA)
 │       │   ├── model/          # AppUser, Role, Subject, SchoolClass, Enrolment, Course,
 │       │   │                   #   Assignment, Submission, SubmissionFile, AssignmentStatus,
@@ -89,20 +90,49 @@ School Management System/
 │           ├── java/com/example/tracker/
 │           │   ├── AssignmentApiTest.java            # MockMvc, real security
 │           │   ├── ConcurrencyAndIntegrityTest.java  # 12 racing submissions, DB constraints
+│           │   ├── AccountSelfServiceTest.java       # password change, student creation
+│           │   ├── AssessmentIntegrityTest.java      # marks, scoring arithmetic
+│           │   ├── AssessmentReportTest.java         # the Excel endpoint - headers, sheets,
+│           │   │                                     #   numeric cell types, per-role scoping
+│           │   ├── InputValidationApiTest.java       # every DTO's Jakarta Bean Validation
 │           │   └── service/AssignmentServiceTest.java # business rules, repository mocked
 │           └── resources/application-test.properties # H2, Flyway off, ddl-auto=create-drop
 └── frontend/
     └── tracker-ui/             # The runnable Angular project - ng serve here
         └── src/
-            ├── main.ts
+            ├── main.ts         # bootstrapApplication(AppComponent, appConfig)
             ├── index.html
             ├── styles.css
             ├── environments/   # environment.ts (build), environment.development.ts (serve)
             └── app/
                 ├── assignment.service.ts    # The only place that knows API URLs
                 ├── csrf.interceptor.ts      # Attaches X-XSRF-TOKEN cross-origin
-                ├── app.component.ts         # UI logic
-                └── app.component.html       # Table, create form, error banner
+                ├── session.service.ts       # WHO is signed in - a signal, read by guards
+                │                            #   and every page outside any one component
+                ├── notification.service.ts  # THE error banner - shared across navigations
+                ├── auth.guard.ts            # signed-in + not mustChangePassword, else -> '/'
+                ├── teacher.guard.ts         # teacher-only routes, else -> /marking-queue
+                ├── app.routes.ts            # the four pages - see note below on the root
+                │                            #   route deliberately carrying no guard
+                ├── app.config.ts            # provideRouter + provideHttpClient
+                ├── app.component.ts         # THE SHELL - app bar, login, forced password
+                │                            #   change, error banner, <router-outlet>
+                ├── app.component.html
+                ├── dashboard.component.ts/.html          # '/' - timetable, quick links,
+                │                                         #   teacher-only Manage panel
+                ├── assignments-page.component.ts/.html   # '/assignments' - "Work I have set"
+                ├── marking-queue-page.component.ts/.html # '/marking-queue' - submissions
+                ├── reports-page.component.ts/.html       # '/reports' - performance summary
+                │                                         #   + mark book + Export Excel
+                ├── performance-table.component.ts   # DataTables, performance-by-student
+                ├── marks-table.component.ts         # DataTables, the mark book
+                ├── submission-table.component.ts    # DataTables, the marking queue
+                ├── report-export.ts         # shared lazy pdfMake loader + exportPdfAction,
+                │                            #   used by both DataTables components above
+                ├── validation.ts            # every length/format constant + checkDecimal()
+                │                            #   + fieldErrorMessage()
+                ├── decimal-validator.directive.ts # appDecimal / appDecimalPositive
+                └── field-error.component.ts # the ONE place an inline error is drawn
 ```
 
 **Note on documentation location:** all documentation lives in `docs/` at the repository root, because it describes the whole project rather than the backend alone. It previously sat under `backend/docs/` and was moved on 28 July 2026. `CLAUDE.md` and `README.md` remain at the root by design. Do not recreate a `backend/docs/` tree, and do not move these two files into `docs/`.
@@ -113,7 +143,7 @@ School Management System/
 - **Build backend:** `.\mvnw.cmd clean package -DskipTests` produces `backend/target/tracker-0.0.1-SNAPSHOT.jar`.
 - **Build frontend:** `npm run build` in `frontend/tracker-ui`.
 - **Type-check frontend:** `npx tsc --noEmit -p tsconfig.app.json`.
-- **Run tests:** `.\mvnw.cmd test` - 103 tests, run against H2, no SQL Server needed.
+- **Run tests:** `.\mvnw.cmd test` - 110 tests, run against H2, no SQL Server needed.
 - **Database:** SQL Server, database `School Management System`, login `tracker_app`. The connection string in `application.properties` uses port 14333; confirm your instance actually listens there before assuming a failure is the application's fault. Query it with:
   `sqlcmd -S "tcp:localhost,14333" -U tracker_app -P 'Tracker!2026Dev' -d "School Management System"`
 - **Development accounts:** `teacher` and `student`, both password `password123`, reset at every startup.
@@ -236,6 +266,15 @@ This app uses **template-driven forms** throughout (`[(ngModel)]`), not `Reactiv
 
 **A boolean directive input needs `transform: booleanAttribute`.** `<input appDecimalPositive>` (bare, like `<input required>`) binds the string `""` to a plain `@Input() appDecimalPositive = false`, and `Boolean('')` is `false` - the opposite of what the bare attribute means. `@Input({ transform: booleanAttribute })` is what makes presence mean `true`.
 
+### Frontend routing and page structure (added 6 August 2026)
+What used to be one long page behind boolean flags is now four routed pages - Dashboard (`/`), "Work I have set" (`/assignments`, teachers only), the marking queue (`/marking-queue`), and Reports (`/reports`, performance-by-student and the mark book together, since a report over both is what makes them "basically the same table"). `SessionService` and `NotificationService` were extracted so identity and the error banner survive a navigation instead of dying with the one component that used to hold them - see `app.component.ts` for why the shell now only knows about login, forced-password-change, and delegating to whichever page `<router-outlet>` is showing.
+
+**The root route (`''`) deliberately carries no guard.** Every OTHER guard's failure path redirects to `/`. Guarding `/` too created a real infinite redirect loop: a signed-out visitor hitting any guarded page bounced to `/`, re-triggered the same guard, and bounced again - a browser hang, not an error message. It is safe to leave unguarded because `AppComponent`'s own template hides `<router-outlet>` behind `*ngIf="user"`; while signed out there is nowhere for the router to project a component into, guard or not.
+
+**A route guard must wait for `SessionService.checkingSession()` to settle, not read `user()`/`isTeacher` synchronously.** `SessionService.init()` is an async HTTP call fired from `AppComponent.ngOnInit()`. On a link clicked inside the running app that call has long since resolved, so reading the signal directly looks safe - and is, for that one case. It fails on a *hard* navigation (a typed URL, a bookmark, `page.goto()` in a test), where the Router's initial navigation and `init()`'s HTTP call start at the same moment: the guard reads a signal that has not been set yet and always loses the race, bouncing even a genuinely signed-in user back to `/`. Both guards resolve this by piping `toObservable(session.checkingSession)` through `filter(c => !c), take(1)` before deciding - found by Playwright driving a direct navigation to a teacher-only URL as a signed-in student and landing on `/` instead of `/marking-queue`, not by reasoning about the code.
+
+**The Excel export is built entirely on the server**, `GET /api/assessments/report.xlsx` (`AssessmentReportService`, Apache POI). It calls the exact same `AssessmentService` methods (`listAssessments()`, `summarise()`) that the JSON endpoints call, so the download can never contain a row its caller could not already see through the API, and it is never limited by whatever happens to be paginated or loaded in the browser at the time. Two sheets, in a fixed order - Performance Summary, then Marks - matching the order the two tables appear in on the Reports page. Percentages are written as a fraction of 1 with a `"0.00%"` cell format, not as the literal number; getting that backwards is an easy, silent way to make an Excel export wrong without any test noticing unless it actually opens the file.
+
 ## Data Integrity, Referential Integrity and Consistency Standards
 - **Constrain at the database, not just in Java.** Application checks are policy that holds only while every writer goes through this code. Column constraints make the rule true of the data itself. `title` is `NOT NULL` with `length = 200`; `status` is an enum column restricted to its valid values.
 - **Use typed values for closed sets.** Status is an enum, stored with `EnumType.STRING` (never ordinal - positions shift when constants are reordered and silently reinterpret existing rows).
@@ -254,15 +293,16 @@ This app uses **template-driven forms** throughout (`[(ngModel)]`), not `Reactiv
 - **A filtered index makes `SET QUOTED_IDENTIFIER ON` mandatory for writes.** Any INSERT/UPDATE/DELETE on a table carrying one fails with error 1934 unless the session sets it. The JDBC driver sets it on connect, so the application is unaffected - but `sqlcmd` defaults it OFF, and the resulting failure looks exactly like the schema rejecting your data when it is really the session being misconfigured. Put `SET QUOTED_IDENTIFIER ON;` at the top of any ad-hoc script that writes to `assessment`.
 
 ### Testing Requirements
-There is an automated suite: `.\mvnw.cmd test` runs 103 tests, and `package` fails the build if any fail. Add to it rather than reverting to manual checks.
+There is an automated suite: `.\mvnw.cmd test` runs 110 tests, and `package` fails the build if any fail. Add to it rather than reverting to manual checks.
 
 - **Unit tests** (`AssignmentServiceTest`) - business rules with the repository mocked.
-- **Full-stack tests** (`AssignmentApiTest`) - MockMvc with real security; every status code in the error contract.
-- **Concurrency and integrity** (`ConcurrencyAndIntegrityTest`) - 12 simultaneous submissions must yield exactly one `200`; the database must refuse orphans, duplicates, invalid enum values and over-long titles.
+- **Full-stack tests** (`AssignmentApiTest`, `InputValidationApiTest`) - MockMvc with real security; every status code in the error contract, and every DTO's Jakarta Bean Validation.
+- **Concurrency and integrity** (`ConcurrencyAndIntegrityTest`, `AssessmentIntegrityTest`) - 12 simultaneous submissions must yield exactly one `200`; the database must refuse orphans, duplicates, invalid enum values, over-long titles, and out-of-range marks.
+- **The Excel report** (`AssessmentReportTest`) - attachment headers, sheet order and headers, numeric cell types, and that a teacher's download is scoped to their own courses (proven with an assertion strong enough to fail if scoping regressed, not merely one that happens not to trip).
 
 Two things the suite cannot cover, so check them by hand when relevant:
 - **The SQL Server migrations.** Tests run on H2, so migration SQL is unexercised; `ddl-auto=validate` is what catches drift between migrations and entities.
-- **Browser behaviour.** Drive `http://localhost:4200` as **both** roles. The CSRF defect passed every API test and only appeared in Chrome, because Angular refuses to attach its token cross-origin.
+- **Browser behaviour.** Drive `http://localhost:4200` as **both** roles. The CSRF defect passed every API test and only appeared in Chrome, because Angular refuses to attach its token cross-origin. The two route-guard defects described above are the same lesson repeated: both passed every unit and API test, because both were about how the *browser* resolves a route, not about anything the backend does. Include at least one **hard navigation** (`page.goto()` to a deep URL, not a link click inside the app) in any routing check - it is the only way to exercise the race between a guard and `SessionService.init()`.
 
 Report results honestly, including failures. Do not describe a check as passing unless it was run.
 

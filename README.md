@@ -21,9 +21,16 @@ and an **Angular frontend**. Beginner-friendly, heavily commented.
   across the courses they take, and for a student over their own results
 - **Performance per subject**: totals, percentage and level, derived from the
   marks and stored nowhere
+- **Export the full report to Excel** — performance summary and every mark, in
+  one two-sheet workbook, built on the server from the same data the screen
+  shows, so it is never limited to what happens to be loaded or paged in the
+  browser
 - **Sort, search and filter** the list, with a summary of what is outstanding
 - **Change your own password**, and **create student accounts** (teachers only) that
   must have their temporary password replaced at first sign-in
+- **Four separate pages** — Dashboard, "Work I have set", Marking queue, and
+  Reports — reached through top navigation, each guarded so a student cannot
+  land on the teacher-only page and a signed-out visitor is sent to sign in
 
 Development accounts, all with password `password123`:
 
@@ -43,26 +50,33 @@ data that cannot exercise the model is seed data that hides defects.
 
 Start the backend, then the frontend, and open http://localhost:4200.
 
-1. Sign in as **`student`**. *What I am taught* names the subjects and the
-   teachers — several of each, from one course list rather than a special query.
-2. Pick a row, click **Upload**, choose any PDF. The file name, size and a
-   SHA-256 checksum appear. Try a `.txt` renamed to `.pdf`: it is refused, because
-   the server reads the first five bytes rather than trusting the name.
+1. Sign in as **`student`**. The Dashboard's *What I am taught* names the
+   subjects and the teachers — several of each, from one course list rather than
+   a special query.
+2. Go to **My work** (the marking queue, from your own side). Pick a row, click
+   **Upload**, choose any PDF. The file name, size and a SHA-256 checksum appear.
+   Try a `.txt` renamed to `.pdf`: it is refused, because the server reads the
+   first five bytes rather than trusting the name.
 3. **Hand in** is disabled until a file is there — "submitted" with nothing
    attached would be a claim with no evidence. Click it once a PDF is uploaded;
    the row becomes HANDED IN and **Upload** goes dead, so the marked document
    cannot change afterwards.
-4. **Sign out** and sign in as **`teacher`**. The marking queue shows every
-   student's work across their courses — and only theirs. **Download** the PDF.
-5. Click **Set work**, tick *both* Mathematics classes, and set it. One action,
-   two assignments, one row per enrolled student: "Set for 2 classes, reaching 3
-   students."
+4. **Sign out** and sign in as **`teacher`**. Go to **Marking queue** — it shows
+   every student's work across their courses, and only theirs. **Download** the
+   PDF.
+5. Go to **Work I have set** (teachers only — a student never sees this link,
+   and cannot reach it by URL either). Click **Set work**, tick *both*
+   Mathematics classes, and set it. One action, two assignments, one row per
+   enrolled student: "Set for 2 classes, reaching 3 students."
 6. Try to delete work somebody has handed in. Refused with `409` — reopen it
    first, so deletion is two deliberate acts rather than one careless click.
-7. Click **Timetable** to add a subject, a class or a course, and to enrol a
-   student. Enrolling a *teacher* is refused by the database itself, not just by
-   the form — see [Data integrity](#data-integrity-is-enforced-by-the-database).
-8. Visit http://localhost:8080/swagger-ui.html to see the same API described and
+7. Go to **Performance & marks** (Reports). Record a mark, then click
+   **Export Excel (full report)** — a two-sheet workbook downloads, built on
+   the server from the exact same data the two tables on screen show.
+8. From the Dashboard's **Manage** panel, add a subject, a class or a course,
+   and enrol a student. Enrolling a *teacher* is refused by the database itself,
+   not just by the form — see [Data integrity](#data-integrity-is-enforced-by-the-database).
+9. Visit http://localhost:8080/swagger-ui.html to see the same API described and
    callable.
 
 ## Requirements
@@ -90,6 +104,8 @@ School Management System/
 │       │   │   ├── SubmissionService.java   # PDF upload, hand-in, download
 │       │   │   ├── SchoolService.java       # subjects, classes, enrolment, courses
 │       │   │   ├── AssessmentService.java   # marks, and the derived arithmetic
+│       │   │   ├── AssessmentReportService.java # the Excel workbook - Apache POI,
+│       │   │   │                                #   built from AssessmentService's own methods
 │       │   │   └── AppUserService.java      # who is calling, passwords
 │       │   ├── controller/     # PRESENTATION layer - HTTP only, no rules
 │       │   ├── dto/            # the records the API publishes, never entities
@@ -109,10 +125,29 @@ School Management System/
         └── app/
             ├── assignment.service.ts        # the only place that knows API URLs
             ├── csrf.interceptor.ts          # attaches X-XSRF-TOKEN cross-origin
+            ├── session.service.ts           # who is signed in - read by guards and
+            │                                #   every page, outside any one component
+            ├── notification.service.ts      # the shared error banner
+            ├── auth.guard.ts, teacher.guard.ts  # route guards - a courtesy, not the
+            │                                    #   security boundary; the server enforces
+            │                                    #   every rule independently
+            ├── app.routes.ts, app.config.ts # the four pages; see CLAUDE.md for why the
+            │                                #   root route deliberately carries no guard
+            ├── dashboard.component.ts        # '/' - timetable, quick links, admin panel
+            ├── assignments-page.component.ts # '/assignments' - "Work I have set"
+            ├── marking-queue-page.component.ts # '/marking-queue' - submissions
+            ├── reports-page.component.ts     # '/reports' - performance + mark book +
+            │                                 #   Export Excel
+            ├── performance-table.component.ts # DataTables, performance-by-student
+            ├── marks-table.component.ts      # DataTables, the mark book, with PDF export
             ├── submission-table.component.ts # DataTables owns this table
-            ├── marks-table.component.ts      # the report, with PDF export
-            ├── app.component.ts             # UI logic
-            └── app.component.html           # the tables, forms and banners
+            ├── report-export.ts             # shared lazy pdfMake loader, used by both
+            │                                #   DataTables report components above
+            ├── validation.ts, decimal-validator.directive.ts,
+            │   field-error.component.ts     # centralized input validation - see CLAUDE.md
+            ├── app.component.ts             # the shell - login, forced password change,
+            │                                #   app bar, <router-outlet>
+            └── app.component.html
 ```
 
 > **Heads-up on the two `src` folders.** `frontend/tracker-ui/src/` is what
@@ -295,6 +330,7 @@ requires the `X-XSRF-TOKEN` header.
 | POST | `/api/assessments` | Record a mark — teachers only |
 | PUT | `/api/assessments/{id}` | Correct a mark |
 | DELETE | `/api/assessments/{id}` | Remove a mark |
+| GET | `/api/assessments/report.xlsx` | The full report as a two-sheet Excel workbook — performance summary, then every mark, scoped exactly like the JSON endpoints above |
 
 Browse and try all of these at **http://localhost:8080/swagger-ui.html** while the
 backend is running. The description is generated from the controllers, so it cannot
@@ -344,11 +380,13 @@ cd "School Management System/backend"
 ./mvnw test
 ```
 
-85 tests: 17 unit tests of the business rules, 22 full-stack tests through MockMvc
+110 tests: 17 unit tests of the business rules, 22 full-stack tests through MockMvc
 with real security (including multipart upload and download), 18 covering
 concurrency and database integrity, 16 covering marks and the scoring arithmetic,
-and 12 covering account self-service. They run against H2, so **no SQL Server
-instance is needed** to run the suite.
+12 covering account self-service, 18 covering input validation on every DTO, and
+7 covering the Excel report endpoint (attachment headers, sheet contents, and that
+a teacher's download is scoped to their own courses). They run against H2, so
+**no SQL Server instance is needed** to run the suite.
 
 `./mvnw package` runs them too, and fails the build if any test fails.
 
