@@ -8,6 +8,7 @@ import com.example.tracker.exception.ResourceNotFoundException;
 import com.example.tracker.model.AppUser;
 import com.example.tracker.model.Assignment;
 import com.example.tracker.model.AssignmentStatus;
+import com.example.tracker.model.AuditAction;
 import com.example.tracker.model.Course;
 import com.example.tracker.model.Role;
 import com.example.tracker.model.Submission;
@@ -53,15 +54,18 @@ public class SubmissionService {
     private final AssignmentRepository assignments;
     private final CourseRepository courses;
     private final AppUserService users;
+    private final AuditLogService audit;
 
     public SubmissionService(SubmissionRepository submissions,
                              AssignmentRepository assignments,
                              CourseRepository courses,
-                             AppUserService users) {
+                             AppUserService users,
+                             AuditLogService audit) {
         this.submissions = submissions;
         this.assignments = assignments;
         this.courses = courses;
         this.users = users;
+        this.audit = audit;
     }
 
     /**
@@ -118,6 +122,7 @@ public class SubmissionService {
     @Transactional
     public SubmissionView uploadFile(Long submissionId, String filename,
                                      String declaredContentType, byte[] content) {
+        AppUser me = users.currentActiveUser();
         Submission submission = requireOwnSubmission(submissionId, "upload work for");
 
         /*
@@ -160,6 +165,9 @@ public class SubmissionService {
                 submission, cleanName, SubmissionFile.PDF_CONTENT_TYPE,
                 content, checksum, Instant.now()));
 
+        audit.record("Submission", submission.getId(), AuditAction.UPDATE, me,
+                "Uploaded '" + cleanName + "' for submission " + submission.getId() + ".");
+
         return SubmissionView.of(submission);
     }
 
@@ -176,6 +184,7 @@ public class SubmissionService {
      */
     @Transactional
     public SubmissionView submit(Long submissionId) {
+        AppUser me = users.currentActiveUser();
         Submission submission = requireOwnSubmission(submissionId, "hand in");
 
         if (submission.getStatus() == AssignmentStatus.SUBMITTED) {
@@ -188,6 +197,8 @@ public class SubmissionService {
         }
 
         submission.markSubmitted(Instant.now());
+        audit.record("Submission", submission.getId(), AuditAction.UPDATE, me,
+                "Handed in submission " + submission.getId() + ".");
         return SubmissionView.of(submission);
     }
 
@@ -216,6 +227,8 @@ public class SubmissionService {
         }
 
         submission.markInProgress();
+        audit.record("Submission", submission.getId(), AuditAction.UPDATE, me,
+                "Reopened submission " + submission.getId() + ".");
         return SubmissionView.of(submission);
     }
 

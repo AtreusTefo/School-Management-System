@@ -14,7 +14,7 @@ import { environment } from '../environments/environment';
 export type AssignmentStatus = 'IN_PROGRESS' | 'SUBMITTED';
 
 /** Mirrors the backend Role enum. */
-export type Role = 'STUDENT' | 'TEACHER';
+export type Role = 'STUDENT' | 'TEACHER' | 'ADMIN';
 
 /**
  * One subject taught to one class by one teacher.

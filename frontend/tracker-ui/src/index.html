@@ -2,6 +2,15 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
+  <!-- Anchors every relative URL (the bundled scripts/styles, and Angular's
+       own router) to the site root regardless of how deep the current path
+       is. Without it, a direct navigation to a MULTI-SEGMENT route like
+       /admin/login resolves "main.js" against /admin/ instead of /, 404s on
+       every bundle, and the app never bootstraps - a real defect that stayed
+       hidden until /admin/login became this app's first nested route, since
+       every single-segment route (/reports, /assignments, ...) happens to
+       resolve correctly without this tag. -->
+  <base href="/" />
   <title>Assignment Tracker</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="description" content="Track assignment submission state for teachers and students." />

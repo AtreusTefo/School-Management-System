@@ -1,0 +1,82 @@
+<div class="card">
+  <div class="card__header">
+    <div class="card__title">
+      <h2>Audit log</h2>
+      <span class="badge badge--neutral">{{ totalElements }}</span>
+    </div>
+  </div>
+
+  <p class="card__note">
+    Every create, update and delete the system has performed, newest first.
+    This record cannot be edited or removed - if an entry is wrong about
+    something, the correction is a new entry, never a change to an old one.
+  </p>
+
+  <!-- ===== FILTERS ===== -->
+  <form (ngSubmit)="applyFilters()">
+    <div class="create-form">
+      <div class="field">
+        <label class="field__label" for="filterEntity">Entity</label>
+        <input id="filterEntity" class="input" type="text" name="filterEntity"
+               [(ngModel)]="filterEntityName" placeholder="e.g. Assignment, Course, AppUser" />
+      </div>
+      <div class="field">
+        <label class="field__label" for="filterAction">Action</label>
+        <select id="filterAction" class="input" name="filterAction" [(ngModel)]="filterAction">
+          <option value="">Any</option>
+          <option value="CREATE">Create</option>
+          <option value="UPDATE">Update</option>
+          <option value="DELETE">Delete</option>
+        </select>
+      </div>
+      <button type="submit" class="btn btn--primary">Apply</button>
+      <button type="button" class="btn btn--ghost" (click)="clearFilters()">Clear</button>
+    </div>
+  </form>
+
+  <!-- ===== LOADING ===== -->
+  <div *ngIf="loading" class="loading">
+    <span class="spinner" aria-hidden="true"></span>
+    <span>Loading...</span>
+  </div>
+
+  <div *ngIf="!loading && entries.length === 0" class="empty">
+    <div class="empty__title">Nothing found</div>
+    <p class="empty__text">Try clearing the filters above.</p>
+  </div>
+
+  <div class="card__body" *ngIf="!loading && entries.length > 0">
+    <table class="table table--plain">
+      <thead>
+        <tr>
+          <th>When</th>
+          <th>Entity</th>
+          <th>Action</th>
+          <th>By</th>
+          <th>Summary</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let e of entries">
+          <td>{{ e.performedAt | date:'yyyy-MM-dd HH:mm' }}</td>
+          <td>{{ e.entityName }}</td>
+          <td>
+            <span class="badge">{{ e.action }}</span>
+          </td>
+          <td>{{ e.performedByUsername }}</td>
+          <td>{{ e.summary }}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="toolbar">
+      <button type="button" class="btn btn--sm" [disabled]="!hasPrevious" (click)="previousPage()">
+        Previous
+      </button>
+      <span class="field__hint">Page {{ pageNumber + 1 }} of {{ totalPages || 1 }}</span>
+      <button type="button" class="btn btn--sm" [disabled]="!hasNext" (click)="nextPage()">
+        Next
+      </button>
+    </div>
+  </div>
+</div>

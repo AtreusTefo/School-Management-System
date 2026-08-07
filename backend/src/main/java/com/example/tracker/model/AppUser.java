@@ -100,6 +100,17 @@ public class AppUser {
         return username;
     }
 
+    /**
+     * Rename the account. Used only by admin-driven account management
+     * (AdminService.renameTeacher) - nobody may rename their own account,
+     * since the username is also the sign-in name and a self-service rename
+     * would need its own re-authentication story this application does not
+     * have.
+     */
+    public void setUsername(String username) {
+        this.username = username;
+    }
+
     public String getPasswordHash() {
         return passwordHash;
     }

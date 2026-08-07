@@ -1,6 +1,8 @@
 import { Routes } from '@angular/router';
 import { authGuard } from './auth.guard';
 import { teacherGuard } from './teacher.guard';
+import { adminAuthGuard } from './admin-auth.guard';
+import { adminGuestGuard } from './admin-guest.guard';
 
 /**
  * THE FOUR PAGES, WHERE THERE USED TO BE ONE
@@ -52,5 +54,54 @@ export const routes: Routes = [
     loadComponent: () => import('./reports-page.component').then(m => m.ReportsPageComponent),
     canActivate: [authGuard]
   },
+
+  /*
+   * THE ADMIN PANEL - a separate section, not four more items bolted onto
+   * the routes above.
+   *
+   * '/admin/login' carries adminGuestGuard, not authGuard: it must be
+   * reachable by a visitor with NO session at all (see AppComponent's
+   * second, signed-out-only <router-outlet> for how the shell makes that
+   * possible), and its job is the opposite of authGuard's - turning an
+   * ALREADY signed-in account away, not admitting one.
+   *
+   * Every other /admin/* route carries adminAuthGuard alone, not authGuard
+   * as well. authGuard would technically also pass for a signed-in admin,
+   * but stacking it adds nothing and its failure path (redirect to '/') is
+   * the wrong answer here - an admin-only page should send a rejected
+   * visitor to '/admin/login', which is exactly what adminAuthGuard does on
+   * its own.
+   */
+  {
+    path: 'admin/login',
+    loadComponent: () => import('./admin-login.component').then(m => m.AdminLoginComponent),
+    canActivate: [adminGuestGuard]
+  },
+  {
+    path: 'admin',
+    loadComponent: () => import('./admin-dashboard.component').then(m => m.AdminDashboardComponent),
+    canActivate: [adminAuthGuard]
+  },
+  {
+    path: 'admin/teachers',
+    loadComponent: () => import('./admin-teachers-page.component').then(m => m.AdminTeachersPageComponent),
+    canActivate: [adminAuthGuard]
+  },
+  {
+    path: 'admin/students',
+    loadComponent: () => import('./admin-students-page.component').then(m => m.AdminStudentsPageComponent),
+    canActivate: [adminAuthGuard]
+  },
+  {
+    path: 'admin/students/:id',
+    loadComponent: () => import('./admin-student-detail.component').then(m => m.AdminStudentDetailComponent),
+    canActivate: [adminAuthGuard]
+  },
+  {
+    path: 'admin/audit-log',
+    loadComponent: () => import('./admin-audit-log-page.component').then(m => m.AdminAuditLogPageComponent),
+    canActivate: [adminAuthGuard]
+  },
+
   { path: '**', redirectTo: '' }
 ];

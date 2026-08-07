@@ -7,6 +7,7 @@ import com.example.tracker.exception.AccessDeniedException;
 import com.example.tracker.exception.ResourceNotFoundException;
 import com.example.tracker.model.AppUser;
 import com.example.tracker.model.Assessment;
+import com.example.tracker.model.AuditAction;
 import com.example.tracker.model.Course;
 import com.example.tracker.model.Role;
 import com.example.tracker.model.Submission;
@@ -56,17 +57,20 @@ public class AssessmentService {
     private final EnrolmentRepository enrolments;
     private final SubmissionRepository submissions;
     private final AppUserService users;
+    private final AuditLogService audit;
 
     public AssessmentService(AssessmentRepository assessments,
                              CourseRepository courses,
                              EnrolmentRepository enrolments,
                              SubmissionRepository submissions,
-                             AppUserService users) {
+                             AppUserService users,
+                             AuditLogService audit) {
         this.assessments = assessments;
         this.courses = courses;
         this.enrolments = enrolments;
         this.submissions = submissions;
         this.users = users;
+        this.audit = audit;
     }
 
     // ----- reading -------------------------------------------------------------
@@ -225,8 +229,15 @@ public class AssessmentService {
 
         Submission submission = resolveSubmission(submissionId, student, course);
 
-        return AssessmentView.of(assessments.save(new Assessment(
-                student, course, submission, cleanName, score, maxScore, me, Instant.now())));
+        Assessment saved = assessments.save(new Assessment(
+                student, course, submission, cleanName, score, maxScore, me, Instant.now()));
+
+        audit.record("Assessment", saved.getId(), AuditAction.CREATE, me,
+                "Recorded '" + cleanName + "' (" + score.stripTrailingZeros().toPlainString()
+                        + "/" + maxScore.stripTrailingZeros().toPlainString() + ") for '"
+                        + student.getUsername() + "' in " + course.getLabel() + ".");
+
+        return AssessmentView.of(saved);
     }
 
     /**
@@ -249,6 +260,12 @@ public class AssessmentService {
 
         assessment.setName(cleanName);
         assessment.reMark(score, maxScore);
+
+        audit.record("Assessment", assessment.getId(), AuditAction.UPDATE, me,
+                "Corrected '" + cleanName + "' for '" + assessment.getStudent().getUsername()
+                        + "' to " + score.stripTrailingZeros().toPlainString() + "/"
+                        + maxScore.stripTrailingZeros().toPlainString() + ".");
+
         return AssessmentView.of(assessment);
     }
 
@@ -258,7 +275,12 @@ public class AssessmentService {
         Assessment assessment = requireAssessment(id);
         requireTeaches(assessment.getCourse(), me);
 
+        String name = assessment.getName();
+        String studentUsername = assessment.getStudent().getUsername();
         assessments.delete(assessment);
+
+        audit.record("Assessment", id, AuditAction.DELETE, me,
+                "Deleted the mark '" + name + "' for '" + studentUsername + "'.");
     }
 
     // ----- validation ----------------------------------------------------------

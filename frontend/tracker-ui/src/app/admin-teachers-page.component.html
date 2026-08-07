@@ -1,0 +1,140 @@
+<div class="card">
+  <div class="card__header">
+    <div class="card__title">
+      <h2>Teachers</h2>
+      <span class="badge badge--neutral">{{ teachers.length }}</span>
+    </div>
+    <div class="toolbar">
+      <button type="button" class="btn btn--primary" (click)="openCreate()" *ngIf="!showCreate">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2" stroke-linecap="round"
+             stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 5v14M5 12h14" />
+        </svg>
+        Add teacher
+      </button>
+    </div>
+  </div>
+
+  <div *ngIf="notice" class="notice notice--inline" role="status">
+    {{ notice }}
+  </div>
+
+  <!-- ===== CREATE ===== -->
+  <div *ngIf="showCreate" class="subform">
+    <div class="subform__head">
+      <h3>Onboard a teacher</h3>
+      <button type="button" class="btn btn--sm btn--ghost" (click)="closeCreate()">Close</button>
+    </div>
+
+    <form #createForm="ngForm" (ngSubmit)="onCreate()">
+      <div class="create-form">
+        <div class="field">
+          <label class="field__label" for="newUsername">Username</label>
+          <input id="newUsername" class="input" type="text" name="newUsername"
+                 #newUsernameModel="ngModel"
+                 [(ngModel)]="newUsername" autocomplete="off"
+                 required [maxlength]="usernameMaxLength" />
+          <app-field-error [control]="newUsernameModel" label="Username" />
+        </div>
+        <div class="field">
+          <label class="field__label" for="newTemporaryPassword">Temporary password</label>
+          <input id="newTemporaryPassword" class="input" type="text" name="newTemporaryPassword"
+                 #newPasswordModel="ngModel"
+                 [(ngModel)]="newTemporaryPassword" autocomplete="off"
+                 required [minlength]="passwordMinLength" />
+          <span class="field__hint"
+                *ngIf="newPasswordModel.valid || !(newPasswordModel.touched || newPasswordModel.dirty)">
+            At least {{ passwordMinLength }} characters. The teacher must replace it at first sign-in.
+          </span>
+          <app-field-error [control]="newPasswordModel" label="Temporary password" />
+        </div>
+      </div>
+      <button type="submit" class="btn btn--primary" [disabled]="!canCreate">Create account</button>
+    </form>
+  </div>
+
+  <!-- ===== LOADING ===== -->
+  <div *ngIf="loading" class="loading">
+    <span class="spinner" aria-hidden="true"></span>
+    <span>Loading...</span>
+  </div>
+
+  <div *ngIf="!loading && teachers.length === 0" class="empty">
+    <div class="empty__title">No teacher accounts yet</div>
+    <p class="empty__text">Use the form above to onboard the first one.</p>
+  </div>
+
+  <div class="card__body" *ngIf="!loading && teachers.length > 0">
+    <table class="table table--plain">
+      <thead>
+        <tr>
+          <th>Username</th>
+          <th>Status</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <ng-container *ngFor="let t of teachers">
+          <tr *ngIf="renamingId !== t.id && resettingId !== t.id">
+            <td>{{ t.username }}</td>
+            <td>
+              <span class="badge" [class.badge--overdue]="t.mustChangePassword">
+                {{ t.mustChangePassword ? 'Pending password change' : 'Active' }}
+              </span>
+            </td>
+            <td class="col-actions">
+              <div class="row-actions">
+                <button type="button" class="btn btn--sm" (click)="startRename(t)">Rename</button>
+                <button type="button" class="btn btn--sm" (click)="startReset(t)">Reset password</button>
+                <button type="button" class="btn btn--sm btn--danger" (click)="onDelete(t)"
+                        title="Refused while the teacher still teaches a course or has set work">
+                  Delete
+                </button>
+              </div>
+            </td>
+          </tr>
+
+          <tr *ngIf="renamingId === t.id">
+            <td colspan="3">
+              <div class="create-form">
+                <div class="field">
+                  <label class="field__label" [attr.for]="'rename' + t.id">New username</label>
+                  <input [id]="'rename' + t.id" class="input" type="text"
+                         name="renameUsername" #renameModel="ngModel"
+                         [(ngModel)]="renameUsername" required [maxlength]="usernameMaxLength" />
+                  <app-field-error [control]="renameModel" label="Username" />
+                </div>
+                <div class="row-actions">
+                  <button type="button" class="btn btn--sm btn--primary"
+                          [disabled]="renameModel.invalid" (click)="saveRename(t.id)">Save</button>
+                  <button type="button" class="btn btn--sm btn--ghost" (click)="cancelRename()">Cancel</button>
+                </div>
+              </div>
+            </td>
+          </tr>
+
+          <tr *ngIf="resettingId === t.id">
+            <td colspan="3">
+              <div class="create-form">
+                <div class="field">
+                  <label class="field__label" [attr.for]="'reset' + t.id">New temporary password</label>
+                  <input [id]="'reset' + t.id" class="input" type="text"
+                         name="resetPassword" #resetModel="ngModel"
+                         [(ngModel)]="resetTemporaryPassword" required
+                         [minlength]="passwordMinLength" />
+                  <app-field-error [control]="resetModel" label="Temporary password" />
+                </div>
+                <div class="row-actions">
+                  <button type="button" class="btn btn--sm btn--primary"
+                          [disabled]="!canSaveReset" (click)="saveReset(t)">Save</button>
+                  <button type="button" class="btn btn--sm btn--ghost" (click)="cancelReset()">Cancel</button>
+                </div>
+              </div>
+            </td>
+          </tr>
+        </ng-container>
+      </tbody>
+    </table>
+  </div>
+</div>

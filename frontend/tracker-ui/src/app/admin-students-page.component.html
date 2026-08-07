@@ -1,0 +1,45 @@
+<div class="card">
+  <div class="card__header">
+    <div class="card__title">
+      <h2>Students</h2>
+      <span class="badge badge--neutral">{{ students.length }}</span>
+    </div>
+  </div>
+
+  <p class="card__note">
+    Pick a student to see who currently teaches them, and to assign or unassign a teacher.
+  </p>
+
+  <div *ngIf="loading" class="loading">
+    <span class="spinner" aria-hidden="true"></span>
+    <span>Loading...</span>
+  </div>
+
+  <div *ngIf="!loading && students.length === 0" class="empty">
+    <div class="empty__title">No students yet</div>
+  </div>
+
+  <div class="card__body" *ngIf="!loading && students.length > 0">
+    <table class="table table--plain">
+      <thead>
+        <tr>
+          <th>Username</th>
+          <th>Class</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let s of students">
+          <td>{{ s.username }}</td>
+          <td>
+            <span *ngIf="s.className; else noClass">{{ s.className }}</span>
+            <ng-template #noClass><span class="muted">not enrolled</span></ng-template>
+          </td>
+          <td class="col-actions">
+            <a class="btn btn--sm" [routerLink]="['/admin/students', s.id]">Manage</a>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>

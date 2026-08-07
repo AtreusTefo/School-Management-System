@@ -1,0 +1,100 @@
+<p class="card__note">
+  <a routerLink="/admin/students">&larr; Back to students</a>
+</p>
+
+<div class="card">
+  <div class="card__header">
+    <div class="card__title">
+      <h2>{{ student?.username ?? 'Student' }}</h2>
+      <span class="badge badge--neutral" *ngIf="student?.className">{{ student?.className }}</span>
+    </div>
+    <div class="toolbar">
+      <button type="button" class="btn btn--primary" (click)="openAssign()" *ngIf="!showAssign"
+              [disabled]="!student?.className">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2" stroke-linecap="round"
+             stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 5v14M5 12h14" />
+        </svg>
+        Assign a teacher
+      </button>
+    </div>
+  </div>
+
+  <div *ngIf="notice" class="notice notice--inline" role="status">
+    {{ notice }}
+  </div>
+
+  <p class="card__note" *ngIf="student && !student.className">
+    This student is not enrolled in a class yet, so no teacher can be assigned to them.
+  </p>
+
+  <!-- ===== ASSIGN ===== -->
+  <div *ngIf="showAssign" class="subform">
+    <div class="subform__head">
+      <h3>Assign a teacher</h3>
+      <button type="button" class="btn btn--sm btn--ghost" (click)="closeAssign()">Close</button>
+    </div>
+
+    <form (ngSubmit)="onAssign()">
+      <div class="create-form">
+        <div class="field">
+          <label class="field__label" for="assignTeacher">Teacher</label>
+          <select id="assignTeacher" class="input" name="assignTeacher"
+                  required [(ngModel)]="assignTeacherId">
+            <option [ngValue]="null">Choose a teacher</option>
+            <option *ngFor="let t of teachers" [ngValue]="t.id">{{ t.username }}</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="field__label" for="assignSubject">Subject</label>
+          <select id="assignSubject" class="input" name="assignSubject"
+                  required [(ngModel)]="assignSubjectId">
+            <option [ngValue]="null">Choose a subject</option>
+            <option *ngFor="let s of subjects" [ngValue]="s.id">{{ s.name }}</option>
+          </select>
+        </div>
+      </div>
+      <span class="field__hint">
+        This teacher will teach this student's whole class the chosen subject -
+        the same way setting up a course does elsewhere in the app.
+      </span>
+      <button type="submit" class="btn btn--primary" [disabled]="!canAssign">Assign</button>
+    </form>
+  </div>
+
+  <!-- ===== LOADING ===== -->
+  <div *ngIf="loading" class="loading">
+    <span class="spinner" aria-hidden="true"></span>
+    <span>Loading...</span>
+  </div>
+
+  <div *ngIf="!loading && currentTeachers.length === 0" class="empty">
+    <div class="empty__title">No teacher assigned yet</div>
+    <p class="empty__text">Use "Assign a teacher" above.</p>
+  </div>
+
+  <div class="card__body" *ngIf="!loading && currentTeachers.length > 0">
+    <table class="table table--plain">
+      <thead>
+        <tr>
+          <th>Subject</th>
+          <th>Teacher</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let c of currentTeachers">
+          <td>{{ c.subjectName }}</td>
+          <td>{{ c.teacherUsername }}</td>
+          <td class="col-actions">
+            <button type="button" class="btn btn--sm btn--danger" (click)="onUnassign(c)"
+                    title="Refused while this teacher has already set work for the class">
+              Unassign
+            </button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>

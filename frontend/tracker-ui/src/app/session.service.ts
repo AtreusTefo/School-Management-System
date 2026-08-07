@@ -44,6 +44,10 @@ export class SessionService {
     return this.userSignal()?.role === 'TEACHER';
   }
 
+  get isAdmin(): boolean {
+    return this.userSignal()?.role === 'ADMIN';
+  }
+
   /**
    * True when the account cannot do anything until its password is replaced.
    * The guards treat this the same as "not signed in" for every routed page -

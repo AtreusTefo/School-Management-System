@@ -76,6 +76,7 @@ class AssignmentServiceTest {
     @Mock private CourseRepository courses;
     @Mock private EnrolmentRepository enrolments;
     @Mock private AppUserService users;
+    @Mock private AuditLogService audit;
     @InjectMocks private AssignmentService service;
 
     private AppUser teacher;

@@ -29,8 +29,28 @@
       <!-- ===== NAVIGATION =====
            Only shown once signed in with an active account - a signed-out
            visitor or a pending-password account has nowhere to navigate TO,
-           since authGuard sends any attempt straight back here. -->
-      <nav class="nav" *ngIf="user && !mustChangePassword" aria-label="Main">
+           since authGuard sends any attempt straight back here.
+
+           TWO ENTIRELY SEPARATE LINK SETS, not one list with items hidden per
+           role. An admin session and a teacher/student session do not share a
+           single route in common - '/marking-queue' and '/reports' query
+           AssignmentService/AssessmentService, which branch STUDENT vs
+           TEACHER and have no ADMIN case, so an admin visiting either would
+           silently see an empty student-shaped view rather than an error.
+           Giving admin its own nav is what keeps that combination from being
+           reachable by a click at all. -->
+      <nav class="nav" *ngIf="session.isAdmin" aria-label="Main">
+        <a routerLink="/admin" routerLinkActive="nav__link--active"
+           [routerLinkActiveOptions]="{ exact: true }" class="nav__link">Dashboard</a>
+        <a routerLink="/admin/teachers" routerLinkActive="nav__link--active"
+           class="nav__link">Teachers</a>
+        <a routerLink="/admin/students" routerLinkActive="nav__link--active"
+           class="nav__link">Students</a>
+        <a routerLink="/admin/audit-log" routerLinkActive="nav__link--active"
+           class="nav__link">Audit log</a>
+      </nav>
+
+      <nav class="nav" *ngIf="user && !mustChangePassword && !session.isAdmin" aria-label="Main">
         <a routerLink="/" routerLinkActive="nav__link--active"
            [routerLinkActiveOptions]="{ exact: true }" class="nav__link">Dashboard</a>
         <a *ngIf="isTeacher" routerLink="/assignments" routerLinkActive="nav__link--active"
@@ -105,8 +125,11 @@
       <span>Checking your session...</span>
     </div>
 
-    <!-- ===== SIGN IN ===== -->
-    <section *ngIf="!checkingSession && !user" class="auth">
+    <!-- ===== SIGN IN =====
+         Excludes admin routes: /admin/login is its own page, reached through
+         the outlet just below rather than this inline form - see
+         AppComponent.isAdminRoute. -->
+    <section *ngIf="!checkingSession && !user && !isAdminRoute" class="auth">
       <div class="card auth__card">
         <div class="card__body">
 
@@ -254,6 +277,13 @@
            these pages' requests with 403 regardless. -->
       <router-outlet *ngIf="!mustChangePassword"></router-outlet>
     </ng-container>
+
+    <!-- ===== ADMIN ROUTES WHILE SIGNED OUT =====
+         /admin/login must be reachable by a visitor with no session at all,
+         which the outlet above cannot do - it only exists inside *ngIf="user".
+         Mutually exclusive with that one (this requires !user, that requires
+         user), so exactly one <router-outlet> is ever active. -->
+    <router-outlet *ngIf="!user && isAdminRoute"></router-outlet>
 
   </main>
 </div>

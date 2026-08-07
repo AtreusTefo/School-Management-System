@@ -6,6 +6,7 @@ import com.example.tracker.exception.AssignmentNotFoundException;
 import com.example.tracker.model.AppUser;
 import com.example.tracker.model.Assignment;
 import com.example.tracker.model.AssignmentStatus;
+import com.example.tracker.model.AuditAction;
 import com.example.tracker.model.Course;
 import com.example.tracker.model.Enrolment;
 import com.example.tracker.model.Role;
@@ -55,17 +56,20 @@ public class AssignmentService {
     private final CourseRepository courses;
     private final EnrolmentRepository enrolments;
     private final AppUserService users;
+    private final AuditLogService audit;
 
     public AssignmentService(AssignmentRepository assignments,
                              SubmissionRepository submissions,
                              CourseRepository courses,
                              EnrolmentRepository enrolments,
-                             AppUserService users) {
+                             AppUserService users,
+                             AuditLogService audit) {
         this.assignments = assignments;
         this.submissions = submissions;
         this.courses = courses;
         this.enrolments = enrolments;
         this.users = users;
+        this.audit = audit;
     }
 
     /**
@@ -129,7 +133,12 @@ public class AssignmentService {
             Assignment assignment = assignments.save(
                     new Assignment(cleanTitle, cleanDescription, course, me, dueDate));
 
-            created.add(withCounts(assignment, fanOutToClass(assignment)));
+            int studentCount = fanOutToClass(assignment);
+            audit.record("Assignment", assignment.getId(), AuditAction.CREATE, me,
+                    "Set '" + cleanTitle + "' for " + course.getLabel()
+                            + " (" + studentCount + " student(s)).");
+
+            created.add(withCounts(assignment, studentCount));
         }
 
         return created;
@@ -176,6 +185,7 @@ public class AssignmentService {
     @Transactional
     public AssignmentView updateAssignment(Long id, String title, String description,
                                            LocalDate dueDate) {
+        AppUser me = users.currentActiveUser();
         Assignment assignment = requireOwnCourse(id, "edit");
 
         if (title == null || title.trim().isEmpty()) {
@@ -186,6 +196,10 @@ public class AssignmentService {
         assignment.setDescription(
                 (description == null || description.isBlank()) ? null : description.trim());
         assignment.setDueDate(dueDate);
+
+        audit.record("Assignment", assignment.getId(), AuditAction.UPDATE, me,
+                "Edited '" + assignment.getTitle() + "'.");
+
         return withCounts(assignment);
     }
 
@@ -204,6 +218,7 @@ public class AssignmentService {
      */
     @Transactional
     public void deleteAssignment(Long id) {
+        AppUser me = users.currentActiveUser();
         Assignment assignment = requireOwnCourse(id, "delete");
 
         if (submissions.existsByAssignmentAndStatus(assignment, AssignmentStatus.SUBMITTED)) {
@@ -212,8 +227,11 @@ public class AssignmentService {
                             + "Reopen those submissions first if this is intended.");
         }
 
+        String title = assignment.getTitle();
         submissions.deleteAll(submissions.findByAssignmentOrderByIdAsc(assignment));
         assignments.delete(assignment);
+
+        audit.record("Assignment", id, AuditAction.DELETE, me, "Deleted '" + title + "'.");
     }
 
     // ----- shared guards and helpers -------------------------------------------

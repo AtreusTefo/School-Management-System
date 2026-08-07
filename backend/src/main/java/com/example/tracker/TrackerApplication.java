@@ -24,6 +24,7 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.annotation.Order;
+import org.springframework.data.web.config.EnableSpringDataWebSupport;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.math.BigDecimal;
@@ -33,8 +34,17 @@ import java.util.List;
 
 /**
  * The entry point. Running main() starts the embedded web server on port 8080.
+ *
+ * pageSerializationMode = VIA_DTO wraps every Page<T> a controller returns
+ * (currently just GET /api/audit-logs) in Spring Data's PagedModel before it
+ * reaches Jackson. Returning a bare PageImpl serializes whatever fields that
+ * class happens to carry, with no guarantee they stay the same across a
+ * Spring Data upgrade - Spring's own schema-export logging says so at
+ * startup if this is left off. PagedModel is the stable, documented shape:
+ * `content` plus one `page` object (size, number, totalElements, totalPages).
  */
 @SpringBootApplication
+@EnableSpringDataWebSupport(pageSerializationMode = EnableSpringDataWebSupport.PageSerializationMode.VIA_DTO)
 public class TrackerApplication {
 
     private static final Logger log = LoggerFactory.getLogger(TrackerApplication.class);
@@ -63,6 +73,7 @@ public class TrackerApplication {
     @Order(1)
     CommandLineRunner seedAccounts(AppUserRepository users, PasswordEncoder encoder) {
         return args -> {
+            ensureAccount(users, encoder, "admin", Role.ADMIN);
             ensureAccount(users, encoder, "teacher", Role.TEACHER);
             ensureAccount(users, encoder, "student", Role.STUDENT);
 

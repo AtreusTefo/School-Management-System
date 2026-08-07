@@ -2,6 +2,7 @@ package com.example.tracker.service;
 
 import com.example.tracker.exception.AccessDeniedException;
 import com.example.tracker.model.AppUser;
+import com.example.tracker.model.AuditAction;
 import com.example.tracker.model.Role;
 import com.example.tracker.repository.AppUserRepository;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -41,9 +42,12 @@ public class AppUserService {
      */
     private final PasswordEncoder encoder;
 
-    public AppUserService(AppUserRepository users, PasswordEncoder encoder) {
+    private final AuditLogService audit;
+
+    public AppUserService(AppUserRepository users, PasswordEncoder encoder, AuditLogService audit) {
         this.users = users;
         this.encoder = encoder;
+        this.audit = audit;
     }
 
     /**
@@ -80,6 +84,21 @@ public class AppUserService {
         return Require.orThrow(users.findByUsername(username),
                 () -> new IllegalArgumentException(
                         "No account named '" + username + "'."));
+    }
+
+    /**
+     * Look up an account by id, for callers (like admin operations choosing a
+     * student or teacher by id) that already know which HTTP status a miss
+     * should produce and want to choose the exception themselves - unlike
+     * findByUsernameOrReject, which fixes that choice at 400.
+     */
+    public java.util.Optional<AppUser> findById(Long id) {
+        return users.findById(id);
+    }
+
+    /** Every account holding one role, alphabetical - the admin panel's lists. */
+    public java.util.List<AppUser> findByRole(Role role) {
+        return users.findByRoleOrderByUsernameAsc(role);
     }
 
     /**
@@ -205,7 +224,12 @@ public class AppUserService {
             throw new IllegalStateException("An account named '" + name + "' already exists.");
         }
 
-        return users.save(new AppUser(
+        AppUser created = users.save(new AppUser(
                 name, encoder.encode(temporaryPassword), Role.STUDENT, true));
+
+        audit.record("AppUser", created.getId(), AuditAction.CREATE, me,
+                "Created student account '" + name + "'.");
+
+        return created;
     }
 }

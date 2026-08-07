@@ -1,7 +1,8 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, signal, WritableSignal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { filter } from 'rxjs';
 import { SessionService } from './session.service';
 import { NotificationService } from './notification.service';
 import { FieldErrorComponent } from './field-error.component';
@@ -48,14 +49,50 @@ export class AppComponent implements OnInit {
   passwordNotice: string | null = null;
   showPasswordForm = false;
 
+  /**
+   * Tracks the current URL so the template can tell "signed out, on an
+   * admin route" apart from "signed out, everywhere else" - see
+   * isAdminRoute. A signal updated on NavigationEnd, rather than reading
+   * router.url directly in the template: router.url is a plain property, and
+   * nothing here would otherwise trigger change detection on the SPA
+   * navigation between /admin/login and its own guard redirects.
+   *
+   * Initialized in the constructor body, not as a field initializer - field
+   * initializers run before constructor parameter properties are assigned,
+   * so `this.router` would not exist yet at the point this field's own
+   * initializer ran.
+   */
+  private readonly urlSignal: WritableSignal<string>;
+
   constructor(
     public session: SessionService,
     public notifications: NotificationService,
     private router: Router
-  ) {}
+  ) {
+    this.urlSignal = signal(this.router.url);
+    this.router.events.pipe(filter((e) => e instanceof NavigationEnd))
+      .subscribe(() => this.urlSignal.set(this.router.url));
+  }
 
   ngOnInit(): void {
     this.session.init().subscribe();
+  }
+
+  /**
+   * Whether a route under the admin panel is what the URL currently names.
+   *
+   * WHY THE SHELL NEEDS TO KNOW THIS AT ALL
+   * <router-outlet> normally sits behind *ngIf="user" here, because every
+   * other routed page requires a signed-in account and the shell shows its
+   * own inline login form instead when nobody is signed in. /admin/login
+   * breaks that assumption on purpose - it must be reachable by a completely
+   * signed-out visitor - so the template gives admin routes their OWN outlet,
+   * rendered when signed out AND on an admin route, alongside the ordinary
+   * one that still requires `user`. The two conditions are mutually
+   * exclusive, so exactly one <router-outlet> is ever active at a time.
+   */
+  get isAdminRoute(): boolean {
+    return this.urlSignal().startsWith('/admin');
   }
 
   get user() {
@@ -119,13 +156,17 @@ export class AppComponent implements OnInit {
   }
 
   onLogout(): void {
+    const wasAdmin = this.session.isAdmin;
     this.session.logout().subscribe({
       next: () => {
         this.notifications.clear();
         this.showPasswordForm = false;
         this.passwordNotice = null;
         this.resetPasswordFields();
-        this.router.navigateByUrl('/');
+        // An admin signing out belongs back at the admin sign-in screen, not
+        // the ordinary one - the same reasoning admin-login.component.ts
+        // uses when a non-admin account is turned away from it.
+        this.router.navigateByUrl(wasAdmin ? '/admin/login' : '/');
       },
       error: (err) => this.notifications.showError(err, 'Could not sign out')
     });

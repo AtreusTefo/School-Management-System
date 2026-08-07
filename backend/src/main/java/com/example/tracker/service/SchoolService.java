@@ -2,15 +2,18 @@ package com.example.tracker.service;
 
 import com.example.tracker.dto.ClassView;
 import com.example.tracker.dto.CourseView;
+import com.example.tracker.dto.StudentView;
 import com.example.tracker.dto.SubjectView;
 import com.example.tracker.exception.AccessDeniedException;
 import com.example.tracker.exception.ResourceNotFoundException;
 import com.example.tracker.model.AppUser;
+import com.example.tracker.model.AuditAction;
 import com.example.tracker.model.Course;
 import com.example.tracker.model.Enrolment;
 import com.example.tracker.model.Role;
 import com.example.tracker.model.SchoolClass;
 import com.example.tracker.model.Subject;
+import com.example.tracker.repository.AssignmentRepository;
 import com.example.tracker.repository.CourseRepository;
 import com.example.tracker.repository.EnrolmentRepository;
 import com.example.tracker.repository.SchoolClassRepository;
@@ -52,18 +55,24 @@ public class SchoolService {
     private final SchoolClassRepository classes;
     private final EnrolmentRepository enrolments;
     private final CourseRepository courses;
+    private final AssignmentRepository assignments;
     private final AppUserService users;
+    private final AuditLogService audit;
 
     public SchoolService(SubjectRepository subjects,
                          SchoolClassRepository classes,
                          EnrolmentRepository enrolments,
                          CourseRepository courses,
-                         AppUserService users) {
+                         AssignmentRepository assignments,
+                         AppUserService users,
+                         AuditLogService audit) {
         this.subjects = subjects;
         this.classes = classes;
         this.enrolments = enrolments;
         this.courses = courses;
+        this.assignments = assignments;
         this.users = users;
+        this.audit = audit;
     }
 
     // ----- subjects ------------------------------------------------------------
@@ -80,7 +89,7 @@ public class SchoolService {
 
     @Transactional
     public SubjectView createSubject(String code, String name) {
-        requireTeacher("create a subject");
+        AppUser me = requireTeacher("create a subject");
 
         String cleanCode = require(code, "Subject code");
         String cleanName = require(name, "Subject name");
@@ -99,7 +108,10 @@ public class SchoolService {
             throw new IllegalStateException("A subject named '" + cleanName + "' already exists.");
         });
 
-        return SubjectView.of(subjects.save(new Subject(cleanCode, cleanName)));
+        Subject saved = subjects.save(new Subject(cleanCode, cleanName));
+        audit.record("Subject", saved.getId(), AuditAction.CREATE, me,
+                "Created subject '" + cleanName + "' (" + cleanCode + ").");
+        return SubjectView.of(saved);
     }
 
     // ----- classes -------------------------------------------------------------
@@ -115,14 +127,17 @@ public class SchoolService {
 
     @Transactional
     public ClassView createClass(String name) {
-        requireTeacher("create a class");
+        AppUser me = requireTeacher("create a class");
         String cleanName = require(name, "Class name");
 
         classes.findByNameIgnoreCase(cleanName).ifPresent(existing -> {
             throw new IllegalStateException("A class named '" + cleanName + "' already exists.");
         });
 
-        return ClassView.of(classes.save(new SchoolClass(cleanName)), 0);
+        SchoolClass saved = classes.save(new SchoolClass(cleanName));
+        audit.record("SchoolClass", saved.getId(), AuditAction.CREATE, me,
+                "Created class '" + cleanName + "'.");
+        return ClassView.of(saved, 0);
     }
 
     /** The register: who is in this class. Teacher only. */
@@ -148,7 +163,7 @@ public class SchoolService {
      */
     @Transactional
     public void enrolStudent(Long classId, String username) {
-        requireTeacher("enrol a student");
+        AppUser me = requireTeacher("enrol a student");
 
         SchoolClass schoolClass = requireClass(classId);
         AppUser student = users.findByUsernameOrReject(require(username, "Username"));
@@ -169,7 +184,9 @@ public class SchoolService {
                     "'" + student.getUsername() + "' is already in " + schoolClass.getName() + ".");
         }
 
-        enrolments.save(new Enrolment(student, schoolClass));
+        Enrolment saved = enrolments.save(new Enrolment(student, schoolClass));
+        audit.record("Enrolment", saved.getId(), AuditAction.CREATE, me,
+                "Enrolled '" + student.getUsername() + "' in " + schoolClass.getName() + ".");
     }
 
     /**
@@ -183,7 +200,7 @@ public class SchoolService {
      */
     @Transactional
     public void withdrawStudent(Long classId, String username) {
-        requireTeacher("withdraw a student");
+        AppUser me = requireTeacher("withdraw a student");
 
         SchoolClass schoolClass = requireClass(classId);
         AppUser student = users.findByUsernameOrReject(require(username, "Username"));
@@ -195,7 +212,13 @@ public class SchoolService {
          * local the analysis has to take on trust.
          */
         enrolments.findByStudentAndSchoolClass(student, schoolClass).ifPresentOrElse(
-                enrolments::delete,
+                enrolment -> {
+                    Long enrolmentId = enrolment.getId();
+                    enrolments.delete(enrolment);
+                    audit.record("Enrolment", enrolmentId, AuditAction.DELETE, me,
+                            "Withdrew '" + student.getUsername() + "' from "
+                                    + schoolClass.getName() + ".");
+                },
                 () -> {
                     throw new ResourceNotFoundException(
                             "'" + student.getUsername() + "' is not in "
@@ -263,10 +286,195 @@ public class SchoolService {
                                     + subject.getName() + " to " + schoolClass.getName() + ".");
                 });
 
-        return CourseView.of(courses.save(new Course(subject, schoolClass, teacher)));
+        Course saved = courses.save(new Course(subject, schoolClass, teacher));
+        audit.record("Course", saved.getId(), AuditAction.CREATE, me,
+                "'" + teacher.getUsername() + "' now teaches " + subject.getName()
+                        + " to " + schoolClass.getName() + ".");
+        return CourseView.of(saved);
+    }
+
+    // ----- admin: browsing students -----------------------------------------
+
+    /**
+     * Every student, with their class if they have one - the admin panel's
+     * student list, and what it navigates from into the detail view below.
+     */
+    public List<StudentView> listStudents() {
+        requireAdmin("view the student list");
+        return users.findByRole(Role.STUDENT).stream()
+                .map(student -> {
+                    List<Enrolment> own = enrolments.findByStudentOrderByIdAsc(student);
+                    String className = own.isEmpty() ? null : own.get(0).getSchoolClass().getName();
+                    return StudentView.of(student, className);
+                })
+                .toList();
+    }
+
+    /**
+     * One student's current teachers, by subject - what the admin panel's
+     * student detail view shows before offering to assign or unassign one.
+     *
+     * Uses findCoursesForStudent rather than requireSingleClass: a READ should
+     * show whatever is true of the student, including the unusual case of more
+     * than one class, rather than refusing to answer. It is only the WRITE
+     * (assignTeacherToStudent/unassignTeacherFromStudent) that must be
+     * unambiguous about which class gains or loses a course.
+     */
+    public List<CourseView> listCoursesForStudent(Long studentId) {
+        requireAdmin("view a student's teachers");
+        AppUser student = requireStudent(studentId);
+        return courses.findCoursesForStudent(student).stream().map(CourseView::of).toList();
+    }
+
+    // ----- admin: the teacher-to-student relationship ---------------------------
+
+    /**
+     * Give a teacher access to one student, by teaching them a subject.
+     *
+     * "ASSIGN A TEACHER TO A STUDENT" IS "ADD A COURSE", NOT A NEW TABLE
+     * -------------------------------------------------------------------
+     * A teacher's relationship to a student is already fully expressed by
+     * Course: a teacher teaches a subject to a CLASS, and a student's
+     * teachers follow from the class they are in (see Course's class
+     * comment). Inventing a second, direct student-teacher join alongside
+     * that would let the two disagree - a teacher could be "assigned" to a
+     * student by one mechanism while Course, which every assignment and
+     * every mark is actually scoped by, said otherwise.
+     *
+     * So this method resolves the student's class and does exactly what
+     * createCourse does, with two differences that make it an ADMIN
+     * operation rather than a TEACHER one: the caller does not have to
+     * already teach something to grant someone else access, and the class is
+     * found FROM the student rather than supplied directly - "assign this
+     * teacher to this student" is the whole request; which class that means
+     * is this student's own business to resolve, not the caller's.
+     *
+     * A student with more than one active enrolment, or none, is refused
+     * rather than guessed at - see requireSingleClass.
+     */
+    @Transactional
+    public CourseView assignTeacherToStudent(Long studentId, Long teacherId, Long subjectId) {
+        AppUser me = requireAdmin("assign a teacher to a student");
+
+        AppUser student = requireStudent(studentId);
+        AppUser teacher = requireTeacherAccount(teacherId);
+        Subject subject = requireSubject(subjectId);
+        SchoolClass schoolClass = requireSingleClass(student);
+
+        courses.findBySubjectAndSchoolClassAndTeacher(subject, schoolClass, teacher)
+                .ifPresent(existing -> {
+                    throw new IllegalStateException(
+                            "'" + teacher.getUsername() + "' already teaches "
+                                    + subject.getName() + " to " + schoolClass.getName() + ".");
+                });
+
+        Course saved = courses.save(new Course(subject, schoolClass, teacher));
+        audit.record("Course", saved.getId(), AuditAction.CREATE, me,
+                "Assigned '" + teacher.getUsername() + "' to teach " + subject.getName()
+                        + " to '" + student.getUsername() + "' (" + schoolClass.getName() + ").");
+        return CourseView.of(saved);
+    }
+
+    /**
+     * Withdraw a teacher's access to one student, by removing the course that
+     * granted it.
+     *
+     * REFUSED once any assignment has been set for the course - the same
+     * reasoning as deleting an assignment somebody has handed work in for:
+     * removing the relationship must not silently orphan work that already
+     * exists under it. fk_assignment_course would refuse the DELETE outright
+     * either way; checking first names what is actually still attached.
+     */
+    @Transactional
+    public void unassignTeacherFromStudent(Long studentId, Long teacherId, Long subjectId) {
+        AppUser me = requireAdmin("unassign a teacher from a student");
+
+        AppUser student = requireStudent(studentId);
+        AppUser teacher = requireTeacherAccount(teacherId);
+        Subject subject = requireSubject(subjectId);
+        SchoolClass schoolClass = requireSingleClass(student);
+
+        Course course = courses.findBySubjectAndSchoolClassAndTeacher(subject, schoolClass, teacher)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "'" + teacher.getUsername() + "' does not teach " + subject.getName()
+                                + " to " + schoolClass.getName() + "."));
+
+        if (assignments.existsByCourse(course)) {
+            throw new IllegalStateException(
+                    "'" + teacher.getUsername() + "' has already set work for "
+                            + schoolClass.getName() + " in " + subject.getName()
+                            + ", and cannot be unassigned. Remove that work first if this is intended.");
+        }
+
+        Long courseId = course.getId();
+        courses.delete(course);
+        audit.record("Course", courseId, AuditAction.DELETE, me,
+                "Unassigned '" + teacher.getUsername() + "' from teaching " + subject.getName()
+                        + " to '" + student.getUsername() + "' (" + schoolClass.getName() + ").");
     }
 
     // ----- shared guards -------------------------------------------------------
+
+    /** Establish that the caller is an admin, and return them. */
+    private AppUser requireAdmin(String action) {
+        AppUser me = users.currentActiveUser();
+        if (me.getRole() != Role.ADMIN) {
+            throw new AccessDeniedException("Only an admin can " + action + ".");
+        }
+        return me;
+    }
+
+    @NonNull
+    private AppUser requireStudent(Long studentId) {
+        if (studentId == null) {
+            throw new IllegalArgumentException("Student id must not be null.");
+        }
+        AppUser student = Require.orThrow(users.findById(studentId),
+                () -> new ResourceNotFoundException("student", studentId));
+        if (student.getRole() != Role.STUDENT) {
+            throw new IllegalArgumentException(
+                    "'" + student.getUsername() + "' is a " + student.getRole()
+                            + ", not a student.");
+        }
+        return student;
+    }
+
+    @NonNull
+    private AppUser requireTeacherAccount(Long teacherId) {
+        if (teacherId == null) {
+            throw new IllegalArgumentException("Teacher id must not be null.");
+        }
+        AppUser teacher = Require.orThrow(users.findById(teacherId),
+                () -> new ResourceNotFoundException("teacher", teacherId));
+        if (teacher.getRole() != Role.TEACHER) {
+            throw new IllegalArgumentException(
+                    "'" + teacher.getUsername() + "' is a " + teacher.getRole()
+                            + ", not a teacher.");
+        }
+        return teacher;
+    }
+
+    /**
+     * The one class this student is enrolled in.
+     *
+     * A student with no enrolment yet, or with more than one, cannot have "a
+     * teacher assigned" without an admin also saying which class is meant -
+     * guessing either way would grant access to the wrong register.
+     */
+    @NonNull
+    private SchoolClass requireSingleClass(AppUser student) {
+        List<Enrolment> enrolments = this.enrolments.findByStudentOrderByIdAsc(student);
+        if (enrolments.isEmpty()) {
+            throw new IllegalStateException(
+                    "'" + student.getUsername() + "' is not enrolled in a class yet.");
+        }
+        if (enrolments.size() > 1) {
+            throw new IllegalStateException(
+                    "'" + student.getUsername() + "' is enrolled in more than one class; "
+                            + "assign the teacher to a class directly instead.");
+        }
+        return enrolments.get(0).getSchoolClass();
+    }
 
     /**
      * Fetch a class or fail with 404 rather than a NullPointerException later.

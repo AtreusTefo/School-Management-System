@@ -1,0 +1,24 @@
+<div class="card">
+  <div class="card__body">
+    <h2>Welcome, {{ session.user()?.username }}</h2>
+    <p class="card__note">
+      Onboard teachers, control which teacher reaches which student, and
+      review the audit log of everything the system has changed.
+    </p>
+  </div>
+</div>
+
+<section class="quick-links">
+  <a routerLink="/admin/teachers" class="quick-link">
+    <span class="quick-link__title">Teachers</span>
+    <span class="quick-link__hint">Create, rename, reset the password of, or remove a teacher account</span>
+  </a>
+  <a routerLink="/admin/students" class="quick-link">
+    <span class="quick-link__title">Students</span>
+    <span class="quick-link__hint">See who teaches each student, and assign or unassign a teacher</span>
+  </a>
+  <a routerLink="/admin/audit-log" class="quick-link">
+    <span class="quick-link__title">Audit log</span>
+    <span class="quick-link__hint">An immutable record of every create, update and delete</span>
+  </a>
+</section>

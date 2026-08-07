@@ -1,0 +1,53 @@
+<section class="auth">
+  <div class="card auth__card">
+    <div class="card__body">
+
+      <div class="auth__head">
+        <h2>Admin sign in</h2>
+        <p>Manage teacher accounts, the teacher-to-student relationship, and the audit log.</p>
+      </div>
+
+      <div *ngIf="loginError" class="alert alert--inline" role="alert">
+        <div class="alert__text">{{ loginError }}</div>
+      </div>
+
+      <form #loginForm="ngForm" (ngSubmit)="onLogin()" class="auth__fields">
+        <div class="field">
+          <label class="field__label" for="adminUsername">Username</label>
+          <input id="adminUsername" class="input" type="text" name="adminUsername"
+                 #usernameModel="ngModel"
+                 [(ngModel)]="username" autocomplete="username"
+                 required [maxlength]="usernameMaxLength"
+                 placeholder="admin" />
+          <app-field-error [control]="usernameModel" label="Username" />
+        </div>
+
+        <div class="field">
+          <label class="field__label" for="adminPassword">Password</label>
+          <input id="adminPassword" class="input" type="password" name="adminPassword"
+                 #passwordModel="ngModel"
+                 [(ngModel)]="password" autocomplete="current-password"
+                 required
+                 placeholder="Your password" />
+          <app-field-error [control]="passwordModel" label="Password" />
+        </div>
+
+        <button type="submit" class="btn btn--primary btn--block"
+                [disabled]="loginForm.invalid || signingIn">
+          <span *ngIf="signingIn" class="spinner" aria-hidden="true"></span>
+          {{ signingIn ? 'Signing in...' : 'Sign in' }}
+        </button>
+      </form>
+
+      <div class="auth__hint">
+        <span class="auth__hint-title">Development account</span>
+        <code>admin</code>, password <code>password123</code>.
+      </div>
+
+      <p class="card__note">
+        <a routerLink="/">Not an admin? Sign in here instead.</a>
+      </p>
+
+    </div>
+  </div>
+</section>
