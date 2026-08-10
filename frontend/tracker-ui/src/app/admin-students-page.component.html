@@ -4,11 +4,174 @@
       <h2>Students</h2>
       <span class="badge badge--neutral">{{ students.length }}</span>
     </div>
+    <div class="toolbar">
+      <button type="button" class="btn btn--ghost" (click)="openImport()" *ngIf="!showImport">
+        Import from file
+      </button>
+      <button type="button" class="btn btn--primary" (click)="openCreate()" *ngIf="!showCreate">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2" stroke-linecap="round"
+             stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 5v14M5 12h14" />
+        </svg>
+        Add student
+      </button>
+    </div>
   </div>
 
-  <p class="card__note">
-    Pick a student to see who currently teaches them, and to assign or unassign a teacher.
-  </p>
+  <div *ngIf="notice" class="notice notice--inline" role="status">
+    {{ notice }}
+  </div>
+
+  <!-- ===== BULK IMPORT ===== -->
+  <div *ngIf="showImport" class="subform">
+    <div class="subform__head">
+      <h3>Import students from CSV or Excel</h3>
+      <button type="button" class="btn btn--sm btn--ghost" (click)="closeImport()">Close</button>
+    </div>
+
+    <p class="card__note">
+      Columns (first row, case-insensitive): <code>firstName</code>, <code>middleName</code>
+      (optional), <code>lastName</code>, <code>nationalId</code>,
+      <code>dateOfBirth</code> (yyyy-MM-dd), <code>email</code> (optional),
+      <code>className</code> (optional - must already exist),
+      <code>dateEnrolled</code> (optional, defaults to today). A temporary
+      password is generated for every row and shown below - nowhere else will
+      this system say a password in plain text.
+    </p>
+
+    <div class="create-form">
+      <div class="field">
+        <label class="field__label" for="studentImportFile">File</label>
+        <input id="studentImportFile" class="input" type="file" accept=".csv,.xlsx,.xls"
+               (change)="onImportFileChosen($event)" />
+      </div>
+      <button type="button" class="btn btn--primary" [disabled]="!importFile || importing"
+              (click)="onImport()">
+        <span *ngIf="importing" class="spinner" aria-hidden="true"></span>
+        {{ importing ? 'Importing...' : 'Import' }}
+      </button>
+    </div>
+
+    <div class="card__body" *ngIf="importResult">
+      <p class="card__note">
+        {{ importResult.succeeded }} of {{ importResult.totalRows }} imported successfully.
+      </p>
+      <table class="table table--plain">
+        <thead>
+          <tr>
+            <th>Row</th>
+            <th>Status</th>
+            <th>Name</th>
+            <th>Id</th>
+            <th>Temporary password</th>
+            <th>Message</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let row of importResult.rows">
+            <td>{{ row.rowNumber }}</td>
+            <td>
+              <span class="badge" [class.badge--overdue]="!row.success">
+                {{ row.success ? 'Created' : 'Failed' }}
+              </span>
+            </td>
+            <td>{{ row.identifier }}</td>
+            <td>{{ row.externalId }}</td>
+            <td>{{ row.temporaryPassword }}</td>
+            <td>{{ row.message }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ===== CREATE ===== -->
+  <div *ngIf="showCreate" class="subform">
+    <div class="subform__head">
+      <h3>Onboard a student</h3>
+      <button type="button" class="btn btn--sm btn--ghost" (click)="closeCreate()">Close</button>
+    </div>
+
+    <form #createForm="ngForm" (ngSubmit)="onCreate()">
+      <div class="create-form">
+        <div class="field">
+          <label class="field__label" for="sFirstName">First name</label>
+          <input id="sFirstName" class="input" type="text" name="sFirstName"
+                 #firstNameModel="ngModel"
+                 [(ngModel)]="firstName" required [maxlength]="personNameMaxLength" />
+          <app-field-error [control]="firstNameModel" label="First name" />
+        </div>
+        <div class="field">
+          <label class="field__label" for="sMiddleName">Middle name</label>
+          <input id="sMiddleName" class="input" type="text" name="sMiddleName"
+                 #middleNameModel="ngModel"
+                 [(ngModel)]="middleName" placeholder="If it exists"
+                 [maxlength]="personNameMaxLength" />
+          <app-field-error [control]="middleNameModel" label="Middle name" />
+        </div>
+        <div class="field">
+          <label class="field__label" for="sLastName">Last name</label>
+          <input id="sLastName" class="input" type="text" name="sLastName"
+                 #lastNameModel="ngModel"
+                 [(ngModel)]="lastName" required [maxlength]="personNameMaxLength" />
+          <app-field-error [control]="lastNameModel" label="Last name" />
+        </div>
+      </div>
+
+      <div class="create-form">
+        <div class="field">
+          <label class="field__label" for="sNationalId">OMANG / national id</label>
+          <input id="sNationalId" class="input" type="text" name="sNationalId"
+                 #nationalIdModel="ngModel"
+                 [(ngModel)]="nationalId" required [maxlength]="nationalIdMaxLength" />
+          <app-field-error [control]="nationalIdModel" label="National id" />
+        </div>
+        <div class="field">
+          <label class="field__label" for="sDateOfBirth">Date of birth</label>
+          <input id="sDateOfBirth" class="input" type="date" name="sDateOfBirth"
+                 #dobModel="ngModel"
+                 [(ngModel)]="dateOfBirth" required />
+          <app-field-error [control]="dobModel" label="Date of birth" />
+        </div>
+        <div class="field">
+          <label class="field__label" for="sEmail">Email</label>
+          <input id="sEmail" class="input" type="email" name="sEmail"
+                 #emailModel="ngModel"
+                 [(ngModel)]="email" [maxlength]="contactEmailMaxLength" />
+          <app-field-error [control]="emailModel" label="Email" />
+        </div>
+      </div>
+
+      <div class="create-form">
+        <div class="field">
+          <label class="field__label" for="sGrade">Grade / class</label>
+          <select id="sGrade" class="input" name="sGrade" [(ngModel)]="classId">
+            <option [ngValue]="null">Not enrolled yet</option>
+            <option *ngFor="let c of classes" [ngValue]="c.id">{{ c.name }}</option>
+          </select>
+          <span class="field__hint">
+            Which subjects they are taught follows automatically from this class.
+          </span>
+        </div>
+        <div class="field">
+          <label class="field__label" for="sDateEnrolled">Date enrolled</label>
+          <input id="sDateEnrolled" class="input" type="date" name="sDateEnrolled"
+                 [(ngModel)]="dateEnrolled" />
+          <span class="field__hint">Optional - defaults to today.</span>
+        </div>
+        <div class="field">
+          <label class="field__label" for="sTemporaryPassword">Temporary password</label>
+          <input id="sTemporaryPassword" class="input" type="text"
+                 name="sTemporaryPassword" #tempPasswordModel="ngModel"
+                 [(ngModel)]="temporaryPassword" required [minlength]="passwordMinLength" />
+          <app-field-error [control]="tempPasswordModel" label="Temporary password" />
+        </div>
+      </div>
+
+      <button type="submit" class="btn btn--primary" [disabled]="!canCreate">Create account</button>
+    </form>
+  </div>
 
   <div *ngIf="loading" class="loading">
     <span class="spinner" aria-hidden="true"></span>
@@ -23,14 +186,16 @@
     <table class="table table--plain">
       <thead>
         <tr>
-          <th>Username</th>
+          <th>Name</th>
+          <th>Id</th>
           <th>Class</th>
           <th></th>
         </tr>
       </thead>
       <tbody>
         <tr *ngFor="let s of students">
-          <td>{{ s.username }}</td>
+          <td>{{ s.fullName ?? s.username }}</td>
+          <td>{{ s.externalId ?? s.username }}</td>
           <td>
             <span *ngIf="s.className; else noClass">{{ s.className }}</span>
             <ng-template #noClass><span class="muted">not enrolled</span></ng-template>

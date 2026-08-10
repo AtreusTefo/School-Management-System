@@ -3,16 +3,21 @@ package com.example.tracker;
 import com.example.tracker.model.AppUser;
 import com.example.tracker.model.Role;
 import com.example.tracker.repository.AppUserRepository;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
+
+import java.nio.charset.StandardCharsets;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.*;
@@ -25,11 +30,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * EPIC: Admin Management, end to end through the real security filter.
  *
  * ADMIN REUSES THE EXISTING SESSION-BASED LOGIN - there is no separate
- * "/api/admins/login" and no JWT. An admin signs in through the same
- * POST /api/auth/login every other role uses; the response's "role" field
- * says ADMIN, and every admin-only endpoint below checks that field itself,
- * the same way every other role check in this codebase is enforced in the
- * service layer rather than declaratively in SecurityConfig.
+ * "/api/admins/login" and no JWT, and there is no separate sign-in FORM
+ * either: every role, including admin, signs in through the same
+ * POST /api/auth/login. Every admin-only endpoint below checks the caller's
+ * role itself, the same way every other role check in this codebase is
+ * enforced in the service layer rather than declaratively in SecurityConfig.
+ *
+ * EVERY LOGIN ID IS GENERATED - a student, teacher or admin account made
+ * through this API signs in with STU20260001 / TCH20260001 / ADM20260001,
+ * never a chosen username. The seeded development accounts (teacher,
+ * student, admin) predate that rule and keep their literal names - see
+ * AppUser.externalId.
  *
  * "ASSIGN A TEACHER TO A STUDENT" IS BACKED BY Course, NOT A NEW TABLE - see
  * SchoolService.assignTeacherToStudent. The seeded timetable already gives
@@ -68,8 +79,46 @@ class AdminApiTest {
         return users.findByUsername(username).orElseThrow().getId();
     }
 
+    /**
+     * A minimal, valid profile JSON body - every field the admin forms
+     * require, filled with fixed values. A test that needs a specific field
+     * wrong (a blank first name, say) builds its own literal instead of
+     * trying to edit this one apart. nationalId is the one argument, since
+     * every test that creates more than one person needs a DISTINCT one -
+     * uq_person_profile_national_id refuses a duplicate.
+     */
+    private String personJson(String nationalId) {
+        return "{\"firstName\":\"Kagiso\",\"lastName\":\"Molefe\","
+                + "\"nationalId\":\"" + nationalId + "\",\"dateOfBirth\":\"2000-01-01\","
+                + "\"temporaryPassword\":\"temp-password-1\"}";
+    }
+
+    private Long requireSubjectId(String code) throws Exception {
+        String body = mvc.perform(get("/api/subjects").with(asStudent()))
+                .andReturn().getResponse().getContentAsString();
+        JsonNode root = new ObjectMapper().readTree(body);
+        for (JsonNode node : root) {
+            if (node.get("code").asText().equals(code)) {
+                return node.get("id").asLong();
+            }
+        }
+        throw new IllegalStateException("Seeded subject '" + code + "' not found.");
+    }
+
+    private Long requireClassId(String name) throws Exception {
+        String body = mvc.perform(get("/api/classes").with(asStudent()))
+                .andReturn().getResponse().getContentAsString();
+        JsonNode root = new ObjectMapper().readTree(body);
+        for (JsonNode node : root) {
+            if (node.get("name").asText().equals(name)) {
+                return node.get("id").asLong();
+            }
+        }
+        throw new IllegalStateException("Seeded class '" + name + "' not found.");
+    }
+
     // =============================================================================
-    // ADMIN LOGIN REUSES /api/auth/login
+    // ADMIN LOGIN REUSES /api/auth/login - THE SAME FORM AS EVERY OTHER ROLE
     // =============================================================================
 
     @Nested
@@ -98,18 +147,35 @@ class AdminApiTest {
     class TeacherAccounts {
 
         @Test
-        @DisplayName("an admin can create a teacher account, pending its own password change")
+        @DisplayName("an admin can create a teacher account, with a generated id, pending its own password change")
         void adminCanCreateTeacher() throws Exception {
             mvc.perform(post("/api/teachers")
                             .contentType("application/json")
-                            .content("{\"username\":\"newteacher\",\"temporaryPassword\":\"temp-password-1\"}")
+                            .content(personJson("111111111"))
                             .with(asAdmin()).with(csrf()))
                .andExpect(status().isCreated())
-               .andExpect(jsonPath("$.username", is("newteacher")))
+               .andExpect(jsonPath("$.externalId", startsWith("TCH")))
+               .andExpect(jsonPath("$.fullName", is("Kagiso Molefe")))
                .andExpect(jsonPath("$.mustChangePassword", is(true)));
+        }
 
-            AppUser created = users.findByUsername("newteacher").orElseThrow();
-            assertThat(created.getRole()).isEqualTo(Role.TEACHER);
+        @Test
+        @DisplayName("the account signs in with the generated id, not a chosen name")
+        void createdTeacherSignsInWithGeneratedId() throws Exception {
+            String body = mvc.perform(post("/api/teachers")
+                            .contentType("application/json")
+                            .content(personJson("111111112"))
+                            .with(asAdmin()).with(csrf()))
+                    .andReturn().getResponse().getContentAsString();
+            String externalId = new ObjectMapper().readTree(body).get("externalId").asText();
+
+            mvc.perform(post("/api/auth/login")
+                            .contentType("application/json")
+                            .content("{\"username\":\"" + externalId + "\",\"password\":\"temp-password-1\"}")
+                            .with(csrf()))
+               .andExpect(status().isOk())
+               .andExpect(jsonPath("$.role", is("TEACHER")))
+               .andExpect(jsonPath("$.mustChangePassword", is(true)));
         }
 
         @Test
@@ -117,11 +183,9 @@ class AdminApiTest {
         void teacherCannotCreateTeacher() throws Exception {
             mvc.perform(post("/api/teachers")
                             .contentType("application/json")
-                            .content("{\"username\":\"sneaky\",\"temporaryPassword\":\"temp-password-1\"}")
+                            .content(personJson("111111113"))
                             .with(asTeacher()).with(csrf()))
                .andExpect(status().isForbidden());
-
-            assertThat(users.findByUsername("sneaky")).isEmpty();
         }
 
         @Test
@@ -129,7 +193,7 @@ class AdminApiTest {
         void studentCannotCreateTeacher() throws Exception {
             mvc.perform(post("/api/teachers")
                             .contentType("application/json")
-                            .content("{\"username\":\"sneaky2\",\"temporaryPassword\":\"temp-password-1\"}")
+                            .content(personJson("111111114"))
                             .with(asStudent()).with(csrf()))
                .andExpect(status().isForbidden());
         }
@@ -139,19 +203,37 @@ class AdminApiTest {
         void anonymousCannotCreateTeacher() throws Exception {
             mvc.perform(post("/api/teachers")
                             .contentType("application/json")
-                            .content("{\"username\":\"sneaky3\",\"temporaryPassword\":\"temp-password-1\"}")
+                            .content(personJson("111111115"))
                             .with(csrf()))
                .andExpect(status().isUnauthorized());
         }
 
         @Test
-        @DisplayName("a duplicate username is refused with 409")
-        void duplicateTeacherUsernameIsRefused() throws Exception {
+        @DisplayName("a duplicate national id is refused with 409")
+        void duplicateNationalIdIsRefused() throws Exception {
             mvc.perform(post("/api/teachers")
                             .contentType("application/json")
-                            .content("{\"username\":\"teacher\",\"temporaryPassword\":\"temp-password-1\"}")
+                            .content(personJson("222222222"))
+                            .with(asAdmin()).with(csrf()))
+               .andExpect(status().isCreated());
+
+            mvc.perform(post("/api/teachers")
+                            .contentType("application/json")
+                            .content(personJson("222222222"))
                             .with(asAdmin()).with(csrf()))
                .andExpect(status().isConflict());
+        }
+
+        @Test
+        @DisplayName("a blank first name is refused with 400")
+        void blankFirstNameIsRefused() throws Exception {
+            mvc.perform(post("/api/teachers")
+                            .contentType("application/json")
+                            .content("{\"firstName\":\"\",\"lastName\":\"Molefe\","
+                                    + "\"nationalId\":\"333333333\",\"dateOfBirth\":\"2000-01-01\","
+                                    + "\"temporaryPassword\":\"temp-password-1\"}")
+                            .with(asAdmin()).with(csrf()))
+               .andExpect(status().isBadRequest());
         }
 
         @Test
@@ -169,54 +251,19 @@ class AdminApiTest {
                .andExpect(status().isForbidden());
         }
 
-        /**
-         * Creates a throwaway teacher with no courses or assignments, so
-         * rename/reset-password/delete tests never mutate a SEEDED account
-         * that other tests in this shared context still depend on existing
-         * under its original name.
-         */
-        private String givenAFreshTeacher(String username) throws Exception {
-            mvc.perform(post("/api/teachers")
+        private Long givenAFreshTeacher(String nationalId) throws Exception {
+            String body = mvc.perform(post("/api/teachers")
                             .contentType("application/json")
-                            .content("{\"username\":\"" + username
-                                    + "\",\"temporaryPassword\":\"temp-password-1\"}")
+                            .content(personJson(nationalId))
                             .with(asAdmin()).with(csrf()))
-               .andExpect(status().isCreated());
-            return username;
-        }
-
-        @Test
-        @DisplayName("an admin can rename a teacher account")
-        void adminCanRenameTeacher() throws Exception {
-            Long id = idOf(givenAFreshTeacher("rename-me"));
-
-            mvc.perform(put("/api/teachers/" + id)
-                            .contentType("application/json")
-                            .content("{\"username\":\"renamed-teacher\"}")
-                            .with(asAdmin()).with(csrf()))
-               .andExpect(status().isOk())
-               .andExpect(jsonPath("$.username", is("renamed-teacher")));
-
-            assertThat(users.findByUsername("renamed-teacher")).isPresent();
-        }
-
-        @Test
-        @DisplayName("renaming to an existing username is refused with 409")
-        void renamingToADuplicateIsRefused() throws Exception {
-            Long id = idOf(givenAFreshTeacher("rename-collision"));
-
-            mvc.perform(put("/api/teachers/" + id)
-                            .contentType("application/json")
-                            .content("{\"username\":\"teacher\"}")
-                            .with(asAdmin()).with(csrf()))
-               .andExpect(status().isConflict());
+                    .andReturn().getResponse().getContentAsString();
+            return new ObjectMapper().readTree(body).get("id").asLong();
         }
 
         @Test
         @DisplayName("an admin can reset a teacher's password, marking the account pending again")
         void adminCanResetTeacherPassword() throws Exception {
-            String username = givenAFreshTeacher("reset-me");
-            Long id = idOf(username);
+            Long id = givenAFreshTeacher("444444444");
 
             mvc.perform(put("/api/teachers/" + id + "/password")
                             .contentType("application/json")
@@ -225,7 +272,7 @@ class AdminApiTest {
                .andExpect(status().isOk())
                .andExpect(jsonPath("$.mustChangePassword", is(true)));
 
-            AppUser after = users.findByUsername(username).orElseThrow();
+            AppUser after = users.findById(id).orElseThrow();
             assertThat(encoder.matches("fresh-temp-password", after.getPasswordHash())).isTrue();
         }
 
@@ -242,17 +289,193 @@ class AdminApiTest {
         @Test
         @DisplayName("deleting a teacher with no courses or assignments succeeds")
         void deletingATeacherWithNothingAttachedSucceeds() throws Exception {
-            mvc.perform(post("/api/teachers")
-                            .contentType("application/json")
-                            .content("{\"username\":\"throwaway\",\"temporaryPassword\":\"temp-password-1\"}")
-                            .with(asAdmin()).with(csrf()))
-               .andExpect(status().isCreated());
+            Long id = givenAFreshTeacher("555555555");
 
-            mvc.perform(delete("/api/teachers/" + idOf("throwaway"))
+            mvc.perform(delete("/api/teachers/" + id)
                             .with(asAdmin()).with(csrf()))
                .andExpect(status().isNoContent());
 
-            assertThat(users.findByUsername("throwaway")).isEmpty();
+            assertThat(users.findById(id)).isEmpty();
+        }
+
+        @Test
+        @DisplayName("an admin can create a teacher already teaching a subject to a class")
+        void adminCanCreateTeacherWithInitialCourse() throws Exception {
+            Long subjectId = requireSubjectId("HIST");
+            Long classId = requireClassId("Grade 10B");
+
+            mvc.perform(post("/api/teachers")
+                            .contentType("application/json")
+                            .content("{\"firstName\":\"Boitumelo\",\"lastName\":\"Kgosi\","
+                                    + "\"nationalId\":\"666666666\",\"dateOfBirth\":\"1985-05-05\","
+                                    + "\"temporaryPassword\":\"temp-password-1\","
+                                    + "\"initialCourses\":[{\"subjectId\":" + subjectId
+                                    + ",\"classId\":" + classId + "}]}")
+                            .with(asAdmin()).with(csrf()))
+               .andExpect(status().isCreated());
+
+            mvc.perform(get("/api/courses/all").with(asTeacher()))
+               .andExpect(status().isOk())
+               .andExpect(jsonPath("$[?(@.teacherUsername == 'Boitumelo Kgosi' "
+                       + "|| @.subjectCode == 'HIST' && @.className == 'Grade 10B')]").exists());
+        }
+    }
+
+    // =============================================================================
+    // STUDENT ACCOUNTS - ADMIN ONLY
+    // =============================================================================
+
+    @Nested
+    @DisplayName("managing student accounts")
+    class StudentAccounts {
+
+        @Test
+        @DisplayName("an admin can create a student account, with a generated id")
+        void adminCanCreateStudent() throws Exception {
+            mvc.perform(post("/api/students")
+                            .contentType("application/json")
+                            .content(personJson("777777777"))
+                            .with(asAdmin()).with(csrf()))
+               .andExpect(status().isCreated())
+               .andExpect(jsonPath("$.externalId", startsWith("STU")))
+               .andExpect(jsonPath("$.mustChangePassword", is(true)));
+        }
+
+        @Test
+        @DisplayName("a teacher cannot create a student account - onboarding is admin-only")
+        void teacherCannotCreateStudent() throws Exception {
+            mvc.perform(post("/api/students")
+                            .contentType("application/json")
+                            .content(personJson("777777778"))
+                            .with(asTeacher()).with(csrf()))
+               .andExpect(status().isForbidden());
+        }
+
+        @Test
+        @DisplayName("an admin can create a student already enrolled in a class")
+        void adminCanCreateStudentWithClass() throws Exception {
+            Long classId = requireClassId("Grade 10A");
+
+            String body = mvc.perform(post("/api/students")
+                            .contentType("application/json")
+                            .content("{\"firstName\":\"Naledi\",\"lastName\":\"Pule\","
+                                    + "\"nationalId\":\"888888888\",\"dateOfBirth\":\"2010-03-03\","
+                                    + "\"temporaryPassword\":\"temp-password-1\",\"classId\":" + classId + "}")
+                            .with(asAdmin()).with(csrf()))
+                    .andReturn().getResponse().getContentAsString();
+
+            assertThat(new ObjectMapper().readTree(body).get("className").asText())
+                    .isEqualTo("Grade 10A");
+        }
+    }
+
+    // =============================================================================
+    // BULK IMPORT
+    // =============================================================================
+
+    @Nested
+    @DisplayName("bulk import")
+    class BulkImport {
+
+        @Test
+        @DisplayName("importing students from CSV reports one success per valid row")
+        void importStudentsFromCsv() throws Exception {
+            String csv = "firstName,lastName,nationalId,dateOfBirth\n"
+                    + "Thabo,Seretse,900000001,2011-02-02\n"
+                    + "Lesego,Mogae,900000002,2011-04-04\n";
+            MockMultipartFile file = new MockMultipartFile(
+                    "file", "students.csv", "text/csv", csv.getBytes(StandardCharsets.UTF_8));
+
+            mvc.perform(multipart("/api/students/import").file(file).with(asAdmin()).with(csrf()))
+               .andExpect(status().isOk())
+               .andExpect(jsonPath("$.totalRows", is(2)))
+               .andExpect(jsonPath("$.succeeded", is(2)))
+               .andExpect(jsonPath("$.failed", is(0)))
+               .andExpect(jsonPath("$.rows[0].externalId", startsWith("STU")))
+               .andExpect(jsonPath("$.rows[0].temporaryPassword", notNullValue()));
+        }
+
+        @Test
+        @DisplayName("a bad row fails on its own without losing the good rows in the same file")
+        void oneBadRowDoesNotSinkTheWholeImport() throws Exception {
+            String csv = "firstName,lastName,nationalId,dateOfBirth\n"
+                    + "Goodwill,Tau,900000003,2011-02-02\n"
+                    + ",MissingFirstName,900000004,2011-04-04\n";
+            MockMultipartFile file = new MockMultipartFile(
+                    "file", "students.csv", "text/csv", csv.getBytes(StandardCharsets.UTF_8));
+
+            mvc.perform(multipart("/api/students/import").file(file).with(asAdmin()).with(csrf()))
+               .andExpect(status().isOk())
+               .andExpect(jsonPath("$.totalRows", is(2)))
+               .andExpect(jsonPath("$.succeeded", is(1)))
+               .andExpect(jsonPath("$.failed", is(1)))
+               .andExpect(jsonPath("$.rows[1].success", is(false)))
+               .andExpect(jsonPath("$.rows[1].message", notNullValue()));
+
+            // The good row was actually persisted, not merely reported as a
+            // success - and the bad row's partial writes (an AppUser with no
+            // profile, had one been left behind) did not slip through either.
+            String students = mvc.perform(get("/api/students").with(asAdmin()))
+                    .andReturn().getResponse().getContentAsString();
+            assertThat(students).contains("900000003");
+            assertThat(students).doesNotContain("900000004");
+        }
+
+        @Test
+        @DisplayName("a teacher cannot bulk-import students")
+        void teacherCannotImportStudents() throws Exception {
+            String csv = "firstName,lastName,nationalId,dateOfBirth\nA,B,900000005,2011-01-01\n";
+            MockMultipartFile file = new MockMultipartFile(
+                    "file", "students.csv", "text/csv", csv.getBytes(StandardCharsets.UTF_8));
+
+            mvc.perform(multipart("/api/students/import").file(file).with(asTeacher()).with(csrf()))
+               .andExpect(status().isForbidden());
+        }
+
+        @Test
+        @DisplayName("importing teachers from CSV reports one success per valid row")
+        void importTeachersFromCsv() throws Exception {
+            String csv = "firstName,lastName,nationalId,dateOfBirth\n"
+                    + "Onalenna,Phiri,900000006,1988-06-06\n";
+            MockMultipartFile file = new MockMultipartFile(
+                    "file", "teachers.csv", "text/csv", csv.getBytes(StandardCharsets.UTF_8));
+
+            mvc.perform(multipart("/api/teachers/import").file(file).with(asAdmin()).with(csrf()))
+               .andExpect(status().isOk())
+               .andExpect(jsonPath("$.succeeded", is(1)))
+               .andExpect(jsonPath("$.rows[0].externalId", startsWith("TCH")));
+        }
+    }
+
+    // =============================================================================
+    // ADMIN ACCOUNTS - ADMIN ONLY
+    // =============================================================================
+
+    @Nested
+    @DisplayName("managing admin accounts")
+    class AdminAccounts {
+
+        @Test
+        @DisplayName("an admin can create another admin account, with a generated id and no profile")
+        void adminCanCreateAdmin() throws Exception {
+            mvc.perform(post("/api/admins")
+                            .contentType("application/json")
+                            .content("{\"temporaryPassword\":\"temp-password-1\"}")
+                            .with(asAdmin()).with(csrf()))
+               .andExpect(status().isCreated())
+               .andExpect(jsonPath("$.username", startsWith("ADM")))
+               .andExpect(jsonPath("$.role", is("ADMIN")))
+               .andExpect(jsonPath("$.mustChangePassword", is(true)));
+        }
+
+        @Test
+        @DisplayName("a teacher cannot create an admin account")
+        void teacherCannotCreateAdmin() throws Exception {
+            mvc.perform(post("/api/admins")
+                            .contentType("application/json")
+                            .content("{\"temporaryPassword\":\"temp-password-1\"}")
+                            .with(asTeacher()).with(csrf()))
+               .andExpect(status().isForbidden());
         }
     }
 
@@ -378,22 +601,6 @@ class AdminApiTest {
                             .with(asAdmin()).with(csrf()))
                .andExpect(status().isNoContent());
         }
-
-        private Long requireSubjectId(String code) throws Exception {
-            String body = mvc.perform(get("/api/subjects").with(asStudent()))
-                    .andReturn().getResponse().getContentAsString();
-            // A tiny hand-rolled extraction rather than pulling in a JSON path
-            // library here: the subjects list is small and stable, and this
-            // keeps the test self-contained.
-            com.fasterxml.jackson.databind.JsonNode root =
-                    new com.fasterxml.jackson.databind.ObjectMapper().readTree(body);
-            for (com.fasterxml.jackson.databind.JsonNode node : root) {
-                if (node.get("code").asText().equals(code)) {
-                    return node.get("id").asLong();
-                }
-            }
-            throw new IllegalStateException("Seeded subject '" + code + "' not found.");
-        }
     }
 
     // =============================================================================
@@ -409,7 +616,7 @@ class AdminApiTest {
         void creatingATeacherIsAudited() throws Exception {
             mvc.perform(post("/api/teachers")
                             .contentType("application/json")
-                            .content("{\"username\":\"audited-teacher\",\"temporaryPassword\":\"temp-password-1\"}")
+                            .content(personJson("999999991"))
                             .with(asAdmin()).with(csrf()))
                .andExpect(status().isCreated());
 
@@ -419,7 +626,7 @@ class AdminApiTest {
                             .with(asAdmin()))
                .andExpect(status().isOk())
                .andExpect(jsonPath("$.content[*].summary",
-                       hasItem(containsString("audited-teacher"))));
+                       hasItem(containsString("Kagiso Molefe"))));
         }
 
         @Test
@@ -457,7 +664,7 @@ class AdminApiTest {
         void theLogIsPaginated() throws Exception {
             mvc.perform(post("/api/teachers")
                             .contentType("application/json")
-                            .content("{\"username\":\"pagination-check\",\"temporaryPassword\":\"temp-password-1\"}")
+                            .content(personJson("999999992"))
                             .with(asAdmin()).with(csrf()))
                .andExpect(status().isCreated());
 

@@ -4,7 +4,9 @@ A minimal full-stack prototype demonstrating a **layered Spring Boot backend**
 and an **Angular frontend**. Beginner-friendly, heavily commented.
 
 ## What it does
-- **Sign in** as a teacher or a student
+- **Sign in** as a student, a teacher, or an admin — one shared login form for
+  every role; the server decides who signed in, and where they land, from the
+  credentials alone
 - **Subjects, classes and courses** — a course is one subject taught to one class
   by one teacher. A teacher can take several subjects and several classes, so a
   student is taught several subjects by several teachers
@@ -26,21 +28,31 @@ and an **Angular frontend**. Beginner-friendly, heavily commented.
   shows, so it is never limited to what happens to be loaded or paged in the
   browser
 - **Sort, search and filter** the list, with a summary of what is outstanding
-- **Change your own password**, and **create student accounts** (teachers only) that
-  must have their temporary password replaced at first sign-in
-- **Four separate pages** — Dashboard, "Work I have set", Marking queue, and
-  Reports — reached through top navigation, each guarded so a student cannot
-  land on the teacher-only page and a signed-out visitor is sent to sign in
+- **Change your own password**
+- **An admin panel** (admin only) — onboard a student or teacher, one at a time
+  or in bulk from a CSV/Excel file, each with a full profile (name, national id,
+  date of birth, contact email, date enrolled) and a **generated sign-in id**
+  (`STU20260001`, `TCH20260001`) rather than a chosen username; assign or
+  unassign a teacher to a student, by subject; browse an immutable, paginated
+  **audit log** of every create, update and delete the system has performed
+- **Nine separate pages**, each guarded so a student cannot land on a
+  teacher-only or admin-only page and a signed-out visitor is sent to sign in
 
 Development accounts, all with password `password123`:
 
 | Account | Role | Involved in |
 |---------|------|-------------|
+| `admin` | ADMIN | onboarding, teacher assignment, the audit log |
 | `teacher` | TEACHER | Mathematics for 10A **and** 10B, History for 10A |
 | `teacher2` | TEACHER | Science for 10A |
 | `student` | STUDENT | Grade 10A |
 | `student2` | STUDENT | Grade 10A |
 | `student3` | STUDENT | Grade 10B |
+
+These three keep their literal usernames as a documented exception - every
+account created through the admin panel from here on signs in with a
+generated id instead. See [Admin-issued ids](#admin-issued-ids-and-onboarding)
+below.
 
 That roster is the smallest one in which every relationship is visible: `student`
 is taught three subjects by two teachers, and `teacher` runs two classes. Seed
@@ -73,11 +85,18 @@ Start the backend, then the frontend, and open http://localhost:4200.
 7. Go to **Performance & marks** (Reports). Record a mark, then click
    **Export Excel (full report)** — a two-sheet workbook downloads, built on
    the server from the exact same data the two tables on screen show.
-8. From the Dashboard's **Manage** panel, add a subject, a class or a course,
-   and enrol a student. Enrolling a *teacher* is refused by the database itself,
-   not just by the form — see [Data integrity](#data-integrity-is-enforced-by-the-database).
-9. Visit http://localhost:8080/swagger-ui.html to see the same API described and
-   callable.
+8. From the Dashboard's **Manage** panel, add a subject, a class or a course.
+   Enrolling a *teacher* in a class is refused by the database itself, not just
+   by the form — see [Data integrity](#data-integrity-is-enforced-by-the-database).
+9. **Sign out** and sign in as **`admin`**. Go to **Teachers**, click
+   **Add teacher**, and fill in the profile form — a generated id (`TCH...`)
+   comes back, not a chosen username. Go to **Students**, add one the same
+   way, enrolling them in a class in the same request, then open that
+   student's **Manage** link to assign a second teacher to them. Finally
+   check the **Audit log** — every one of the actions just taken is there,
+   newest first.
+10. Visit http://localhost:8080/swagger-ui.html to see the same API described and
+    callable.
 
 ## Requirements
 - **Java 25** (the current LTS) — Maven is not needed, the project ships `mvnw`
@@ -291,6 +310,49 @@ decision rather than a storage preference: a file on disk plus a row pointing at
 it is two writes that must be made atomic by hand, and every failure in between
 leaves either a row naming a missing file or bytes nobody has a row for.
 
+## Admin-issued ids and onboarding
+
+Only an admin may create a student, a teacher, or another admin account —
+there is no self-service or teacher-facing signup. Every account made this
+way is issued a **generated** sign-in id rather than a chosen username:
+
+| Role | Id format | Example |
+|------|-----------|---------|
+| Student | `STU` + year + 4-digit sequence | `STU20260001` |
+| Teacher | `TCH` + year + 4-digit sequence | `TCH20260001` |
+| Admin | `ADM` + year + 4-digit sequence | `ADM20260001` |
+
+Each id comes from its own SQL Server **sequence** (`NEXT VALUE FOR
+seq_student_id`, and so on), not from reading the highest number issued so
+far — the latter is a genuine race between two admins onboarding at the same
+moment; a sequence is atomic by construction and needs no retry. The id
+becomes that account's `username`, which is what it signs in with — there is
+one shared login form for every role, admin included, and the server decides
+where to send the caller afterwards.
+
+The student and teacher onboarding forms also collect a **profile**: full
+name (first, middle if it exists, last), an OMANG/national id number, a date
+of birth, a contact email, and a date enrolled. This is stored separately
+from the account itself, in `person_profile` — a name and a date of birth are
+a different kind of fact from a username and a password hash, asked for by a
+different part of the system, and a query that only needs to know who is
+signed in has no reason to carry the rest past it. **Which grade a student is
+in, and which subjects a student or teacher is involved with, are not columns
+on this profile** — they are the existing class `Enrolment` and `Course`
+relationship described above; the onboarding forms can enrol a student in a
+class or set a teacher up with an initial course in the same request, but
+always by writing through those tables, never a second copy of the fact.
+
+**Bulk onboarding** accepts a CSV or Excel file with a header row
+(`firstName`, `middleName`, `lastName`, `nationalId`, `dateOfBirth`, `email`,
+`className` for students, `dateEnrolled` — most columns optional). Each row
+is validated and saved in its **own transaction**, so a handful of bad rows
+in a two-hundred-row file cost exactly those rows, not the rest of the
+import; the response reports one line per row, success or failure, with a
+generated temporary password for every account actually created — the one
+place this system ever states a password in plain text, since there is no
+one to read it out to during a bulk import.
+
 ## API endpoints
 
 Every endpoint except `login` and `csrf` requires a session; every write also
@@ -303,7 +365,6 @@ requires the `X-XSRF-TOKEN` header.
 | GET | `/api/auth/me` | Who am I? |
 | POST | `/api/auth/logout` | End the session |
 | PUT | `/api/auth/password` | Change your own password |
-| POST | `/api/users` | Create a student account — teachers only |
 | GET | `/api/subjects` | List subjects |
 | POST | `/api/subjects` | Add a subject — teachers only |
 | GET | `/api/classes` | List classes with their sizes |
@@ -331,6 +392,19 @@ requires the `X-XSRF-TOKEN` header.
 | PUT | `/api/assessments/{id}` | Correct a mark |
 | DELETE | `/api/assessments/{id}` | Remove a mark |
 | GET | `/api/assessments/report.xlsx` | The full report as a two-sheet Excel workbook — performance summary, then every mark, scoped exactly like the JSON endpoints above |
+| GET | `/api/teachers` | List teacher accounts — admin only |
+| POST | `/api/teachers` | Onboard a teacher, with a generated id — admin only |
+| PUT | `/api/teachers/{id}/password` | Issue a new temporary password — admin only |
+| DELETE | `/api/teachers/{id}` | Remove — refused while they still teach a course or set work |
+| POST | `/api/teachers/import` | Bulk-onboard teachers from a CSV or Excel file — admin only |
+| GET | `/api/students` | List students, with their class — admin only |
+| POST | `/api/students` | Onboard a student, with a generated id — admin only |
+| POST | `/api/students/import` | Bulk-onboard students from a CSV or Excel file — admin only |
+| GET | `/api/students/{id}/teachers` | Who currently teaches this student, by subject |
+| POST | `/api/students/{sid}/teachers/{tid}` | Assign a teacher to a student, for one subject |
+| DELETE | `/api/students/{sid}/teachers/{tid}` | Unassign — refused once work has been set for it |
+| POST | `/api/admins` | Onboard another admin, with a generated id — admin only |
+| GET | `/api/audit-logs` | Paginated, filterable log of every create/update/delete — admin only |
 
 Browse and try all of these at **http://localhost:8080/swagger-ui.html** while the
 backend is running. The description is generated from the controllers, so it cannot
@@ -380,12 +454,16 @@ cd "School Management System/backend"
 ./mvnw test
 ```
 
-110 tests: 17 unit tests of the business rules, 22 full-stack tests through MockMvc
+142 tests: 17 unit tests of the business rules, 22 full-stack tests through MockMvc
 with real security (including multipart upload and download), 18 covering
 concurrency and database integrity, 16 covering marks and the scoring arithmetic,
-12 covering account self-service, 18 covering input validation on every DTO, and
-7 covering the Excel report endpoint (attachment headers, sheet contents, and that
-a teacher's download is scoped to their own courses). They run against H2, so
+8 covering account self-service (password change - account creation moved to the
+admin panel), 18 covering input validation on every DTO, 7 covering the Excel
+report endpoint (attachment headers, sheet contents, and that a teacher's download
+is scoped to their own courses), and 36 covering admin management: onboarding with
+a generated id, that id actually signing in, bulk CSV/Excel import (partial
+success, and that a bad row's partial writes never reach the database), assigning
+and unassigning a teacher to a student, and the audit log. They run against H2, so
 **no SQL Server instance is needed** to run the suite.
 
 `./mvnw package` runs them too, and fails the build if any test fails.

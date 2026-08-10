@@ -11,7 +11,28 @@
     // Version"; the prompt setting below offers that automatically.
     "typescript.tsdk": "frontend/tracker-ui/node_modules/typescript/lib",
     "typescript.enablePromptUseWorkspaceTsdk": true,
-    "java.configuration.updateBuildConfiguration": "interactive",
+    // Rebuild the language server's project model automatically when the build
+    // configuration changes, rather than waiting to be asked.
+    //
+    // This was "interactive", and that is why the editor kept reporting whole
+    // classes as "cannot be resolved" while `mvnw compile` and `mvnw test` both
+    // passed clean. Under "interactive" the server does NOT refresh its
+    // classpath on its own - it raises a notification and waits for a click. A
+    // session that adds or deletes several source files (the admin-management
+    // work added eight and deleted one) produces exactly that prompt, and if it
+    // is dismissed or simply missed, the model keeps resolving against the
+    // source tree as it was BEFORE those files existed. Nothing recovers it
+    // afterwards, so the phantom errors persist across restarts and look for all
+    // the world like a real compilation failure.
+    //
+    // "automatic" costs a short re-sync whenever pom.xml or the source layout
+    // changes, and in exchange the editor's model cannot silently drift from the
+    // build. Maven is unaffected either way - it never reads this setting.
+    //
+    // NOTE: changing this does not repair an index that has ALREADY drifted.
+    // Run "Java: Clean Java Language Server Workspace" from the Command Palette
+    // once after this lands; from then on it maintains itself.
+    "java.configuration.updateBuildConfiguration": "automatic",
 
     // Tell the Java language server which JDKs exist on this machine.
     //

@@ -1,23 +1,25 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { AdminService, Teacher } from './admin.service';
+import { AdminService, ImportSummary, Teacher } from './admin.service';
+import { AssignmentService, Course, SchoolClass, Subject } from './assignment.service';
 import { NotificationService } from './notification.service';
 import { FieldErrorComponent } from './field-error.component';
-import { PASSWORD_MIN_LENGTH, USERNAME_MAX_LENGTH } from './validation';
+import {
+  CONTACT_EMAIL_MAX_LENGTH, NATIONAL_ID_MAX_LENGTH,
+  PASSWORD_MIN_LENGTH, PERSON_NAME_MAX_LENGTH
+} from './validation';
 
 /**
- * '/admin/teachers' - onboard, rename, reset the password of, or remove a
- * teacher account. One row per TEACHER account, not per course - which
- * classes a teacher runs is the student-assignment page's concern, not this
- * one's.
+ * '/admin/teachers' - onboard (one at a time or in bulk), reset the password
+ * of, or remove a teacher account. One row per TEACHER account, not per
+ * course - which classes a teacher runs is the student-assignment page's
+ * concern, not this one's.
  *
- * RENAMING AND RESETTING A PASSWORD ARE TWO SEPARATE INLINE FORMS, not one
- * combined edit row. They are different admin actions with different
- * consequences (a username change is cosmetic; a password reset marks the
- * account pending again), and combining them into one "Edit" button with two
- * optional fields would make it unclear which one actually happened when
- * only one field was filled in.
+ * NO "RENAME" - a teacher's sign-in id (TCH20260001) is generated once and
+ * never edited; see AdminService on the backend for why a system-issued id
+ * that could later be changed would not be one any more. Resetting the
+ * password is the only per-account action left besides delete.
  */
 @Component({
   selector: 'app-admin-teachers-page',
@@ -27,24 +29,42 @@ import { PASSWORD_MIN_LENGTH, USERNAME_MAX_LENGTH } from './validation';
 })
 export class AdminTeachersPageComponent implements OnInit {
 
-  readonly usernameMaxLength = USERNAME_MAX_LENGTH;
+  readonly personNameMaxLength = PERSON_NAME_MAX_LENGTH;
+  readonly nationalIdMaxLength = NATIONAL_ID_MAX_LENGTH;
+  readonly contactEmailMaxLength = CONTACT_EMAIL_MAX_LENGTH;
   readonly passwordMinLength = PASSWORD_MIN_LENGTH;
 
   teachers: Teacher[] = [];
+  subjects: Subject[] = [];
+  classes: SchoolClass[] = [];
   loading = false;
   notice: string | null = null;
 
   showCreate = false;
-  newUsername = '';
-  newTemporaryPassword = '';
-
-  renamingId: number | null = null;
-  renameUsername = '';
+  firstName = '';
+  middleName = '';
+  lastName = '';
+  nationalId = '';
+  dateOfBirth = '';
+  email = '';
+  dateEnrolled = '';
+  temporaryPassword = '';
+  initialSubjectId: number | null = null;
+  initialClassId: number | null = null;
 
   resettingId: number | null = null;
   resetTemporaryPassword = '';
 
-  constructor(private admin: AdminService, private notifications: NotificationService) {}
+  showImport = false;
+  importFile: File | null = null;
+  importing = false;
+  importResult: ImportSummary | null = null;
+
+  constructor(
+    private admin: AdminService,
+    private service: AssignmentService,
+    private notifications: NotificationService
+  ) {}
 
   ngOnInit(): void {
     this.notifications.setRetryHandler(() => this.load());
@@ -63,14 +83,31 @@ export class AdminTeachersPageComponent implements OnInit {
         this.notifications.showError(err, 'Could not load the teacher list');
       }
     });
+    this.service.getSubjects().subscribe({
+      next: (data) => this.subjects = data,
+      error: (err) => this.notifications.showError(err, 'Could not load subjects')
+    });
+    this.service.getClasses().subscribe({
+      next: (data) => this.classes = data,
+      error: (err) => this.notifications.showError(err, 'Could not load classes')
+    });
   }
 
   // ----- create ------------------------------------------------------------------
 
   openCreate(): void {
     this.showCreate = true;
-    this.newUsername = '';
-    this.newTemporaryPassword = '';
+    this.showImport = false;
+    this.firstName = '';
+    this.middleName = '';
+    this.lastName = '';
+    this.nationalId = '';
+    this.dateOfBirth = '';
+    this.email = '';
+    this.dateEnrolled = '';
+    this.temporaryPassword = '';
+    this.initialSubjectId = null;
+    this.initialClassId = null;
   }
 
   closeCreate(): void {
@@ -78,17 +115,34 @@ export class AdminTeachersPageComponent implements OnInit {
   }
 
   get canCreate(): boolean {
-    return this.newUsername.trim().length > 0
-        && this.newTemporaryPassword.length >= PASSWORD_MIN_LENGTH;
+    return this.firstName.trim().length > 0
+        && this.lastName.trim().length > 0
+        && this.nationalId.trim().length > 0
+        && this.dateOfBirth.length > 0
+        && this.temporaryPassword.length >= PASSWORD_MIN_LENGTH;
   }
 
   onCreate(): void {
     if (!this.canCreate) {
       return;
     }
-    this.admin.createTeacher(this.newUsername.trim(), this.newTemporaryPassword).subscribe({
+    const initialCourses = (this.initialSubjectId !== null && this.initialClassId !== null)
+      ? [{ subjectId: this.initialSubjectId, classId: this.initialClassId }]
+      : undefined;
+
+    this.admin.createTeacher({
+      firstName: this.firstName.trim(),
+      middleName: this.middleName.trim() || null,
+      lastName: this.lastName.trim(),
+      nationalId: this.nationalId.trim(),
+      dateOfBirth: this.dateOfBirth,
+      email: this.email.trim() || null,
+      dateEnrolled: this.dateEnrolled || null,
+      temporaryPassword: this.temporaryPassword
+    }, initialCourses).subscribe({
       next: (created) => {
-        this.notice = `Created '${created.username}'. It must change its password at first sign-in.`;
+        this.notice = `Created '${created.fullName}' - id ${created.externalId}. `
+          + `It must change its password at first sign-in.`;
         this.showCreate = false;
         this.load();
       },
@@ -96,36 +150,9 @@ export class AdminTeachersPageComponent implements OnInit {
     });
   }
 
-  // ----- rename --------------------------------------------------------------------
-
-  startRename(teacher: Teacher): void {
-    this.resettingId = null;
-    this.renamingId = teacher.id;
-    this.renameUsername = teacher.username;
-  }
-
-  cancelRename(): void {
-    this.renamingId = null;
-  }
-
-  saveRename(id: number): void {
-    const username = this.renameUsername.trim();
-    if (!username) {
-      return;
-    }
-    this.admin.renameTeacher(id, username).subscribe({
-      next: () => {
-        this.renamingId = null;
-        this.load();
-      },
-      error: (err) => this.notifications.showError(err, 'Could not rename that account')
-    });
-  }
-
   // ----- reset password --------------------------------------------------------------
 
   startReset(teacher: Teacher): void {
-    this.renamingId = null;
     this.resettingId = teacher.id;
     this.resetTemporaryPassword = '';
   }
@@ -161,6 +188,42 @@ export class AdminTeachersPageComponent implements OnInit {
     this.admin.deleteTeacher(teacher.id).subscribe({
       next: () => this.load(),
       error: (err) => this.notifications.showError(err, 'Could not delete that account')
+    });
+  }
+
+  // ----- bulk import ---------------------------------------------------------------
+
+  openImport(): void {
+    this.showImport = true;
+    this.showCreate = false;
+    this.importFile = null;
+    this.importResult = null;
+  }
+
+  closeImport(): void {
+    this.showImport = false;
+  }
+
+  onImportFileChosen(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    this.importFile = input.files && input.files.length > 0 ? input.files[0] : null;
+  }
+
+  onImport(): void {
+    if (!this.importFile) {
+      return;
+    }
+    this.importing = true;
+    this.admin.importTeachers(this.importFile).subscribe({
+      next: (result) => {
+        this.importing = false;
+        this.importResult = result;
+        this.load();
+      },
+      error: (err) => {
+        this.importing = false;
+        this.notifications.showError(err, 'Could not import that file');
+      }
     });
   }
 }

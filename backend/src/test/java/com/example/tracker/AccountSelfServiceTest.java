@@ -125,63 +125,13 @@ class AccountSelfServiceTest {
         }
     }
 
-    // -------------------------------------------------------------------------
-
-    @Nested
-    @DisplayName("creating a student account (US-23)")
-    class CreatingAccounts {
-
-        @Test
-        @DisplayName("a teacher can create an account, and it starts pending a change")
-        void teacherCanCreate() throws Exception {
-            mvc.perform(post("/api/users")
-                            .contentType("application/json")
-                            .content("{\"username\":\"newpupil\",\"temporaryPassword\":\"temp-password-1\"}")
-                            .with(as("teacher")).with(csrf()))
-               .andExpect(status().isCreated())
-               .andExpect(jsonPath("$.username", is("newpupil")))
-               .andExpect(jsonPath("$.role", is("STUDENT")))
-               .andExpect(jsonPath("$.mustChangePassword", is(true)));
-
-            assertThat(users.findByUsername("newpupil")).isPresent();
-        }
-
-        @Test
-        @DisplayName("a student cannot create an account")
-        void studentCannotCreate() throws Exception {
-            mvc.perform(post("/api/users")
-                            .contentType("application/json")
-                            .content("{\"username\":\"sneaky\",\"temporaryPassword\":\"temp-password-1\"}")
-                            .with(as("student")).with(csrf()))
-               .andExpect(status().isForbidden());
-
-            assertThat(users.findByUsername("sneaky")).isEmpty();
-        }
-
-        @Test
-        @DisplayName("a duplicate username is refused with 409")
-        void duplicateIsRefused() throws Exception {
-            mvc.perform(post("/api/users")
-                            .contentType("application/json")
-                            .content("{\"username\":\"student\",\"temporaryPassword\":\"temp-password-1\"}")
-                            .with(as("teacher")).with(csrf()))
-               .andExpect(status().isConflict());
-        }
-
-        @Test
-        @DisplayName("the request has no role field, so no caller can ask for a TEACHER")
-        void roleCannotBeRequested() throws Exception {
-            // A role IS sent. It must be ignored rather than honoured - the DTO
-            // has no such property, so there is nothing for it to bind to.
-            mvc.perform(post("/api/users")
-                            .contentType("application/json")
-                            .content("{\"username\":\"wannabe\",\"temporaryPassword\":"
-                                    + "\"temp-password-1\",\"role\":\"TEACHER\"}")
-                            .with(as("teacher")).with(csrf()))
-               .andExpect(status().isCreated())
-               .andExpect(jsonPath("$.role", is("STUDENT")));
-        }
-    }
+    /*
+     * US-23's "a teacher can create a student account" was superseded by the
+     * Admin Management EPIC: creating a student is now ADMIN ONLY, with a
+     * generated Student ID and a full profile, through
+     * AdminService.createStudent - see AdminApiTest, which is where those
+     * cases now live. POST /api/users no longer exists.
+     */
 
     // -------------------------------------------------------------------------
 

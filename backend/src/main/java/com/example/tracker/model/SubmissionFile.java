@@ -162,13 +162,40 @@ public class SubmissionFile {
         // JPA needs a no-argument constructor to rebuild rows.
     }
 
+    /**
+     * filename, contentType and content are rejected here if null. This is
+     * the only route by which an application-built SubmissionFile is made,
+     * and there is no setter, so this is where the guarantee the getters
+     * below state is either made true or lost.
+     *
+     * The parameters themselves are deliberately NOT annotated @NonNull.
+     * Doing that would make the checks below unreachable as far as Eclipse's
+     * null analysis is concerned, and it would flag them as dead code - the
+     * annotation is a compile-time promise from the caller, not an enforced
+     * type, and it vanishes at runtime. The check is what makes the promise
+     * true.
+     *
+     * This also removes a real hedge that used to sit further down:
+     * `sizeBytes = content == null ? null : content.length` quietly admitted
+     * that a null document could be constructed, then left the resulting row
+     * to fail much later at the NOT NULL column, far from the cause.
+     */
     public SubmissionFile(Submission submission, String filename, String contentType,
                           byte[] content, String sha256, Instant uploadedAt) {
+        if (filename == null) {
+            throw new IllegalArgumentException("A stored file needs a filename.");
+        }
+        if (contentType == null) {
+            throw new IllegalArgumentException("A stored file needs a content type.");
+        }
+        if (content == null) {
+            throw new IllegalArgumentException("A stored file needs its content.");
+        }
         this.submission = submission;
         this.filename = filename;
         this.contentType = contentType;
         this.content = content;
-        this.sizeBytes = content == null ? null : (long) content.length;
+        this.sizeBytes = (long) content.length;
         this.sha256 = sha256;
         this.uploadedAt = uploadedAt;
     }
@@ -182,24 +209,49 @@ public class SubmissionFile {
     }
 
     /**
-     * WHY THESE THREE GETTERS ARE @NonNull
-     * ------------------------------------
+     * WHY THESE THREE GETTERS ARE @NonNull, AND WHY THE FIELDS ARE NOT
+     * ----------------------------------------------------------------
      * filename, contentType and content are each `@Column(nullable = false)`
-     * and validated with `@NotBlank`/`@NotNull` at construction - there is no
-     * constructor and no setter that can leave any of them empty on a persisted
-     * row. That is a real guarantee the schema and the constructor both hold,
-     * and stating it here is what lets SubmissionService.download hand these
-     * straight to FileDownload's own @NonNull components without a cast, a
-     * null check, or a suppression at the boundary between the two.
+     * and rejected if null by the constructor above - there is no constructor
+     * and no setter that can leave any of them empty on a persisted row. That
+     * is a real guarantee, and stating it here is what lets
+     * SubmissionService.download hand these straight to FileDownload's own
+     * @NonNull components without a cast or a suppression at the boundary.
+     *
+     * The annotation cannot sit on the FIELDS, though, and the checks below
+     * are what make it verifiable rather than merely asserted. The JPA
+     * constructor above exists precisely to hand Hibernate an instance whose
+     * fields are still null, to be populated by reflection immediately
+     * afterwards; a @NonNull field would be a claim this class cannot make
+     * during that window, and Eclipse says so correctly ("the @NonNull field
+     * content may not have been initialized"). Annotating anyway would trade
+     * a visible warning for a runtime NPE further away - precisely what the
+     * Nullability section of CLAUDE.md forbids.
+     *
+     * An explicit check is ordinary flow-sensitive null analysis rather than
+     * a trust exercise: the same technique, and the same reasoning, as
+     * service.Require.orThrow (which this cannot simply call - Require is
+     * package-private in the service layer, and a model class reaching
+     * upwards into it would invert the layering). If one ever fires, the row
+     * is genuinely corrupt, and a loud message here beats a bare
+     * NullPointerException three frames further into a download.
      */
     @NonNull
     public String getFilename() {
-        return filename;
+        String value = filename;
+        if (value == null) {
+            throw new IllegalStateException("Stored file " + id + " has no filename.");
+        }
+        return value;
     }
 
     @NonNull
     public String getContentType() {
-        return contentType;
+        String value = contentType;
+        if (value == null) {
+            throw new IllegalStateException("Stored file " + id + " has no content type.");
+        }
+        return value;
     }
 
     public Long getSizeBytes() {
@@ -212,7 +264,11 @@ public class SubmissionFile {
 
     @NonNull
     public byte[] getContent() {
-        return content;
+        byte[] value = content;
+        if (value == null) {
+            throw new IllegalStateException("Stored file " + id + " has no content.");
+        }
+        return value;
     }
 
     public Instant getUploadedAt() {

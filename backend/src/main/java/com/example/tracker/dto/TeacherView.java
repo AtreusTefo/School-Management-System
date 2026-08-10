@@ -1,17 +1,42 @@
 package com.example.tracker.dto;
 
 import com.example.tracker.model.AppUser;
+import com.example.tracker.model.PersonProfile;
+
+import java.time.LocalDate;
 
 /**
- * What the admin panel's teacher list is shown. Deliberately not the AppUser
- * entity - same reasoning as every other view in this package - so the
- * password hash cannot leak by accident if a field is ever added to the
- * entity later.
+ * What the admin panel's teacher list and detail view are shown. Deliberately
+ * not the AppUser/PersonProfile entities directly - same reasoning as every
+ * other view in this package - so the password hash cannot leak by accident
+ * if a field is ever added to either entity later.
+ *
+ * profile IS NULLABLE. The seeded development accounts (teacher, teacher2)
+ * predate this rule and were never given a PersonProfile row - see
+ * AppUser.externalId's comment - so a teacher list has to render sensibly
+ * for both a fully onboarded account and a legacy dev one.
  */
-public record TeacherView(Long id, String username, boolean mustChangePassword) {
+public record TeacherView(
+        Long id,
+        String username,
+        String externalId,
+        boolean mustChangePassword,
+        String fullName,
+        String nationalId,
+        LocalDate dateOfBirth,
+        String contactEmail,
+        LocalDate dateEnrolled) {
 
-    public static TeacherView of(AppUser teacher) {
-        return new TeacherView(teacher.getId(), teacher.getUsername(),
-                teacher.isMustChangePassword());
+    public static TeacherView of(AppUser teacher, PersonProfile profile) {
+        return new TeacherView(
+                teacher.getId(),
+                teacher.getUsername(),
+                teacher.getExternalId(),
+                teacher.isMustChangePassword(),
+                profile == null ? null : profile.getFullName(),
+                profile == null ? null : profile.getNationalId(),
+                profile == null ? null : profile.getDateOfBirth(),
+                profile == null ? null : profile.getContactEmail(),
+                profile == null ? null : profile.getDateEnrolled());
     }
 }

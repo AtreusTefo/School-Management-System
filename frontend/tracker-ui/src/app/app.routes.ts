@@ -2,7 +2,6 @@ import { Routes } from '@angular/router';
 import { authGuard } from './auth.guard';
 import { teacherGuard } from './teacher.guard';
 import { adminAuthGuard } from './admin-auth.guard';
-import { adminGuestGuard } from './admin-guest.guard';
 
 /**
  * THE FOUR PAGES, WHERE THERE USED TO BE ONE
@@ -59,24 +58,23 @@ export const routes: Routes = [
    * THE ADMIN PANEL - a separate section, not four more items bolted onto
    * the routes above.
    *
-   * '/admin/login' carries adminGuestGuard, not authGuard: it must be
-   * reachable by a visitor with NO session at all (see AppComponent's
-   * second, signed-out-only <router-outlet> for how the shell makes that
-   * possible), and its job is the opposite of authGuard's - turning an
-   * ALREADY signed-in account away, not admitting one.
+   * ONE SHARED SIGN-IN FORM FOR EVERY ROLE, deliberately - there is no
+   * '/admin/login'. An earlier version of this app gave admin its own
+   * sign-in page, and it produced a real defect: the page's own outlet was
+   * gated on being SIGNED OUT, so the instant a login attempt succeeded
+   * (even briefly, before the app decided the account wasn't an admin and
+   * signed it back out) the outlet's condition flipped, tore the very
+   * component performing the login out of the DOM, and its result never
+   * reached the screen. A single form for every role sidesteps the whole
+   * problem: AppComponent.onLogin() decides where to send the caller AFTER
+   * a real, settled answer to "who signed in", not by gating a component's
+   * existence on a state that can change mid-request.
    *
-   * Every other /admin/* route carries adminAuthGuard alone, not authGuard
-   * as well. authGuard would technically also pass for a signed-in admin,
-   * but stacking it adds nothing and its failure path (redirect to '/') is
-   * the wrong answer here - an admin-only page should send a rejected
-   * visitor to '/admin/login', which is exactly what adminAuthGuard does on
-   * its own.
+   * Every /admin/* route below carries adminAuthGuard alone, not authGuard
+   * as well - stacking it would add nothing, and authGuard's failure path
+   * (redirect to '/') is exactly what adminAuthGuard already does on its
+   * own for a non-admin.
    */
-  {
-    path: 'admin/login',
-    loadComponent: () => import('./admin-login.component').then(m => m.AdminLoginComponent),
-    canActivate: [adminGuestGuard]
-  },
   {
     path: 'admin',
     loadComponent: () => import('./admin-dashboard.component').then(m => m.AdminDashboardComponent),

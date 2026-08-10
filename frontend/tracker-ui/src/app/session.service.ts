@@ -19,8 +19,11 @@ import { AssignmentService, CurrentUser } from './assignment.service';
  * from outside a component at all.
  *
  * WHAT STAYS OUT OF THIS SERVICE
- * Only identity lives here - who is signed in, and the four account actions
- * that change or ask about identity. Course lists, submissions, marks and
+ * Only identity lives here - who is signed in, and the account actions that
+ * change or ask about identity (sign in, sign out, change my own password).
+ * Creating OTHER people's accounts is a separate concern with a separate
+ * authority rule - see AdminService for why it lives on its own. Course
+ * lists, submissions, marks and
  * every other kind of data stay owned by whichever PAGE loads them, each
  * through AssignmentService directly. A "load everything into one shared
  * store" service would mean every page paid for data it does not use, and
@@ -109,9 +112,5 @@ export class SessionService {
       // stops being pending.
       tap((user) => this.userSignal.set(user))
     );
-  }
-
-  createStudent(username: string, temporaryPassword: string): Observable<CurrentUser> {
-    return this.service.createStudent(username, temporaryPassword);
   }
 }

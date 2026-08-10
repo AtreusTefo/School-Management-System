@@ -64,8 +64,6 @@
       <h2>Manage</h2>
     </div>
     <div class="toolbar">
-      <button type="button" class="btn btn--ghost" (click)="openCreateUser()"
-              *ngIf="!showCreateUser">Add a student account</button>
       <button type="button" class="btn btn--ghost" (click)="openTimetable()"
               *ngIf="!showTimetable">Timetable</button>
     </div>
@@ -80,51 +78,9 @@
     subject, a class, and the course that joins them.
   </p>
 
-  <!-- ===== CREATE A STUDENT ACCOUNT (US-23) ===== -->
-  <div *ngIf="showCreateUser" class="subform">
-    <div class="subform__head">
-      <h3>New student account</h3>
-      <button type="button" class="btn btn--sm btn--ghost"
-              (click)="closeCreateUser()">Close</button>
-    </div>
-
-    <div *ngIf="createUserNotice" class="notice notice--inline" role="status">
-      {{ createUserNotice }}
-    </div>
-
-    <form (ngSubmit)="onCreateUser()" class="create-form">
-      <div class="field">
-        <label class="field__label" for="newUsername">Username</label>
-        <input id="newUsername" class="input" type="text" name="newUsername"
-               #newUsernameModel="ngModel"
-               [(ngModel)]="newUsername" placeholder="e.g. jsmith"
-               required [maxlength]="usernameMaxLength"
-               autocomplete="off" />
-        <app-field-error [control]="newUsernameModel" label="Username" />
-      </div>
-      <div class="field">
-        <label class="field__label" for="newUserPassword">Temporary password</label>
-        <input id="newUserPassword" class="input" type="text" name="newUserPassword"
-               #newUserPasswordModel="ngModel"
-               [(ngModel)]="newUserPassword" placeholder="At least 8 characters"
-               required [minlength]="passwordMinLength"
-               autocomplete="off" />
-        <!-- Shown as plain text on purpose: the teacher has to read this out
-             or write it down to hand over. Masking a value whose whole
-             purpose is to be communicated helps nobody. It stops being a
-             secret worth hiding the moment the student replaces it. -->
-        <span class="field__hint"
-              *ngIf="newUserPasswordModel.valid || !(newUserPasswordModel.touched || newUserPasswordModel.dirty)">
-          Visible so you can pass it on. They must change it at first sign-in.
-        </span>
-        <app-field-error [control]="newUserPasswordModel" label="Temporary password" />
-      </div>
-      <button type="submit" class="btn btn--primary" [disabled]="!canCreateUser">
-        <span *ngIf="creatingUser" class="spinner" aria-hidden="true"></span>
-        {{ creatingUser ? 'Creating...' : 'Create account' }}
-      </button>
-    </form>
-  </div>
+  <!-- Student accounts are created by an admin now, not here - see
+       /admin/students. A teacher's job on this page is the timetable:
+       subjects, classes, courses and enrolment. -->
 
   <!-- ===== TIMETABLE ADMIN ===== -->
   <div *ngIf="showTimetable" class="subform">

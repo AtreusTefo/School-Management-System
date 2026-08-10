@@ -250,12 +250,6 @@ export class AssignmentService {
       `${this.api}/api/auth/password`, { currentPassword, newPassword }, this.opts);
   }
 
-  /** Create a student account (US-23). Teacher only; the server enforces it. */
-  createStudent(username: string, temporaryPassword: string): Observable<CurrentUser> {
-    return this.http.post<CurrentUser>(
-      `${this.api}/api/users`, { username, temporaryPassword }, this.opts);
-  }
-
   // ----- the timetable -------------------------------------------------------
 
   /** The courses the caller is involved in. Scope is decided by the server. */

@@ -8,9 +8,18 @@
 - **Main Goal:** A small, heavily commented full-stack application that tracks assignment submission state, built to demonstrate a strictly layered architecture. Both goals are real: the software must work, and the code must stay readable enough to teach from.
 
 ### Scope Guard - Read Before Adding Features
-The repository is named *School Management System*, but the delivered system is one slice of that idea: **assignment tracking with PDF hand-in**. Ten entities (`AppUser`, `Subject`, `SchoolClass`, `Enrolment`, `Course`, `Assignment`, `Submission`, `SubmissionFile`, `Assessment`, plus the `Role`/`AssignmentStatus`/`PerformanceLevel` enums), two roles (`TEACHER`, `STUDENT`).
+The repository is named *School Management System*, but the delivered system is one slice of that idea: **assignment tracking with PDF hand-in**. Twelve entities (`AppUser`, `PersonProfile`, `Subject`, `SchoolClass`, `Enrolment`, `Course`, `Assignment`, `Submission`, `SubmissionFile`, `Assessment`, `AuditLog`, plus the `Role`/`AssignmentStatus`/`PerformanceLevel`/`AuditAction` enums), three roles (`TEACHER`, `STUDENT`, `ADMIN`).
 
-There are **no** audit logs, notifications, terms or timetable periods. Documentation describing such features was inherited from an unrelated ASP.NET project; do not reintroduce it, and do not assume a feature exists because a document once mentioned it. Verify against the code.
+There are **no** notifications, terms or timetable periods. Documentation describing such features was inherited from an unrelated ASP.NET project; do not reintroduce it, and do not assume a feature exists because a document once mentioned it. Verify against the code.
+
+**Admin management, a third role, and audit logging DO exist now** (added 6-10 August 2026). Earlier revisions of this file said there were two roles and no audit log, and that was true when written. What changed, and why, in one place:
+
+- **Only an admin may onboard a student, a teacher, or another admin.** The earlier "a teacher can create a student account" flow (`POST /api/users`) is gone entirely - not merely re-gated - because it collected a bare username and nothing else, and the replacement collects a full profile. See `AdminService.createStudent`/`createTeacher`/`createAdmin`.
+- **A student or teacher signs in with a generated id, never a chosen username.** `STU20260001`, `TCH20260001`, `ADM20260001` - see `IdGeneratorService` and `AppUser.externalId`'s own comment for why the id is duplicated into `username` rather than sign-in being taught to look somewhere else. There is **one shared login form** for every role, including admin; a role-specific login page was tried, produced a real defect (a component torn out of the DOM mid-request by its own visibility guard), and was removed - see `app.routes.ts`.
+- **A person's biographical detail (name, national id, date of birth, contact email, date enrolled) lives in `PersonProfile`, not `AppUser`.** `AppUser` stays an identity and a credential; `PersonProfile` is a separate 1:1 table, deliberately, so a query that only needs "who is this and what can they do" never carries a date of birth past it. Admin accounts do not get one - only the student and teacher forms ask for this detail.
+- **A student's grade and subjects, and a teacher's subjects and classes, are NOT columns on the profile.** They are the *existing* `Enrolment`/`Course` relationship, exactly as before - see the requirement table below. Admin's create forms can enrol a student in a class or set a teacher up with an initial course as part of the same request, but always by writing through those tables, never a second copy of the fact.
+- **Bulk import (CSV or Excel) reuses the exact same per-record validation as the single-record form**, one row at a time, each in its own database transaction - a bad row fails on its own without losing the good rows already committed in the same file. See `AdminService.importStudents`/`importTeachers` and the comment on why the transaction boundary is drawn explicitly with `TransactionTemplate` rather than relying on `@Transactional` self-invocation, which would not have worked.
+- **The audit log is append-only and does not foreign-key to `AppUser`.** Every Create/Update/Delete that goes through the service layer writes an entry naming what changed and who changed it, but the "who" is a snapshot (username + role at the time), not a live reference - a real foreign key here would make any account that had ever done anything permanently undeletable. See the file header of `V7__add_admin_role_and_audit_log.sql` and `AuditLog`'s own class comment.
 
 **Marks, percentages and performance levels DO exist now** (added 5 August 2026, `Assessment` + `PerformanceLevel`). Earlier revisions of this file said they did not, and that was true when written.
 
@@ -62,20 +71,30 @@ School Management System/
 │   ├── pom.xml
 │   └── src/
 │       ├── main/java/com/example/tracker/
-│       │   ├── TrackerApplication.java  # Entry point + seed runners: accounts, then
-│       │   │                            #   timetable, then assignments (@Order matters)
+│       │   ├── TrackerApplication.java  # Entry point + seed runners: accounts (admin,
+│       │   │                            #   teacher, student - dev usernames, not
+│       │   │                            #   generated ids), then timetable, then
+│       │   │                            #   assignments, then marks (@Order matters)
 │       │   ├── controller/     # AssignmentController, SubmissionController,
 │       │   │                   #   SchoolController, AssessmentController,
-│       │   │                   #   AuthController, UserController
+│       │   │                   #   AuthController, AdminController
 │       │   ├── service/        # AssignmentService (fan-out), SubmissionService (PDF),
-│       │   │                   #   SchoolService (timetable), AssessmentService (marks),
+│       │   │                   #   SchoolService (timetable + admin course/enrolment
+│       │   │                   #   endpoints), AssessmentService (marks),
 │       │   │                   #   AssessmentReportService (the Excel workbook, built
 │       │   │                   #   from AssessmentService's own methods), AppUserService
+│       │   │                   #   (who is signed in), AdminService (onboarding +
+│       │   │                   #   bulk import - see its own header for why it is NOT
+│       │   │                   #   part of AppUserService), AuditLogService,
+│       │   │                   #   IdGeneratorService (STU/TCH/ADM ids), ImportRowReader
+│       │   │                   #   (CSV/Excel parsing, shared by both import paths)
 │       │   ├── repository/     # One per entity (Spring Data JPA)
-│       │   ├── model/          # AppUser, Role, Subject, SchoolClass, Enrolment, Course,
-│       │   │                   #   Assignment, Submission, SubmissionFile, AssignmentStatus,
-│       │   │                   #   Assessment, PerformanceLevel
-│       │   ├── dto/            # Records the API publishes - see SubjectView for why
+│       │   ├── model/          # AppUser, PersonProfile, Role, Subject, SchoolClass,
+│       │   │                   #   Enrolment, Course, Assignment, Submission,
+│       │   │                   #   SubmissionFile, AssignmentStatus, Assessment,
+│       │   │                   #   PerformanceLevel, AuditLog, AuditAction
+│       │   ├── dto/            # Records the API publishes - see SubjectView for why;
+│       │   │                   #   ImportSummary is the bulk-import per-row report
 │       │   ├── config/         # SecurityConfig (auth, CSRF), CorsConfig (allowed origins)
 │       │   ├── security/       # AppUserDetailsService - loads accounts for Spring Security
 │       │   └── exception/      # AssignmentNotFoundException, ResourceNotFoundException,
@@ -85,45 +104,74 @@ School Management System/
 │       │   └── db/migration/   # Flyway, SQL Server dialect - V1 baseline, V2 accounts and
 │       │                       #   ownership, V3 must-change-password, V4 subjects/classes/
 │       │                       #   courses/submissions, V5 timestamp column types,
-│       │                       #   V6 assessment and marks
+│       │                       #   V6 assessment and marks, V7 admin role + audit log,
+│       │                       #   V8 person profiles + external ids (STU/TCH/ADM sequences)
 │       └── test/
 │           ├── java/com/example/tracker/
 │           │   ├── AssignmentApiTest.java            # MockMvc, real security
 │           │   ├── ConcurrencyAndIntegrityTest.java  # 12 racing submissions, DB constraints
-│           │   ├── AccountSelfServiceTest.java       # password change, student creation
+│           │   ├── AccountSelfServiceTest.java       # password change (account CREATION
+│           │   │                                     #   moved to AdminApiTest - admin only)
 │           │   ├── AssessmentIntegrityTest.java      # marks, scoring arithmetic
 │           │   ├── AssessmentReportTest.java         # the Excel endpoint - headers, sheets,
 │           │   │                                     #   numeric cell types, per-role scoping
+│           │   ├── AdminApiTest.java                 # onboarding, generated ids, bulk
+│           │   │                                     #   import, teacher-to-student
+│           │   │                                     #   assignment, the audit log
 │           │   ├── InputValidationApiTest.java       # every DTO's Jakarta Bean Validation
 │           │   └── service/AssignmentServiceTest.java # business rules, repository mocked
-│           └── resources/application-test.properties # H2, Flyway off, ddl-auto=create-drop
+│           └── resources/
+│               ├── application-test.properties # H2, Flyway off, ddl-auto=create-drop
+│               └── schema.sql                  # the STU/TCH/ADM sequences V8 creates for
+│                                                #   production - Hibernate's ddl-auto has
+│                                                #   no annotation that creates a free-
+│                                                #   standing SEQUENCE, so this fills the gap
+│                                                #   for the H2 test schema; see its own header
 └── frontend/
     └── tracker-ui/             # The runnable Angular project - ng serve here
         └── src/
             ├── main.ts         # bootstrapApplication(AppComponent, appConfig)
-            ├── index.html
+            ├── index.html      # <base href="/"> - required once any route is more than
+            │                   #   one path segment deep; see its own comment for the
+            │                   #   defect this fixed
             ├── styles.css
             ├── environments/   # environment.ts (build), environment.development.ts (serve)
             └── app/
-                ├── assignment.service.ts    # The only place that knows API URLs
+                ├── assignment.service.ts    # The only place that knows the non-admin API URLs
+                ├── admin.service.ts         # The only place that knows the admin panel's
+                │                            #   URLs - onboarding, bulk import, audit log
                 ├── csrf.interceptor.ts      # Attaches X-XSRF-TOKEN cross-origin
                 ├── session.service.ts       # WHO is signed in - a signal, read by guards
                 │                            #   and every page outside any one component
                 ├── notification.service.ts  # THE error banner - shared across navigations
                 ├── auth.guard.ts            # signed-in + not mustChangePassword, else -> '/'
                 ├── teacher.guard.ts         # teacher-only routes, else -> /marking-queue
-                ├── app.routes.ts            # the four pages - see note below on the root
-                │                            #   route deliberately carrying no guard
+                ├── admin-auth.guard.ts      # admin-only routes, else -> '/' - there is no
+                │                            #   separate admin login page; see app.routes.ts
+                ├── app.routes.ts            # every page, admin panel included - see its
+                │                            #   own note on the root route carrying no guard
                 ├── app.config.ts            # provideRouter + provideHttpClient
-                ├── app.component.ts         # THE SHELL - app bar, login, forced password
-                │                            #   change, error banner, <router-outlet>
+                ├── app.component.ts         # THE SHELL - ONE login form for every role,
+                │                            #   forced password change, error banner,
+                │                            #   <router-outlet>
                 ├── app.component.html
-                ├── dashboard.component.ts/.html          # '/' - timetable, quick links,
-                │                                         #   teacher-only Manage panel
+                ├── dashboard.component.ts/.html          # '/' - timetable, quick links
+                │                                         #   (account creation moved to
+                │                                         #   the admin panel entirely)
                 ├── assignments-page.component.ts/.html   # '/assignments' - "Work I have set"
                 ├── marking-queue-page.component.ts/.html # '/marking-queue' - submissions
                 ├── reports-page.component.ts/.html       # '/reports' - performance summary
                 │                                         #   + mark book + Export Excel
+                ├── admin-dashboard.component.ts/.html    # '/admin' - quick links
+                ├── admin-teachers-page.component.ts/.html   # '/admin/teachers' - onboard
+                │                                            #   (one at a time or by CSV/
+                │                                            #   Excel), reset password, delete
+                ├── admin-students-page.component.ts/.html   # '/admin/students' - onboard,
+                │                                            #   browse, link to detail
+                ├── admin-student-detail.component.ts/.html  # '/admin/students/:id' - assign/
+                │                                            #   unassign a teacher, by subject
+                ├── admin-audit-log-page.component.ts/.html  # '/admin/audit-log' - server-
+                │                                            #   paginated, filterable
                 ├── performance-table.component.ts   # DataTables, performance-by-student
                 ├── marks-table.component.ts         # DataTables, the mark book
                 ├── submission-table.component.ts    # DataTables, the marking queue
@@ -143,10 +191,10 @@ School Management System/
 - **Build backend:** `.\mvnw.cmd clean package -DskipTests` produces `backend/target/tracker-0.0.1-SNAPSHOT.jar`.
 - **Build frontend:** `npm run build` in `frontend/tracker-ui`.
 - **Type-check frontend:** `npx tsc --noEmit -p tsconfig.app.json`.
-- **Run tests:** `.\mvnw.cmd test` - 110 tests, run against H2, no SQL Server needed.
+- **Run tests:** `.\mvnw.cmd test` - 142 tests, run against H2, no SQL Server needed.
 - **Database:** SQL Server, database `School Management System`, login `tracker_app`. The connection string in `application.properties` uses port 14333; confirm your instance actually listens there before assuming a failure is the application's fault. Query it with:
   `sqlcmd -S "tcp:localhost,14333" -U tracker_app -P 'Tracker!2026Dev' -d "School Management System"`
-- **Development accounts:** `teacher` and `student`, both password `password123`, reset at every startup.
+- **Development accounts:** `admin`, `teacher` and `student`, all password `password123`, reset at every startup. These keep their literal usernames as a documented exception - every account created through the admin panel from here on signs in with a generated id instead (`STU20260001`, `TCH20260001`, `ADM20260001`); see the Scope Guard section above.
 
 Start the backend first. The frontend calls it directly at `http://localhost:8080` and shows a red banner with a Retry button if it cannot connect.
 
@@ -179,6 +227,11 @@ between installations.
 - **A single NUL byte makes a source file invisible to `grep` and `ripgrep`.** They classify it as binary and skip it, so the file silently drops out of every code search - while `javac` compiles it without complaint. This happened for real in `AssessmentService.java`, where a separator in a map key came out as `"\0"` instead of `" "`. Symptom: `grep` prints `Binary file X matches` instead of the matching lines. Check with `python -c "print(open('F','rb').read().count(b'\x00'))"`, and prefer a structured map key - `List.of(a, b)` - over concatenating with a delimiter, since then there is no separator to get wrong.
 - **PowerShell's `-WebSession` persists headers between requests.** A probe that sets `X-XSRF-TOKEN` once will silently resend it forever, so a "no token" test passes for the wrong reason. Call `$session.Headers.Clear()` before asserting that a header is absent - but note that clearing it also strips the token from later writes, which then return `403` for CSRF reasons and are easily misread as an authorisation result.
 - **Register Playwright dialog handlers before navigating.** Playwright dismisses dialogs by default, so a late `page.on('dialog', ...)` means `confirm()` returns false and the action under test never runs.
+- **VS Code's Java Problems panel can report an entire class as "cannot be resolved" - a whole class name, a whole import - while `mvnw compile` and `mvnw test` both pass clean.** The Problems panel is Eclipse JDT's own project model, a completely separate process from Maven, and it can be resolving against a source tree that no longer exists. **Maven, not the Problems panel, is the authority on whether the code compiles** - if `mvnw compile` succeeds, treat red squiggles as stale until proven otherwise by actually reading the flagged lines. Do not "fix" code that already compiles and passes its tests to satisfy a stale diagnostic; that risks a real regression to silence a phantom one.
+
+  **The cause is a setting, not bad luck, and it is now fixed in `.vscode/settings.json`.** `java.configuration.updateBuildConfiguration` was `interactive`, which means the language server does not refresh its classpath when the build configuration or source layout changes - it raises a notification and waits to be clicked. Dismiss or miss that prompt after a session that adds or deletes source files, and the model keeps resolving against the tree as it was beforehand, permanently: the errors survive restarts, which is exactly what makes them look real. It is now `automatic`. If you meet this on a machine that predates the change, or after an already-drifted index, run Command Palette -> "Java: Clean Java Language Server Workspace" once (failing that, "Java: Reload Projects").
+
+  Before blaming the index, rule out the causes that produce identical symptoms: a JDK path in `java.configuration.runtimes` that does not exist on this machine (the entry is validated at startup and a bad one breaks the whole project model while Maven, reading `JAVA_HOME`, carries on fine); a NUL byte in the file; a package declaration that disagrees with the directory; or two source roots claiming the same class. All are quick to check and each has bitten this project at least once.
 
 #### Group B - machine-dependent, verify before applying
 
@@ -222,6 +275,16 @@ Annotate the declaration with `org.springframework.lang.NonNull` rather than sil
 | Private `require*` guards | they return a real object or throw - that is what "require" means |
 
 **Annotating a `require*` guard `@NonNull` is not the end of it.** If the method body ends in `.orElseThrow(...)`, the warning does not disappear - it moves inside, to that return statement, because `java.util.Optional` is itself an unannotated JDK type and the compiler now has to verify the guarantee it was just told to trust. Route it through `service.Require.orThrow(optional, exceptionSupplier)` instead: it replaces `Optional`'s opaque generic return with a plain `if (value == null) throw ...;` check, which Eclipse's null-flow analysis verifies natively with no annotation involved at all. Every "look this up or fail" guard in the service layer (`AppUserService`, `AssessmentService`, `AssignmentService`, `SchoolService`, `SubmissionService`) goes through it - if you add a new one, use it from the start rather than rediscovering this.
+
+**On an entity, `@NonNull` goes on the GETTER - not on the constructor parameter, and not on the field.** All three look like the same statement and none of them are. Working outwards from the mistakes:
+
+- **Not the parameter.** A parameter annotation is a compile-time promise *from the caller* that Eclipse then trusts; it is erased at runtime and enforces nothing. Worse, any `if (x == null) throw ...` guard in that same constructor is then reported as **dead code**, because the analysis has been told the value can never be null. That is exactly backwards - the runtime check is what makes the guarantee true, and deleting it to silence the warning would leave an annotation asserting something nothing enforces.
+- **Not the field.** A `@NonNull` field draws *"the @NonNull field x may not have been initialized"*, and Eclipse is right: the `protected` no-arg constructor every entity carries exists precisely to hand Hibernate an instance whose fields are still null, to be populated by reflection immediately afterwards. During that window the claim is false, so making it is the exact "annotate around a real null" mistake this section forbids.
+- **The getter, with an explicit check.** What is genuinely true is that no entity a caller can ever observe holds a null there - the public constructor rejects it, and any row Hibernate rebuilt came from a `NOT NULL` column. `if (value == null) throw new IllegalStateException(...)` states that in a form ordinary flow-sensitive analysis verifies natively, with no trust involved. This is the same technique as `Require.orThrow`, applied inline because `Require` is package-private in the service layer and a model class reaching up into it would invert the layering.
+
+So: unannotated parameter, an explicit reject in the public constructor, an explicit check in the getter, `@NonNull` on the getter alone. `SubmissionFile` and `Enrolment` are the worked examples. A related tell that a value is not really guaranteed yet: a hedge like `sizeBytes = content == null ? null : content.length` in the constructor is the code admitting a null can get in, and must be resolved by rejecting it rather than by annotating around it.
+
+An injected dependency is the opposite case and *is* annotated on the parameter (`AdminService`'s `PlatformTransactionManager`): Spring either supplies a real bean or the context fails to start, so there is no null case for a check to catch and nothing to verify at runtime.
 
 Two rules about this:
 - **Never annotate something `@NonNull` to quiet a warning when it can actually be null.** That converts a visible warning into a runtime NPE. If it can be null, say `@Nullable` and handle it - `MultipartFile.getOriginalFilename()` is a real example, and `SubmissionService.sanitiseFilename` handles it.
@@ -290,15 +353,18 @@ What used to be one long page behind boolean flags is now four routed pages - Da
 - **Never edit an applied migration.** Flyway stores a checksum of every one precisely so an applied migration cannot be changed underneath a database that has run it. A correction gets its own version, even when the mistake is minutes old.
 - **Money-like values are `DECIMAL` and `BigDecimal`, never `FLOAT` or `double`.** Marks get added up and compared; binary floating point cannot represent 0.1 exactly, so totals drift and two equal marks can compare unequal. This extends to the browser: an `<input type="number">` bound with `[(ngModel)]` routes the value through a JavaScript double, which is why the mark fields are `type="text"` with `inputmode="decimal"` and are carried as strings all the way to the server.
 - **A `UNIQUE` constraint on a nullable column is not what you want in SQL Server.** It treats NULLs as equal, so it permits exactly ONE null row in the whole table. "At most one mark per submission, but many marks with no submission" needs a **filtered** unique index (`WHERE submission_id IS NOT NULL`).
-- **A filtered index makes `SET QUOTED_IDENTIFIER ON` mandatory for writes.** Any INSERT/UPDATE/DELETE on a table carrying one fails with error 1934 unless the session sets it. The JDBC driver sets it on connect, so the application is unaffected - but `sqlcmd` defaults it OFF, and the resulting failure looks exactly like the schema rejecting your data when it is really the session being misconfigured. Put `SET QUOTED_IDENTIFIER ON;` at the top of any ad-hoc script that writes to `assessment`.
+- **A filtered index makes `SET QUOTED_IDENTIFIER ON` mandatory for writes.** Any INSERT/UPDATE/DELETE on a table carrying one fails with error 1934 unless the session sets it. The JDBC driver sets it on connect, so the application is unaffected - but `sqlcmd` defaults it OFF, and the resulting failure looks exactly like the schema rejecting your data when it is really the session being misconfigured. Put `SET QUOTED_IDENTIFIER ON;` at the top of any ad-hoc script that writes to `assessment` or `app_user`.
+- **Sometimes the correct design is NOT a foreign key.** `audit_log.performed_by_id` deliberately carries no foreign key to `app_user`, the one deviation from "constrain at the database" in this whole schema. A live reference here would make any account that had ever performed a single logged action permanently undeletable - since virtually every write is logged, that is nearly every account, immediately defeating `AdminService.deleteTeacher`. The log instead stores a snapshot (`performed_by_username`, `performed_by_role`) captured at the moment of the action, which stays true and readable after the account is long gone. `uq_app_user_external_id` is the more familiar case in the same migration - a filtered unique index, for the same "the legacy dev accounts have no `external_id`, and SQL Server treats every NULL as equal" reason `assessment.submission_id` already established.
+- **A database SEQUENCE, not `SELECT MAX(id) + 1`, generates every admin-issued login id.** `IdGeneratorService` calls `NEXT VALUE FOR seq_student_id` (and `_teacher_id`, `_admin_id`) rather than reading the highest number issued so far - the latter is a genuine race under two admins onboarding at the same moment, caught only as a 409 the second one has to retry past. A sequence is atomic by construction, so there is nothing to retry. H2 has no annotation that creates a free-standing sequence as a side effect of `ddl-auto`, so the test schema gets its own copy in `src/test/resources/schema.sql`, which Spring Boot runs automatically against any embedded database.
 
 ### Testing Requirements
-There is an automated suite: `.\mvnw.cmd test` runs 110 tests, and `package` fails the build if any fail. Add to it rather than reverting to manual checks.
+There is an automated suite: `.\mvnw.cmd test` runs 142 tests, and `package` fails the build if any fail. Add to it rather than reverting to manual checks.
 
 - **Unit tests** (`AssignmentServiceTest`) - business rules with the repository mocked.
 - **Full-stack tests** (`AssignmentApiTest`, `InputValidationApiTest`) - MockMvc with real security; every status code in the error contract, and every DTO's Jakarta Bean Validation.
 - **Concurrency and integrity** (`ConcurrencyAndIntegrityTest`, `AssessmentIntegrityTest`) - 12 simultaneous submissions must yield exactly one `200`; the database must refuse orphans, duplicates, invalid enum values, over-long titles, and out-of-range marks.
 - **The Excel report** (`AssessmentReportTest`) - attachment headers, sheet order and headers, numeric cell types, and that a teacher's download is scoped to their own courses (proven with an assertion strong enough to fail if scoping regressed, not merely one that happens not to trip).
+- **Admin management** (`AdminApiTest`) - onboarding a student/teacher/admin with a generated id, that id actually signing in, bulk CSV/Excel import (including a bad row inside a good file not being persisted - see the transaction-boundary note on `AdminService.importOneRowSafely`), admin-only enforcement on every one of those endpoints, assigning/unassigning a teacher to a student through `Course`, and the audit log (pagination, filtering, and that only ADMIN may read it).
 
 Two things the suite cannot cover, so check them by hand when relevant:
 - **The SQL Server migrations.** Tests run on H2, so migration SQL is unexercised; `ddl-auto=validate` is what catches drift between migrations and entities.

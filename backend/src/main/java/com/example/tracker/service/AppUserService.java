@@ -2,7 +2,6 @@ package com.example.tracker.service;
 
 import com.example.tracker.exception.AccessDeniedException;
 import com.example.tracker.model.AppUser;
-import com.example.tracker.model.AuditAction;
 import com.example.tracker.model.Role;
 import com.example.tracker.repository.AppUserRepository;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -42,12 +41,9 @@ public class AppUserService {
      */
     private final PasswordEncoder encoder;
 
-    private final AuditLogService audit;
-
-    public AppUserService(AppUserRepository users, PasswordEncoder encoder, AuditLogService audit) {
+    public AppUserService(AppUserRepository users, PasswordEncoder encoder) {
         this.users = users;
         this.encoder = encoder;
-        this.audit = audit;
     }
 
     /**
@@ -91,8 +87,20 @@ public class AppUserService {
      * student or teacher by id) that already know which HTTP status a miss
      * should produce and want to choose the exception themselves - unlike
      * findByUsernameOrReject, which fixes that choice at 400.
+     *
+     * A null id is treated the same as "not found" rather than passed
+     * through: every current caller already rejects null before reaching
+     * here, but this method's own signature does not say so, and
+     * AppUserRepository.findById declares a @NonNull parameter - passing an
+     * unproven Long through is exactly the "our own declaration carries no
+     * contract" gap described in the Nullability section of CLAUDE.md. The
+     * guard here makes the gap disappear rather than papering over it with
+     * an annotation this method cannot actually back up.
      */
     public java.util.Optional<AppUser> findById(Long id) {
+        if (id == null) {
+            return java.util.Optional.empty();
+        }
         return users.findById(id);
     }
 
@@ -179,57 +187,5 @@ public class AppUserService {
         // is one only its owner has typed.
         user.setMustChangePassword(false);
         return user;
-    }
-
-    /**
-     * Create a student account (US-23).
-     *
-     * TEACHER-ONLY, and it can only ever make a STUDENT. The role is not a
-     * parameter at all, so there is no request shape that could ask for a
-     * TEACHER: escalating somebody to teacher stays an explicit act outside this
-     * endpoint, rather than something a compromised teacher session can do.
-     *
-     * The new account is marked pending, so the temporary password chosen here -
-     * which the creating teacher necessarily knows - has to be replaced before
-     * the account can be used for anything.
-     */
-    @Transactional
-    public AppUser createStudent(String username, String temporaryPassword) {
-        AppUser me = currentActiveUser();
-        if (me.getRole() != Role.TEACHER) {
-            throw new AccessDeniedException("Only a teacher can create an account.");
-        }
-        if (username == null || username.isBlank()) {
-            throw new IllegalArgumentException("Username must not be blank.");
-        }
-        if (temporaryPassword == null || temporaryPassword.length() < MIN_PASSWORD_LENGTH) {
-            throw new IllegalArgumentException(
-                    "The temporary password must be at least "
-                            + MIN_PASSWORD_LENGTH + " characters.");
-        }
-
-        String name = username.trim();
-
-        /*
-         * This check is a courtesy, not the guarantee.
-         *
-         * Two teachers creating the same username at the same moment could both
-         * pass it before either wrote. What actually prevents a duplicate is
-         * uq_app_user_username in the schema, which refuses the second INSERT
-         * outright. Checking here only buys a clearer message in the ordinary
-         * case; GlobalExceptionHandler turns the constraint violation into the
-         * same 409 when the race is genuinely lost.
-         */
-        if (users.findByUsername(name).isPresent()) {
-            throw new IllegalStateException("An account named '" + name + "' already exists.");
-        }
-
-        AppUser created = users.save(new AppUser(
-                name, encoder.encode(temporaryPassword), Role.STUDENT, true));
-
-        audit.record("AppUser", created.getId(), AuditAction.CREATE, me,
-                "Created student account '" + name + "'.");
-
-        return created;
     }
 }

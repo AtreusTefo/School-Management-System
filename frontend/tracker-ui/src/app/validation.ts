@@ -58,6 +58,11 @@ export const SUBJECT_NAME_MAX_LENGTH = 100;           // subject.name
 export const CLASS_NAME_MAX_LENGTH = 50;              // school_class.name
 export const ASSESSMENT_NAME_MAX_LENGTH = 100;        // assessment.name
 
+// person_profile - the admin panel's student/teacher onboarding forms.
+export const PERSON_NAME_MAX_LENGTH = 50;             // first_name / middle_name / last_name
+export const NATIONAL_ID_MAX_LENGTH = 20;             // person_profile.national_id
+export const CONTACT_EMAIL_MAX_LENGTH = 100;          // person_profile.contact_email
+
 export type DecimalRejectReason =
   | 'format' | 'tooManyDigits' | 'tooManyDecimals' | 'negative' | 'notPositive';
 

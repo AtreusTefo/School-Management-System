@@ -166,7 +166,7 @@ public class AuthController {
      */
     public record UserView(Long id, String username, String role,
                            boolean mustChangePassword) {
-        static UserView of(AppUser user) {
+        public static UserView of(AppUser user) {
             return new UserView(user.getId(), user.getUsername(), user.getRole().name(),
                     user.isMustChangePassword());
         }

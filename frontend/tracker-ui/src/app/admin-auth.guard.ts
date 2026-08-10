@@ -10,9 +10,10 @@ import { SessionService } from './session.service';
  * authority regardless of what the browser's address bar says; see
  * AdminService.requireAdmin on the backend.
  *
- * A signed-out visitor, or a signed-in TEACHER/STUDENT, is sent to
- * /admin/login rather than the main '/' - following a link into the admin
- * panel should offer the admin sign-in screen, not the ordinary one.
+ * Sends anyone who isn't a signed-in admin to '/' - there is one shared sign-in
+ * form for every role (see AppComponent), not a separate admin login page, so
+ * '/' is the correct landing spot whether the visitor is signed out, signed in
+ * as a teacher or student, or has no account at all.
  *
  * WAITS FOR checkingSession() TO SETTLE, for the same reason auth.guard.ts
  * does: SessionService.init() is an async HTTP call that a hard navigation
@@ -32,7 +33,7 @@ export const adminAuthGuard: CanActivateFn = () => {
       if (session.isAdmin) {
         return true;
       }
-      return router.createUrlTree(['/admin/login']);
+      return router.createUrlTree(['/']);
     })
   );
 };

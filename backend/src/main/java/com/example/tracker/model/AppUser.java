@@ -39,11 +39,44 @@ public class AppUser {
      * The name typed at sign-in. Unique, enforced by the database rather than by
      * a "check then insert" in Java, which two simultaneous registrations could
      * both pass before either wrote.
+     *
+     * For an account made through the admin panel, this IS externalId below -
+     * the same generated value, in the one column sign-in actually reads. See
+     * externalId's own comment for why there are not two columns doing
+     * related but separate jobs.
      */
     @NotBlank
     @Size(max = 50)
     @Column(nullable = false, length = 50, unique = true)
     private String username;
+
+    /**
+     * The id an admin-created account was issued at creation: STU20260001,
+     * TCH20260001, ADM20260001. Null for the accounts seeded for development
+     * (teacher, student, admin), which predate this rule and keep their
+     * literal usernames as a documented exception - see CLAUDE.md.
+     *
+     * DUPLICATES username RATHER THAN BEING THE ONLY COPY, ON PURPOSE.
+     * The alternative - deriving the login name from this field instead of
+     * storing it twice - would still need username to exist as a real column
+     * (Spring Security authenticates against it), so nothing is saved by
+     * splitting them; what would be lost is the ability to tell, later,
+     * whether a given username IS a system-issued id or a legacy dev
+     * account's chosen name. Keeping both makes that a fact the row records
+     * rather than a pattern something has to re-derive by parsing the string.
+     *
+     * NOT MARKED unique = true HERE, deliberately - see
+     * uq_app_user_external_id in V8, a FILTERED index ("WHERE external_id IS
+     * NOT NULL"). A plain unique constraint treats every NULL as equal on
+     * SQL Server, which would permit exactly one legacy dev account with no
+     * external_id in the whole table. The same reasoning already governs
+     * Assessment.submission - see that class - and for the same reason, H2's
+     * test schema does not enforce this particular rule; it is verified by
+     * hand against SQL Server instead.
+     */
+    @Size(max = 20)
+    @Column(name = "external_id", length = 20)
+    private String externalId;
 
     /** BCrypt hash. 60 characters for the standard $2a$ format; 100 leaves room. */
     @NotBlank
@@ -86,10 +119,22 @@ public class AppUser {
 
     public AppUser(String username, String passwordHash, Role role,
                    boolean mustChangePassword) {
+        this(username, passwordHash, role, mustChangePassword, null);
+    }
+
+    /**
+     * The shape AdminService.createStudent/createTeacher/createAdmin use:
+     * username and externalId are the SAME generated value (STU20260001 and
+     * so on) for every account made through the admin panel. See
+     * externalId's own field comment for why both columns still exist.
+     */
+    public AppUser(String username, String passwordHash, Role role,
+                   boolean mustChangePassword, String externalId) {
         this.username = username;
         this.passwordHash = passwordHash;
         this.role = role;
         this.mustChangePassword = mustChangePassword;
+        this.externalId = externalId;
     }
 
     public Long getId() {
@@ -100,15 +145,8 @@ public class AppUser {
         return username;
     }
 
-    /**
-     * Rename the account. Used only by admin-driven account management
-     * (AdminService.renameTeacher) - nobody may rename their own account,
-     * since the username is also the sign-in name and a self-service rename
-     * would need its own re-authentication story this application does not
-     * have.
-     */
-    public void setUsername(String username) {
-        this.username = username;
+    public String getExternalId() {
+        return externalId;
     }
 
     public String getPasswordHash() {

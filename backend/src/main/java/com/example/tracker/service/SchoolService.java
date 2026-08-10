@@ -10,12 +10,14 @@ import com.example.tracker.model.AppUser;
 import com.example.tracker.model.AuditAction;
 import com.example.tracker.model.Course;
 import com.example.tracker.model.Enrolment;
+import com.example.tracker.model.PersonProfile;
 import com.example.tracker.model.Role;
 import com.example.tracker.model.SchoolClass;
 import com.example.tracker.model.Subject;
 import com.example.tracker.repository.AssignmentRepository;
 import com.example.tracker.repository.CourseRepository;
 import com.example.tracker.repository.EnrolmentRepository;
+import com.example.tracker.repository.PersonProfileRepository;
 import com.example.tracker.repository.SchoolClassRepository;
 import com.example.tracker.repository.SubjectRepository;
 import org.springframework.lang.NonNull;
@@ -56,6 +58,7 @@ public class SchoolService {
     private final EnrolmentRepository enrolments;
     private final CourseRepository courses;
     private final AssignmentRepository assignments;
+    private final PersonProfileRepository profiles;
     private final AppUserService users;
     private final AuditLogService audit;
 
@@ -64,6 +67,7 @@ public class SchoolService {
                          EnrolmentRepository enrolments,
                          CourseRepository courses,
                          AssignmentRepository assignments,
+                         PersonProfileRepository profiles,
                          AppUserService users,
                          AuditLogService audit) {
         this.subjects = subjects;
@@ -71,6 +75,7 @@ public class SchoolService {
         this.enrolments = enrolments;
         this.courses = courses;
         this.assignments = assignments;
+        this.profiles = profiles;
         this.users = users;
         this.audit = audit;
     }
@@ -305,7 +310,8 @@ public class SchoolService {
                 .map(student -> {
                     List<Enrolment> own = enrolments.findByStudentOrderByIdAsc(student);
                     String className = own.isEmpty() ? null : own.get(0).getSchoolClass().getName();
-                    return StudentView.of(student, className);
+                    PersonProfile profile = profiles.findByAppUser(student).orElse(null);
+                    return StudentView.of(student, className, profile);
                 })
                 .toList();
     }

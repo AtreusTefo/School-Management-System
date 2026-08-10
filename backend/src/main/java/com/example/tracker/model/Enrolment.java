@@ -17,6 +17,7 @@ import jakarta.persistence.UniqueConstraint;
 import jakarta.persistence.Version;
 import jakarta.validation.constraints.NotNull;
 import org.hibernate.annotations.Check;
+import org.springframework.lang.NonNull;
 
 /**
  * One student's membership of one class.
@@ -113,27 +114,85 @@ public class Enrolment {
      * There is no constructor that omits either side, and none that lets the
      * caller choose the role. An Enrolment that does not yet know who or where
      * cannot be built and then quietly saved half-formed.
+     *
+     * THE NULL CHECKS BELOW ARE WHAT MAKE THAT SENTENCE TRUE, NOT JUST STATED.
+     * Before this, the constructor accepted a null student or class silently
+     * (`student == null ? null : student.getRole()` was written defensively
+     * around exactly that gap) and only failed later, opaquely, at the
+     * database's NOT NULL columns.
+     *
+     * THE PARAMETERS BELOW ARE DELIBERATELY *NOT* @NonNull. Java has no
+     * enforced non-null types - @NonNull on a parameter is Eclipse's null
+     * analysis trusting the caller's promise at compile time, nothing more,
+     * and it does not survive to the bytecode. If these parameters carried
+     * @NonNull, the checks immediately below would be provably unreachable BY
+     * THAT SAME ANALYSIS ("the type already guarantees this is never null, so
+     * why check?") and be flagged as dead code - which is exactly backwards:
+     * the check is what makes the guarantee real, not the annotation.
      */
     public Enrolment(AppUser student, SchoolClass schoolClass) {
+        if (student == null) {
+            throw new IllegalArgumentException("An enrolment needs a student.");
+        }
+        if (schoolClass == null) {
+            throw new IllegalArgumentException("An enrolment needs a class.");
+        }
         this.student = student;
         this.schoolClass = schoolClass;
-        this.studentRole = student == null ? null : student.getRole();
+        this.studentRole = student.getRole();
     }
 
     public Long getId() {
         return id;
     }
 
+    /**
+     * WHY THESE TWO GETTERS CHECK A FIELD THE CONSTRUCTOR ALREADY REJECTED
+     * -------------------------------------------------------------------
+     * The @NonNull sits on the GETTER, not on the field, and the check is
+     * what makes it verifiable rather than merely asserted.
+     *
+     * It cannot sit on the field, because the JPA constructor above exists
+     * precisely to hand Hibernate an instance whose fields are still null,
+     * to be populated by reflection immediately afterwards. A @NonNull field
+     * would be a statement this class genuinely cannot make during that
+     * window - and Eclipse says so, correctly: "the @NonNull field student
+     * may not have been initialized". Annotating anyway would be the exact
+     * mistake the Nullability section of CLAUDE.md warns against, trading a
+     * visible warning for a runtime NPE somewhere further away.
+     *
+     * What IS true is that no Enrolment a caller can ever observe has a null
+     * student or class: the public constructor rejects both, and any row
+     * Hibernate rebuilds came from NOT NULL columns behind a foreign key.
+     * The check below states that, and is ordinary flow-sensitive null
+     * analysis rather than a trust exercise - the same technique, and the
+     * same reasoning, as service.Require.orThrow (which this cannot simply
+     * call: Require is package-private in the service layer, and a model
+     * class reaching upwards into it would invert the layering).
+     *
+     * If either ever fires, the entity is genuinely corrupt and a loud
+     * message here beats a bare NullPointerException three frames later.
+     */
+    @NonNull
     public AppUser getStudent() {
-        return student;
+        AppUser value = student;
+        if (value == null) {
+            throw new IllegalStateException("Enrolment " + id + " has no student.");
+        }
+        return value;
     }
 
     public Role getStudentRole() {
         return studentRole;
     }
 
+    @NonNull
     public SchoolClass getSchoolClass() {
-        return schoolClass;
+        SchoolClass value = schoolClass;
+        if (value == null) {
+            throw new IllegalStateException("Enrolment " + id + " has no class.");
+        }
+        return value;
     }
 
     public Long getVersion() {

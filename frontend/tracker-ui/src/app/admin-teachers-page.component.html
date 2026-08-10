@@ -5,6 +5,9 @@
       <span class="badge badge--neutral">{{ teachers.length }}</span>
     </div>
     <div class="toolbar">
+      <button type="button" class="btn btn--ghost" (click)="openImport()" *ngIf="!showImport">
+        Import from file
+      </button>
       <button type="button" class="btn btn--primary" (click)="openCreate()" *ngIf="!showCreate">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
              stroke="currentColor" stroke-width="2" stroke-linecap="round"
@@ -20,6 +23,68 @@
     {{ notice }}
   </div>
 
+  <!-- ===== BULK IMPORT ===== -->
+  <div *ngIf="showImport" class="subform">
+    <div class="subform__head">
+      <h3>Import teachers from CSV or Excel</h3>
+      <button type="button" class="btn btn--sm btn--ghost" (click)="closeImport()">Close</button>
+    </div>
+
+    <p class="card__note">
+      Columns (first row, case-insensitive): <code>firstName</code>, <code>middleName</code>
+      (optional), <code>lastName</code>, <code>nationalId</code>,
+      <code>dateOfBirth</code> (yyyy-MM-dd), <code>email</code> (optional),
+      <code>dateEnrolled</code> (optional, defaults to today). A temporary
+      password is generated for every row and shown below - nowhere else will
+      this system say a password in plain text.
+    </p>
+
+    <div class="create-form">
+      <div class="field">
+        <label class="field__label" for="teacherImportFile">File</label>
+        <input id="teacherImportFile" class="input" type="file" accept=".csv,.xlsx,.xls"
+               (change)="onImportFileChosen($event)" />
+      </div>
+      <button type="button" class="btn btn--primary" [disabled]="!importFile || importing"
+              (click)="onImport()">
+        <span *ngIf="importing" class="spinner" aria-hidden="true"></span>
+        {{ importing ? 'Importing...' : 'Import' }}
+      </button>
+    </div>
+
+    <div class="card__body" *ngIf="importResult">
+      <p class="card__note">
+        {{ importResult.succeeded }} of {{ importResult.totalRows }} imported successfully.
+      </p>
+      <table class="table table--plain">
+        <thead>
+          <tr>
+            <th>Row</th>
+            <th>Status</th>
+            <th>Name</th>
+            <th>Id</th>
+            <th>Temporary password</th>
+            <th>Message</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let row of importResult.rows">
+            <td>{{ row.rowNumber }}</td>
+            <td>
+              <span class="badge" [class.badge--overdue]="!row.success">
+                {{ row.success ? 'Created' : 'Failed' }}
+              </span>
+            </td>
+            <td>{{ row.identifier }}</td>
+            <td>{{ row.externalId }}</td>
+            <td>{{ row.temporaryPassword }}</td>
+            <td>{{ row.message }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
   <!-- ===== CREATE ===== -->
   <div *ngIf="showCreate" class="subform">
     <div class="subform__head">
@@ -30,26 +95,91 @@
     <form #createForm="ngForm" (ngSubmit)="onCreate()">
       <div class="create-form">
         <div class="field">
-          <label class="field__label" for="newUsername">Username</label>
-          <input id="newUsername" class="input" type="text" name="newUsername"
-                 #newUsernameModel="ngModel"
-                 [(ngModel)]="newUsername" autocomplete="off"
-                 required [maxlength]="usernameMaxLength" />
-          <app-field-error [control]="newUsernameModel" label="Username" />
+          <label class="field__label" for="firstName">First name</label>
+          <input id="firstName" class="input" type="text" name="firstName"
+                 #firstNameModel="ngModel"
+                 [(ngModel)]="firstName" required [maxlength]="personNameMaxLength" />
+          <app-field-error [control]="firstNameModel" label="First name" />
         </div>
         <div class="field">
-          <label class="field__label" for="newTemporaryPassword">Temporary password</label>
-          <input id="newTemporaryPassword" class="input" type="text" name="newTemporaryPassword"
-                 #newPasswordModel="ngModel"
-                 [(ngModel)]="newTemporaryPassword" autocomplete="off"
-                 required [minlength]="passwordMinLength" />
-          <span class="field__hint"
-                *ngIf="newPasswordModel.valid || !(newPasswordModel.touched || newPasswordModel.dirty)">
-            At least {{ passwordMinLength }} characters. The teacher must replace it at first sign-in.
-          </span>
-          <app-field-error [control]="newPasswordModel" label="Temporary password" />
+          <label class="field__label" for="middleName">Middle name</label>
+          <input id="middleName" class="input" type="text" name="middleName"
+                 #middleNameModel="ngModel"
+                 [(ngModel)]="middleName" placeholder="If it exists"
+                 [maxlength]="personNameMaxLength" />
+          <app-field-error [control]="middleNameModel" label="Middle name" />
+        </div>
+        <div class="field">
+          <label class="field__label" for="lastName">Last name</label>
+          <input id="lastName" class="input" type="text" name="lastName"
+                 #lastNameModel="ngModel"
+                 [(ngModel)]="lastName" required [maxlength]="personNameMaxLength" />
+          <app-field-error [control]="lastNameModel" label="Last name" />
         </div>
       </div>
+
+      <div class="create-form">
+        <div class="field">
+          <label class="field__label" for="nationalId">OMANG / national id</label>
+          <input id="nationalId" class="input" type="text" name="nationalId"
+                 #nationalIdModel="ngModel"
+                 [(ngModel)]="nationalId" required [maxlength]="nationalIdMaxLength" />
+          <app-field-error [control]="nationalIdModel" label="National id" />
+        </div>
+        <div class="field">
+          <label class="field__label" for="dateOfBirth">Date of birth</label>
+          <input id="dateOfBirth" class="input" type="date" name="dateOfBirth"
+                 #dobModel="ngModel"
+                 [(ngModel)]="dateOfBirth" required />
+          <app-field-error [control]="dobModel" label="Date of birth" />
+        </div>
+        <div class="field">
+          <label class="field__label" for="email">Email</label>
+          <input id="email" class="input" type="email" name="email"
+                 #emailModel="ngModel"
+                 [(ngModel)]="email" [maxlength]="contactEmailMaxLength" />
+          <app-field-error [control]="emailModel" label="Email" />
+        </div>
+      </div>
+
+      <div class="create-form">
+        <div class="field">
+          <label class="field__label" for="dateEnrolled">Date enrolled</label>
+          <input id="dateEnrolled" class="input" type="date" name="dateEnrolled"
+                 [(ngModel)]="dateEnrolled" />
+          <span class="field__hint">Optional - defaults to today.</span>
+        </div>
+        <div class="field">
+          <label class="field__label" for="teacherTemporaryPassword">Temporary password</label>
+          <input id="teacherTemporaryPassword" class="input" type="text"
+                 name="teacherTemporaryPassword" #tempPasswordModel="ngModel"
+                 [(ngModel)]="temporaryPassword" required [minlength]="passwordMinLength" />
+          <app-field-error [control]="tempPasswordModel" label="Temporary password" />
+        </div>
+      </div>
+
+      <fieldset class="field">
+        <legend class="field__label">Starts out teaching (optional)</legend>
+        <div class="create-form">
+          <div class="field">
+            <label class="field__label" for="initialSubject">Subject</label>
+            <select id="initialSubject" class="input" name="initialSubject"
+                    [(ngModel)]="initialSubjectId">
+              <option [ngValue]="null">None yet</option>
+              <option *ngFor="let s of subjects" [ngValue]="s.id">{{ s.name }}</option>
+            </select>
+          </div>
+          <div class="field">
+            <label class="field__label" for="initialClass">Class</label>
+            <select id="initialClass" class="input" name="initialClass"
+                    [(ngModel)]="initialClassId">
+              <option [ngValue]="null">None yet</option>
+              <option *ngFor="let c of classes" [ngValue]="c.id">{{ c.name }}</option>
+            </select>
+          </div>
+        </div>
+      </fieldset>
+
       <button type="submit" class="btn btn--primary" [disabled]="!canCreate">Create account</button>
     </form>
   </div>
@@ -69,15 +199,17 @@
     <table class="table table--plain">
       <thead>
         <tr>
-          <th>Username</th>
+          <th>Name</th>
+          <th>Id</th>
           <th>Status</th>
           <th></th>
         </tr>
       </thead>
       <tbody>
         <ng-container *ngFor="let t of teachers">
-          <tr *ngIf="renamingId !== t.id && resettingId !== t.id">
-            <td>{{ t.username }}</td>
+          <tr *ngIf="resettingId !== t.id">
+            <td>{{ t.fullName ?? t.username }}</td>
+            <td>{{ t.externalId ?? t.username }}</td>
             <td>
               <span class="badge" [class.badge--overdue]="t.mustChangePassword">
                 {{ t.mustChangePassword ? 'Pending password change' : 'Active' }}
@@ -85,7 +217,6 @@
             </td>
             <td class="col-actions">
               <div class="row-actions">
-                <button type="button" class="btn btn--sm" (click)="startRename(t)">Rename</button>
                 <button type="button" class="btn btn--sm" (click)="startReset(t)">Reset password</button>
                 <button type="button" class="btn btn--sm btn--danger" (click)="onDelete(t)"
                         title="Refused while the teacher still teaches a course or has set work">
@@ -95,27 +226,8 @@
             </td>
           </tr>
 
-          <tr *ngIf="renamingId === t.id">
-            <td colspan="3">
-              <div class="create-form">
-                <div class="field">
-                  <label class="field__label" [attr.for]="'rename' + t.id">New username</label>
-                  <input [id]="'rename' + t.id" class="input" type="text"
-                         name="renameUsername" #renameModel="ngModel"
-                         [(ngModel)]="renameUsername" required [maxlength]="usernameMaxLength" />
-                  <app-field-error [control]="renameModel" label="Username" />
-                </div>
-                <div class="row-actions">
-                  <button type="button" class="btn btn--sm btn--primary"
-                          [disabled]="renameModel.invalid" (click)="saveRename(t.id)">Save</button>
-                  <button type="button" class="btn btn--sm btn--ghost" (click)="cancelRename()">Cancel</button>
-                </div>
-              </div>
-            </td>
-          </tr>
-
           <tr *ngIf="resettingId === t.id">
-            <td colspan="3">
+            <td colspan="4">
               <div class="create-form">
                 <div class="field">
                   <label class="field__label" [attr.for]="'reset' + t.id">New temporary password</label>

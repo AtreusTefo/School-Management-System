@@ -126,10 +126,10 @@
     </div>
 
     <!-- ===== SIGN IN =====
-         Excludes admin routes: /admin/login is its own page, reached through
-         the outlet just below rather than this inline form - see
-         AppComponent.isAdminRoute. -->
-    <section *ngIf="!checkingSession && !user && !isAdminRoute" class="auth">
+         ONE FORM FOR EVERY ROLE. The server decides who signed in from the
+         credentials alone; onLogin() reads that answer back and sends an
+         admin to /admin, everyone else to /. -->
+    <section *ngIf="!checkingSession && !user" class="auth">
       <div class="card auth__card">
         <div class="card__body">
 
@@ -153,13 +153,13 @@
                typing into a rendered form. -->
           <form #loginForm="ngForm" (ngSubmit)="onLogin()" class="auth__fields">
             <div class="field">
-              <label class="field__label" for="loginUsername">Username</label>
+              <label class="field__label" for="loginUsername">Username or ID</label>
               <input id="loginUsername" class="input" type="text" name="loginUsername"
                      #loginUsernameModel="ngModel"
                      [(ngModel)]="loginUsername" autocomplete="username"
                      required [maxlength]="usernameMaxLength"
-                     placeholder="teacher" />
-              <app-field-error [control]="loginUsernameModel" label="Username" />
+                     placeholder="e.g. STU20260001" />
+              <app-field-error [control]="loginUsernameModel" label="Username or ID" />
             </div>
 
             <div class="field">
@@ -181,8 +181,9 @@
 
           <div class="auth__hint">
             <span class="auth__hint-title">Development accounts</span>
-            <code>teacher</code> or <code>student</code>, password
-            <code>password123</code>.
+            <code>admin</code>, <code>teacher</code> or <code>student</code>,
+            password <code>password123</code>. A student or teacher account
+            created by an admin signs in with the ID issued at creation instead.
           </div>
 
         </div>
@@ -270,20 +271,13 @@
       </section>
 
       <!-- ===== THE ROUTED PAGE =====
-           Dashboard, "Work I have set", the marking queue or the reports
-           page - whichever the URL and the nav bar above selected. Hidden
-           entirely while an account is pending, for the same reason nothing
-           else renders in that state: the server would refuse every one of
-           these pages' requests with 403 regardless. -->
+           Dashboard, "Work I have set", the marking queue, the reports page,
+           or the admin panel - whichever the URL and the nav bar above
+           selected. Hidden entirely while an account is pending, for the
+           same reason nothing else renders in that state: the server would
+           refuse every one of these pages' requests with 403 regardless. -->
       <router-outlet *ngIf="!mustChangePassword"></router-outlet>
     </ng-container>
-
-    <!-- ===== ADMIN ROUTES WHILE SIGNED OUT =====
-         /admin/login must be reachable by a visitor with no session at all,
-         which the outlet above cannot do - it only exists inside *ngIf="user".
-         Mutually exclusive with that one (this requires !user, that requires
-         user), so exactly one <router-outlet> is ever active. -->
-    <router-outlet *ngIf="!user && isAdminRoute"></router-outlet>
 
   </main>
 </div>

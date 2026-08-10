@@ -7,7 +7,7 @@ import { SessionService } from './session.service';
 import { NotificationService } from './notification.service';
 import { FieldErrorComponent } from './field-error.component';
 import {
-  PASSWORD_MIN_LENGTH, SUBJECT_CODE_MAX_LENGTH, SUBJECT_NAME_MAX_LENGTH,
+  SUBJECT_CODE_MAX_LENGTH, SUBJECT_NAME_MAX_LENGTH,
   CLASS_NAME_MAX_LENGTH, USERNAME_MAX_LENGTH
 } from './validation';
 
@@ -16,10 +16,10 @@ import {
  * -----------------
  * What is left once "Work I have set", "Marking queue" and "Reports" each
  * became their own page: a student or teacher's own timetable, quick links to
- * the three working pages, and - teachers only - the two administrative jobs
- * that do not belong on any of those three because they are not about a
- * piece of work or a mark, they are about the STRUCTURE those things happen
- * inside: the timetable itself, and who has an account at all.
+ * the three working pages, and - teachers only - the timetable itself
+ * (subjects, classes, courses, enrolment). Creating accounts moved to the
+ * admin panel entirely - see /admin/students and /admin/teachers - since
+ * onboarding is now admin-only.
  */
 @Component({
   selector: 'app-dashboard',
@@ -30,7 +30,6 @@ import {
 export class DashboardComponent implements OnInit {
 
   readonly usernameMaxLength = USERNAME_MAX_LENGTH;
-  readonly passwordMinLength = PASSWORD_MIN_LENGTH;
   readonly subjectCodeMaxLength = SUBJECT_CODE_MAX_LENGTH;
   readonly subjectNameMaxLength = SUBJECT_NAME_MAX_LENGTH;
   readonly classNameMaxLength = CLASS_NAME_MAX_LENGTH;
@@ -48,12 +47,6 @@ export class DashboardComponent implements OnInit {
   enrolClassId: number | null = null;
   enrolUsername = '';
   timetableNotice: string | null = null;
-
-  newUsername = '';
-  newUserPassword = '';
-  creatingUser = false;
-  showCreateUser = false;
-  createUserNotice: string | null = null;
 
   constructor(
     private service: AssignmentService,
@@ -82,48 +75,6 @@ export class DashboardComponent implements OnInit {
     this.service.getCourses().subscribe({
       next: (data) => this.courses = data,
       error: (err) => this.notifications.showError(err, 'Could not load your courses')
-    });
-  }
-
-  // ----- creating a student account (teachers only) --------------------------
-
-  openCreateUser(): void {
-    this.showCreateUser = true;
-    this.createUserNotice = null;
-    this.newUsername = '';
-    this.newUserPassword = '';
-  }
-
-  closeCreateUser(): void {
-    this.showCreateUser = false;
-  }
-
-  get canCreateUser(): boolean {
-    return !this.creatingUser
-        && this.newUsername.trim().length > 0
-        && this.newUsername.length <= USERNAME_MAX_LENGTH
-        && this.newUserPassword.length >= PASSWORD_MIN_LENGTH;
-  }
-
-  onCreateUser(): void {
-    if (!this.canCreateUser) {
-      return;
-    }
-    this.creatingUser = true;
-    const username = this.newUsername.trim();
-    this.session.createStudent(username, this.newUserPassword).subscribe({
-      next: () => {
-        this.creatingUser = false;
-        this.createUserNotice =
-          `Account "${username}" created. They must change this password when they first sign in. `
-          + `Enrol them in a class so they receive work.`;
-        this.newUsername = '';
-        this.newUserPassword = '';
-      },
-      error: (err) => {
-        this.creatingUser = false;
-        this.notifications.showError(err, 'Could not create the account');
-      }
     });
   }
 
