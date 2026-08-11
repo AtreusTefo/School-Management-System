@@ -52,6 +52,7 @@ document permitted to sit loose in `docs/`; everything else belongs in a subfold
 
 | Document | Contents |
 |----------|----------|
+| [`2026-08-11.md`](daily-reports/2026-08-11.md) | Work of 11 August 2026: making the timetable admin-only, giving every delete a dependency check that answers 409 rather than letting the database refuse it as a 500, completing student and teacher account management, and rebuilding both dashboards around subjects, classes and a timetable. |
 | [`2026-08-05.md`](daily-reports/2026-08-05.md) | Work of 5 August 2026: marks, automatic scoring and performance levels; a report with PDF export for both roles; nothing derived stored; and the mark-ownership guard that stops a mark being attached to another student's work. |
 | [`2026-08-04.md`](daily-reports/2026-08-04.md) | Work of 4 August 2026: splitting `Assignment` into assignment and submission, adding subjects, classes, enrolment and courses, PDF upload and download, and making the role rules facts about the data through composite foreign keys. |
 | [`2026-07-29.md`](daily-reports/2026-07-29.md) | Work of 29 July 2026: separating the two halves for independent deployment, then completing the four remaining epics — SQL Server persistence, accounts and roles, the full assignment lifecycle, and a 36-test automated suite. |
