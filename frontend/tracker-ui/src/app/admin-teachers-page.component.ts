@@ -1,7 +1,7 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { AdminService, ImportSummary, Teacher } from './admin.service';
+import { AdminService, ImportSummary, PersonFields, Teacher } from './admin.service';
 import { AssignmentService, Course, SchoolClass, Subject } from './assignment.service';
 import { NotificationService } from './notification.service';
 import { FieldErrorComponent } from './field-error.component';
@@ -53,6 +53,17 @@ export class AdminTeachersPageComponent implements OnInit {
   initialClassId: number | null = null;
 
   resettingId: number | null = null;
+
+  /* Editing a teacher, mirroring the student page exactly. Held separately from
+     resettingId so opening one box cannot leave the other open on a different
+     row. */
+  editingId: number | null = null;
+  editFirstName = '';
+  editMiddleName = '';
+  editLastName = '';
+  editNationalId = '';
+  editDateOfBirth = '';
+  editEmail = '';
   resetTemporaryPassword = '';
 
   showImport = false;
@@ -176,6 +187,55 @@ export class AdminTeachersPageComponent implements OnInit {
         this.load();
       },
       error: (err) => this.notifications.showError(err, 'Could not reset that password')
+    });
+  }
+
+  // ----- edit ------------------------------------------------------------------
+
+  startEdit(teacher: Teacher): void {
+    this.editingId = teacher.id;
+    this.resettingId = null;
+    this.editFirstName = teacher.firstName ?? '';
+    this.editMiddleName = teacher.middleName ?? '';
+    this.editLastName = teacher.lastName ?? '';
+    this.editNationalId = teacher.nationalId ?? '';
+    this.editDateOfBirth = teacher.dateOfBirth ?? '';
+    this.editEmail = teacher.contactEmail ?? '';
+  }
+
+  cancelEdit(): void {
+    this.editingId = null;
+  }
+
+  get canSaveEdit(): boolean {
+    return this.editFirstName.trim() !== ''
+        && this.editLastName.trim() !== ''
+        && this.editNationalId.trim() !== ''
+        && this.editDateOfBirth !== '';
+  }
+
+  /** The username is absent by design - see the student page for why. */
+  saveEdit(teacher: Teacher): void {
+    if (!this.canSaveEdit) {
+      return;
+    }
+    const fields = {
+      firstName: this.editFirstName.trim(),
+      middleName: this.editMiddleName.trim() || null,
+      lastName: this.editLastName.trim(),
+      nationalId: this.editNationalId.trim(),
+      dateOfBirth: this.editDateOfBirth,
+      email: this.editEmail.trim() || null,
+      temporaryPassword: ''   // stripped by AdminService before the request
+    } as PersonFields;
+
+    this.admin.updateTeacher(teacher.id, fields).subscribe({
+      next: () => {
+        this.editingId = null;
+        this.notice = `Updated '${teacher.username}'.`;
+        this.load();
+      },
+      error: (err) => this.notifications.showError(err, 'Could not save those changes')
     });
   }
 

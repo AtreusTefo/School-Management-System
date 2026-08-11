@@ -1,0 +1,321 @@
+<!-- ===== THE TIMETABLE - ADMINS ONLY =====
+     Subjects, classes, the courses that join them, and who is enrolled where.
+
+     This lived on the shared dashboard while it was teacher-owned. It moved
+     when writing the timetable became admin-only, and the move was NOT
+     cosmetic: AppComponent sends an admin to /admin on sign-in, so an admin
+     never opens the dashboard at all. Gating the card there by role left it
+     visible to nobody - hidden from teachers by the new rule, and on a page
+     the only permitted role never visits. Caught by driving the browser, not
+     by any unit test.
+
+     The card itself is unchanged below; only its address is new. Hiding it
+     remains a courtesy - SchoolService refuses a non-admin outright, and that
+     is what actually enforces the rule. -->
+<div class="card">
+  <div class="card__header">
+    <div class="card__title">
+      <h2>Timetable</h2>
+      <span class="badge badge--neutral">{{ subjects.length }} subjects</span>
+      <span class="badge badge--neutral">{{ classes.length }} classes</span>
+    </div>
+  </div>
+
+  <div *ngIf="timetableNotice" class="notice notice--inline" role="status">
+    {{ timetableNotice }}
+  </div>
+
+  <p class="card__note">
+    Add a subject, add a class, then join them into a course and name the teacher
+    who takes it. Enrol students into a class last - a course fans work out to
+    whoever is enrolled, so an enrolment added late means work already set never
+    reaches that student.
+  </p>
+
+  <div class="subform">
+
+    <form #subjectForm="ngForm" (ngSubmit)="onCreateSubject()" class="create-form">
+      <div class="field">
+        <label class="field__label" for="newSubjectCode">Subject code</label>
+        <input id="newSubjectCode" class="input" type="text" name="newSubjectCode"
+               #newSubjectCodeModel="ngModel"
+               [(ngModel)]="newSubjectCode" placeholder="e.g. GEOG"
+               required [maxlength]="subjectCodeMaxLength" />
+        <app-field-error [control]="newSubjectCodeModel" label="Subject code" />
+      </div>
+      <div class="field">
+        <label class="field__label" for="newSubjectName">Subject name</label>
+        <input id="newSubjectName" class="input" type="text" name="newSubjectName"
+               #newSubjectNameModel="ngModel"
+               [(ngModel)]="newSubjectName" placeholder="e.g. Geography"
+               required [maxlength]="subjectNameMaxLength" />
+        <app-field-error [control]="newSubjectNameModel" label="Subject name" />
+      </div>
+      <button type="submit" class="btn btn--sm" [disabled]="subjectForm.invalid">Add subject</button>
+    </form>
+
+    <form #classForm="ngForm" (ngSubmit)="onCreateClass()" class="create-form">
+      <div class="field">
+        <label class="field__label" for="newClassName">Class name</label>
+        <input id="newClassName" class="input" type="text" name="newClassName"
+               #newClassNameModel="ngModel"
+               [(ngModel)]="newClassName" placeholder="e.g. Grade 11A"
+               required [maxlength]="classNameMaxLength" />
+        <app-field-error [control]="newClassNameModel" label="Class name" />
+      </div>
+      <button type="submit" class="btn btn--sm" [disabled]="classForm.invalid">Add class</button>
+    </form>
+
+    <!-- "I teach" became "Teacher" when this moved to the admin: an admin is
+         setting up somebody else's course, never their own. The username is
+         required now - the server no longer defaults it to the caller, because
+         that caller is an admin and an admin cannot teach. -->
+    <form (ngSubmit)="onCreateCourse()" class="create-form">
+      <div class="field">
+        <label class="field__label" for="courseTeacher">Teacher</label>
+        <input id="courseTeacher" class="input" type="text" name="courseTeacher"
+               #courseTeacherModel="ngModel"
+               [(ngModel)]="courseTeacherUsername" placeholder="Teacher username"
+               required [maxlength]="usernameMaxLength" />
+        <app-field-error [control]="courseTeacherModel" label="Teacher username" />
+      </div>
+      <div class="field">
+        <label class="field__label" for="courseSubject">teaches</label>
+        <select id="courseSubject" class="input" name="courseSubject"
+                required
+                [(ngModel)]="courseSubjectId">
+          <option [ngValue]="null">Choose a subject</option>
+          <option *ngFor="let s of subjects" [ngValue]="s.id">{{ s.name }}</option>
+        </select>
+      </div>
+      <div class="field">
+        <label class="field__label" for="courseClass">to</label>
+        <select id="courseClass" class="input" name="courseClass"
+                required
+                [(ngModel)]="courseClassId">
+          <option [ngValue]="null">Choose a class</option>
+          <option *ngFor="let c of classes" [ngValue]="c.id">{{ c.name }}</option>
+        </select>
+      </div>
+      <button type="submit" class="btn btn--sm btn--primary"
+              [disabled]="courseSubjectId === null || courseClassId === null
+                          || !courseTeacherUsername.trim()">
+        Add course
+      </button>
+    </form>
+
+    <form #enrolForm="ngForm" (ngSubmit)="onEnrol()" class="create-form">
+      <div class="field">
+        <label class="field__label" for="enrolClass">Enrol into</label>
+        <select id="enrolClass" class="input" name="enrolClass"
+                required
+                [(ngModel)]="enrolClassId">
+          <option [ngValue]="null">Choose a class</option>
+          <option *ngFor="let c of classes" [ngValue]="c.id">
+            {{ c.name }} ({{ c.studentCount }})
+          </option>
+        </select>
+      </div>
+      <div class="field">
+        <label class="field__label" for="enrolUsername">Student</label>
+        <input id="enrolUsername" class="input" type="text" name="enrolUsername"
+               #enrolUsernameModel="ngModel"
+               [(ngModel)]="enrolUsername" placeholder="Username"
+               required [maxlength]="usernameMaxLength" />
+        <!-- The server refuses a teacher here, and so does the database: only
+             a STUDENT can be enrolled, enforced by a composite foreign key
+             rather than by this form being careful. -->
+        <span class="field__hint"
+              *ngIf="enrolUsernameModel.valid || !(enrolUsernameModel.touched || enrolUsernameModel.dirty)">
+          Only a student account can be enrolled.
+        </span>
+        <app-field-error [control]="enrolUsernameModel" label="Student username" />
+      </div>
+      <button type="submit" class="btn btn--sm" [disabled]="enrolForm.invalid">
+        Enrol
+      </button>
+    </form>
+  </div>
+</div>
+
+<!-- ===== WHAT EXISTS NOW =====
+     The forms above create; these three lists are how any of it is corrected or
+     removed. Every Delete can legitimately be refused with a 409 - a subject
+     still taught, a class with students in it, a course that already has work
+     set - and that refusal arrives as a sentence in the error banner naming
+     what is in the way. It is an answer, not a failure. -->
+
+<div class="card card--stacked">
+  <div class="card__header">
+    <div class="card__title">
+      <h2>Subjects</h2>
+      <span class="badge badge--neutral">{{ subjects.length }}</span>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th scope="col">Code</th>
+          <th scope="col">Name</th>
+          <th scope="col" class="col-actions">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let s of subjects" [class.is-editing]="editingSubjectId === s.id">
+          <ng-container *ngIf="editingSubjectId === s.id; else subjectRow">
+            <td>
+              <label class="sr-only" for="editSubjectCode">Subject code</label>
+              <input id="editSubjectCode" class="input" type="text" name="editSubjectCode"
+                     [(ngModel)]="editSubjectCode" [maxlength]="subjectCodeMaxLength" />
+            </td>
+            <td>
+              <label class="sr-only" for="editSubjectName">Subject name</label>
+              <input id="editSubjectName" class="input" type="text" name="editSubjectName"
+                     [(ngModel)]="editSubjectName" [maxlength]="subjectNameMaxLength" />
+            </td>
+            <td class="col-actions">
+              <div class="row-actions">
+                <button type="button" class="btn btn--sm btn--primary" (click)="saveSubject()"
+                        [disabled]="!editSubjectCode.trim() || !editSubjectName.trim()">Save</button>
+                <button type="button" class="btn btn--sm btn--ghost"
+                        (click)="cancelEditSubject()">Cancel</button>
+              </div>
+            </td>
+          </ng-container>
+          <ng-template #subjectRow>
+            <td><span class="badge badge--neutral">{{ s.code }}</span></td>
+            <td class="cell-title">{{ s.name }}</td>
+            <td class="col-actions">
+              <div class="row-actions">
+                <button type="button" class="btn btn--sm" (click)="startEditSubject(s)"
+                        [attr.aria-label]="'Rename ' + s.name">Rename</button>
+                <button type="button" class="btn btn--sm btn--danger" (click)="onDeleteSubject(s)"
+                        title="Refused while any course still teaches this subject"
+                        [attr.aria-label]="'Delete ' + s.name">Delete</button>
+              </div>
+            </td>
+          </ng-template>
+        </tr>
+        <tr *ngIf="subjects.length === 0">
+          <td colspan="3" class="cell-muted">No subjects yet.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card card--stacked">
+  <div class="card__header">
+    <div class="card__title">
+      <h2>Classes</h2>
+      <span class="badge badge--neutral">{{ classes.length }}</span>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th scope="col">Name</th>
+          <th scope="col">Students</th>
+          <th scope="col" class="col-actions">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let c of classes" [class.is-editing]="editingClassId === c.id">
+          <ng-container *ngIf="editingClassId === c.id; else classRow">
+            <td>
+              <label class="sr-only" for="editClassName">Class name</label>
+              <input id="editClassName" class="input" type="text" name="editClassName"
+                     [(ngModel)]="editClassName" [maxlength]="classNameMaxLength" />
+            </td>
+            <td class="cell-muted">{{ c.studentCount }}</td>
+            <td class="col-actions">
+              <div class="row-actions">
+                <button type="button" class="btn btn--sm btn--primary" (click)="saveClass()"
+                        [disabled]="!editClassName.trim()">Save</button>
+                <button type="button" class="btn btn--sm btn--ghost"
+                        (click)="cancelEditClass()">Cancel</button>
+              </div>
+            </td>
+          </ng-container>
+          <ng-template #classRow>
+            <td class="cell-title">{{ c.name }}</td>
+            <td>
+              <!-- The count is why a delete may be refused, so it is shown next
+                   to the button that will be refused rather than left to the
+                   error message to explain after the fact. -->
+              <span class="badge"
+                    [class.badge--progress]="c.studentCount > 0"
+                    [class.badge--neutral]="c.studentCount === 0">
+                {{ c.studentCount }} enrolled
+              </span>
+            </td>
+            <td class="col-actions">
+              <div class="row-actions">
+                <button type="button" class="btn btn--sm" (click)="startEditClass(c)"
+                        [attr.aria-label]="'Rename ' + c.name">Rename</button>
+                <button type="button" class="btn btn--sm btn--danger" (click)="onDeleteClass(c)"
+                        title="Refused while students are enrolled or courses are taught to it"
+                        [attr.aria-label]="'Delete ' + c.name">Delete</button>
+              </div>
+            </td>
+          </ng-template>
+        </tr>
+        <tr *ngIf="classes.length === 0">
+          <td colspan="3" class="cell-muted">No classes yet.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card card--stacked">
+  <div class="card__header">
+    <div class="card__title">
+      <h2>Courses</h2>
+      <span class="badge badge--neutral">{{ courses.length }}</span>
+    </div>
+  </div>
+  <p class="card__note">
+    A course is one teacher teaching one subject to one class. It is what makes
+    an assignment reach a whole class, so removing one is refused once any work
+    has been set for it.
+  </p>
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th scope="col">Subject</th>
+          <th scope="col">Class</th>
+          <th scope="col">Teacher</th>
+          <th scope="col" class="col-actions">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- No rename here on purpose: changing a course's subject, class or
+             teacher is not an edit, it is a different course. The work already
+             set against the old one would silently move with it. Delete and
+             re-create makes that consequence visible. -->
+        <tr *ngFor="let c of courses">
+          <td>
+            <span class="badge badge--neutral">{{ c.subjectCode }}</span>
+            <span class="cell-title">&nbsp;{{ c.subjectName }}</span>
+          </td>
+          <td>{{ c.className }}</td>
+          <td class="cell-muted">{{ c.teacherUsername }}</td>
+          <td class="col-actions">
+            <div class="row-actions">
+              <button type="button" class="btn btn--sm btn--danger" (click)="onDeleteCourse(c)"
+                      title="Refused once work has been set for this course"
+                      [attr.aria-label]="'Delete ' + c.label">Delete</button>
+            </div>
+          </td>
+        </tr>
+        <tr *ngIf="courses.length === 0">
+          <td colspan="4" class="cell-muted">No courses yet.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>

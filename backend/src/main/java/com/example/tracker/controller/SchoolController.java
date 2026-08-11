@@ -107,6 +107,45 @@ public class SchoolController {
                 request.getSubjectId(), request.getClassId(), request.getTeacherUsername());
     }
 
+    // ----- editing and removing the timetable (admin only) ---------------------
+    /*
+     * The service decides who may call these and what may be removed; this layer
+     * only unpacks the request. A refused delete surfaces as 409 through
+     * GlobalExceptionHandler, which is the accurate answer: the request was
+     * understood and legitimate, and the current state of the data is what makes
+     * it impossible.
+     */
+
+    @PutMapping("/subjects/{id}")
+    public SubjectView renameSubject(@PathVariable Long id,
+                                     @Valid @RequestBody CreateSubjectRequest request) {
+        return school.renameSubject(id, request.getCode(), request.getName());
+    }
+
+    @DeleteMapping("/subjects/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteSubject(@PathVariable Long id) {
+        school.deleteSubject(id);
+    }
+
+    @PutMapping("/classes/{id}")
+    public ClassView renameClass(@PathVariable Long id,
+                                 @Valid @RequestBody CreateClassRequest request) {
+        return school.renameClass(id, request.getName());
+    }
+
+    @DeleteMapping("/classes/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteClass(@PathVariable Long id) {
+        school.deleteClass(id);
+    }
+
+    @DeleteMapping("/courses/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteCourse(@PathVariable Long id) {
+        school.deleteCourse(id);
+    }
+
     // ----- request bodies ------------------------------------------------------
 
     static class CreateSubjectRequest {

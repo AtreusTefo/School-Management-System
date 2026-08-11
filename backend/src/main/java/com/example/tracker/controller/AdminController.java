@@ -136,6 +136,51 @@ public class AdminController {
         return admin.importStudents(readBytes(file));
     }
 
+    /*
+     * The three operations below give students the same management a teacher
+     * already had. The reset in particular closed a real dead end: a student's
+     * password is a one-way hash, so a lost temporary password left the account
+     * unusable with nothing able to rewrite it.
+     *
+     * Neither PUT accepts a username. It is the generated login id (STU...),
+     * every audit entry names the person by it, and letting it be edited would
+     * quietly detach somebody from their own history - see AdminService.
+     */
+
+    /** PUT /api/students/{id}/password - issue a new temporary password. */
+    @PutMapping("/students/{id}/password")
+    public StudentView resetStudentPassword(@PathVariable Long id,
+                                            @Valid @RequestBody ResetPasswordRequest request) {
+        return admin.resetStudentPassword(id, request.getTemporaryPassword());
+    }
+
+    /** PUT /api/students/{id} - correct biographical detail. */
+    @PutMapping("/students/{id}")
+    public StudentView updateStudent(@PathVariable Long id,
+                                     @Valid @RequestBody UpdatePersonRequest request) {
+        return admin.updateStudent(id,
+                request.getFirstName(), request.getMiddleName(), request.getLastName(),
+                request.getNationalId(), request.getDateOfBirth(), request.getEmail(),
+                request.getDateEnrolled());
+    }
+
+    /** DELETE /api/students/{id} - refused with 409 if they have work or marks. */
+    @DeleteMapping("/students/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteStudent(@PathVariable Long id) {
+        admin.deleteStudent(id);
+    }
+
+    /** PUT /api/teachers/{id} - correct biographical detail. */
+    @PutMapping("/teachers/{id}")
+    public TeacherView updateTeacher(@PathVariable Long id,
+                                     @Valid @RequestBody UpdatePersonRequest request) {
+        return admin.updateTeacher(id,
+                request.getFirstName(), request.getMiddleName(), request.getLastName(),
+                request.getNationalId(), request.getDateOfBirth(), request.getEmail(),
+                request.getDateEnrolled());
+    }
+
     /** GET /api/students/{id}/teachers - who currently teaches this student, by subject. */
     @GetMapping("/students/{id}/teachers")
     public List<CourseView> listTeachersForStudent(@PathVariable Long id) {
@@ -308,6 +353,67 @@ public class AdminController {
         public void setTemporaryPassword(String temporaryPassword) {
             this.temporaryPassword = temporaryPassword;
         }
+    }
+
+    /**
+     * The body of an edit. Deliberately NOT a subclass of PersonRequest.
+     *
+     * PersonRequest carries a @NotBlank temporaryPassword, because creating an
+     * account needs one. Reusing it here would make an admin retype a password
+     * to correct a spelling, and - worse - would let an edit change a credential
+     * as a side effect of changing a name. Password changes have their own
+     * endpoint, which marks the account pending; this one cannot touch it.
+     *
+     * There is no username field either. Omitting it is a stronger guarantee
+     * than validating it: no request can ask to rewrite a generated login id,
+     * so no code path has to be trusted to refuse.
+     */
+    static class UpdatePersonRequest {
+        @NotBlank(message = "First name must not be blank")
+        @Size(max = 50, message = "First name must be at most 50 characters")
+        private String firstName;
+
+        @Size(max = 50, message = "Middle name must be at most 50 characters")
+        private String middleName;
+
+        @NotBlank(message = "Last name must not be blank")
+        @Size(max = 50, message = "Last name must be at most 50 characters")
+        private String lastName;
+
+        @NotBlank(message = "National id must not be blank")
+        @Size(max = 20, message = "National id must be at most 20 characters")
+        private String nationalId;
+
+        @NotNull(message = "Date of birth is required")
+        private LocalDate dateOfBirth;
+
+        @Email(message = "Enter a valid email address")
+        @Size(max = 100, message = "Email must be at most 100 characters")
+        private String email;
+
+        /** Optional - the existing value is kept when this is null. */
+        private LocalDate dateEnrolled;
+
+        public String getFirstName() { return firstName; }
+        public void setFirstName(String firstName) { this.firstName = firstName; }
+
+        public String getMiddleName() { return middleName; }
+        public void setMiddleName(String middleName) { this.middleName = middleName; }
+
+        public String getLastName() { return lastName; }
+        public void setLastName(String lastName) { this.lastName = lastName; }
+
+        public String getNationalId() { return nationalId; }
+        public void setNationalId(String nationalId) { this.nationalId = nationalId; }
+
+        public LocalDate getDateOfBirth() { return dateOfBirth; }
+        public void setDateOfBirth(LocalDate dateOfBirth) { this.dateOfBirth = dateOfBirth; }
+
+        public String getEmail() { return email; }
+        public void setEmail(String email) { this.email = email; }
+
+        public LocalDate getDateEnrolled() { return dateEnrolled; }
+        public void setDateEnrolled(LocalDate dateEnrolled) { this.dateEnrolled = dateEnrolled; }
     }
 
     static class CreateStudentRequest extends PersonRequest {

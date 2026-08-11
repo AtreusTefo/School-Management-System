@@ -217,11 +217,62 @@
             </td>
             <td class="col-actions">
               <div class="row-actions">
+                <button type="button" class="btn btn--sm" (click)="startEdit(t)"
+                        [attr.aria-label]="'Edit ' + (t.fullName ?? t.username)">Edit</button>
                 <button type="button" class="btn btn--sm" (click)="startReset(t)">Reset password</button>
                 <button type="button" class="btn btn--sm btn--danger" (click)="onDelete(t)"
                         title="Refused while the teacher still teaches a course or has set work">
                   Delete
                 </button>
+              </div>
+            </td>
+          </tr>
+
+          <!-- Opens beneath the row rather than replacing its cells, so the name
+               and id stay visible while the form is being filled in. -->
+          <tr *ngIf="editingId === t.id">
+            <td colspan="4">
+              <div class="subform__head">
+                <h3>Edit {{ t.externalId ?? t.username }}</h3>
+              </div>
+              <!-- No username field: it is the generated login id (TCH...) and
+                   every audit entry names the teacher by it. -->
+              <div class="create-form">
+                <div class="field">
+                  <label class="field__label" [attr.for]="'editFirst' + t.id">First name</label>
+                  <input [id]="'editFirst' + t.id" class="input" type="text" name="editFirstName"
+                         [(ngModel)]="editFirstName" [maxlength]="personNameMaxLength" required />
+                </div>
+                <div class="field">
+                  <label class="field__label" [attr.for]="'editMiddle' + t.id">Middle name</label>
+                  <input [id]="'editMiddle' + t.id" class="input" type="text" name="editMiddleName"
+                         [(ngModel)]="editMiddleName" [maxlength]="personNameMaxLength" />
+                </div>
+                <div class="field">
+                  <label class="field__label" [attr.for]="'editLast' + t.id">Last name</label>
+                  <input [id]="'editLast' + t.id" class="input" type="text" name="editLastName"
+                         [(ngModel)]="editLastName" [maxlength]="personNameMaxLength" required />
+                </div>
+                <div class="field">
+                  <label class="field__label" [attr.for]="'editNid' + t.id">National id</label>
+                  <input [id]="'editNid' + t.id" class="input" type="text" name="editNationalId"
+                         [(ngModel)]="editNationalId" [maxlength]="nationalIdMaxLength" required />
+                </div>
+                <div class="field">
+                  <label class="field__label" [attr.for]="'editDob' + t.id">Date of birth</label>
+                  <input [id]="'editDob' + t.id" class="input" type="date" name="editDateOfBirth"
+                         [(ngModel)]="editDateOfBirth" required />
+                </div>
+                <div class="field">
+                  <label class="field__label" [attr.for]="'editEmail' + t.id">Contact email</label>
+                  <input [id]="'editEmail' + t.id" class="input" type="email" name="editEmail"
+                         [(ngModel)]="editEmail" [maxlength]="contactEmailMaxLength" />
+                </div>
+                <div class="row-actions">
+                  <button type="button" class="btn btn--sm btn--primary"
+                          [disabled]="!canSaveEdit" (click)="saveEdit(t)">Save</button>
+                  <button type="button" class="btn btn--sm btn--ghost" (click)="cancelEdit()">Cancel</button>
+                </div>
               </div>
             </td>
           </tr>

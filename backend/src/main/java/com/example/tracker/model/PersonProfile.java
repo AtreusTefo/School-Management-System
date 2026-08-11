@@ -162,8 +162,29 @@ public class PersonProfile {
         return nationalId;
     }
 
+    /**
+     * Correctable, deliberately.
+     *
+     * A national id is identity-defining, which argues for making it immutable
+     * - but it is also typed in by hand at onboarding, and a typo in it is
+     * precisely the thing an admin edit exists to fix. Refusing to correct one
+     * would force the account to be deleted and recreated, losing its
+     * generated login id and its audit history to fix a single character.
+     *
+     * The value stays guarded either way: uq_person_profile_national_id refuses
+     * a change that would collide with another person, whatever this setter is
+     * asked to do.
+     */
+    public void setNationalId(String nationalId) {
+        this.nationalId = nationalId;
+    }
+
     public LocalDate getDateOfBirth() {
         return dateOfBirth;
+    }
+
+    public void setDateOfBirth(LocalDate dateOfBirth) {
+        this.dateOfBirth = dateOfBirth;
     }
 
     public String getContactEmail() {
@@ -176,6 +197,10 @@ public class PersonProfile {
 
     public LocalDate getDateEnrolled() {
         return dateEnrolled;
+    }
+
+    public void setDateEnrolled(LocalDate dateEnrolled) {
+        this.dateEnrolled = dateEnrolled;
     }
 
     public Long getVersion() {

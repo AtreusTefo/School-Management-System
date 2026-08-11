@@ -273,6 +273,11 @@ code {
 .card__title { display: flex; align-items: baseline; gap: 10px; }
 .card__body  { padding: 20px; }
 
+/* A card that follows another on the same page. Written as a modifier rather
+   than a margin on every .card, so a card that is the only thing on its page
+   keeps sitting flush against the container padding. */
+.card--stacked { margin-top: 20px; }
+
 .card__note {
   padding: 12px 20px;
   background: var(--surface-muted);

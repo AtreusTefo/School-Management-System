@@ -2,7 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { AdminService, ImportSummary, Student } from './admin.service';
+import { AdminService, ImportSummary, PersonFields, Student } from './admin.service';
 import { AssignmentService, SchoolClass } from './assignment.service';
 import { NotificationService } from './notification.service';
 import { FieldErrorComponent } from './field-error.component';
@@ -45,6 +45,26 @@ export class AdminStudentsPageComponent implements OnInit {
   dateEnrolled = '';
   temporaryPassword = '';
   classId: number | null = null;
+
+  /*
+   * Reset, edit and delete: the three things a student account could not
+   * previously have done to it. A student whose temporary password was lost had
+   * no recovery path at all, because the password is a one-way hash.
+   *
+   * Each holds the id of the row it is open on, rather than a shared "editingId",
+   * so opening the reset box on one row cannot leave the edit form open on
+   * another.
+   */
+  resettingId: number | null = null;
+  resetTemporaryPassword = '';
+
+  editingId: number | null = null;
+  editFirstName = '';
+  editMiddleName = '';
+  editLastName = '';
+  editNationalId = '';
+  editDateOfBirth = '';
+  editEmail = '';
 
   showImport = false;
   importFile: File | null = null;
@@ -129,6 +149,114 @@ export class AdminStudentsPageComponent implements OnInit {
         this.load();
       },
       error: (err) => this.notifications.showError(err, 'Could not create that account')
+    });
+  }
+
+  // ----- reset password ------------------------------------------------------
+
+  startReset(student: Student): void {
+    this.resettingId = student.id;
+    this.resetTemporaryPassword = '';
+    this.editingId = null;
+  }
+
+  cancelReset(): void {
+    this.resettingId = null;
+  }
+
+  get canSaveReset(): boolean {
+    return this.resetTemporaryPassword.length >= PASSWORD_MIN_LENGTH;
+  }
+
+  saveReset(student: Student): void {
+    if (!this.canSaveReset) {
+      return;
+    }
+    this.admin.resetStudentPassword(student.id, this.resetTemporaryPassword).subscribe({
+      next: () => {
+        this.resettingId = null;
+        this.notice = `Issued a new temporary password for '${student.username}'. `
+                    + `They must change it before they can use the account.`;
+        this.load();
+      },
+      error: (err) => this.notifications.showError(err, 'Could not reset that password')
+    });
+  }
+
+  // ----- edit ------------------------------------------------------------------
+
+  startEdit(student: Student): void {
+    this.editingId = student.id;
+    this.resettingId = null;
+    this.editFirstName = student.firstName ?? '';
+    this.editMiddleName = student.middleName ?? '';
+    this.editLastName = student.lastName ?? '';
+    this.editNationalId = student.nationalId ?? '';
+    this.editDateOfBirth = student.dateOfBirth ?? '';
+    this.editEmail = student.contactEmail ?? '';
+  }
+
+  cancelEdit(): void {
+    this.editingId = null;
+  }
+
+  get canSaveEdit(): boolean {
+    return this.editFirstName.trim() !== ''
+        && this.editLastName.trim() !== ''
+        && this.editNationalId.trim() !== ''
+        && this.editDateOfBirth !== '';
+  }
+
+  /**
+   * The username is deliberately absent from this form.
+   *
+   * It is the generated login id (STU20260001) and every audit entry names the
+   * student by it; editing it would detach somebody from their own history. The
+   * server has no username field on its update DTO either, so the rule holds
+   * whoever calls it.
+   */
+  saveEdit(student: Student): void {
+    if (!this.canSaveEdit) {
+      return;
+    }
+    const fields = {
+      firstName: this.editFirstName.trim(),
+      middleName: this.editMiddleName.trim() || null,
+      lastName: this.editLastName.trim(),
+      nationalId: this.editNationalId.trim(),
+      dateOfBirth: this.editDateOfBirth,
+      email: this.editEmail.trim() || null,
+      temporaryPassword: ''   // stripped by AdminService before the request
+    } as PersonFields;
+
+    this.admin.updateStudent(student.id, fields).subscribe({
+      next: () => {
+        this.editingId = null;
+        this.notice = `Updated '${student.username}'.`;
+        this.load();
+      },
+      error: (err) => this.notifications.showError(err, 'Could not save those changes')
+    });
+  }
+
+  // ----- delete ----------------------------------------------------------------
+
+  /**
+   * Refused with 409 while the student has any submission or recorded mark, and
+   * that refusal is the point: removing the account would destroy the record
+   * that work was handed in and judged. The server's own sentence reaches the
+   * user through showError.
+   */
+  onDelete(student: Student): void {
+    if (!confirm(`Delete the account '${student.username}'? This cannot be undone.`)) {
+      return;
+    }
+    this.admin.deleteStudent(student.id).subscribe({
+      next: () => {
+        this.notice = `Deleted '${student.username}'.`;
+        this.load();
+      },
+      error: (err) => this.notifications.showError(err, 'Could not delete that account')
     });
   }
 

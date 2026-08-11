@@ -94,7 +94,7 @@ public class SchoolService {
 
     @Transactional
     public SubjectView createSubject(String code, String name) {
-        AppUser me = requireTeacher("create a subject");
+        AppUser me = requireAdmin("create a subject");
 
         String cleanCode = require(code, "Subject code");
         String cleanName = require(name, "Subject name");
@@ -132,7 +132,7 @@ public class SchoolService {
 
     @Transactional
     public ClassView createClass(String name) {
-        AppUser me = requireTeacher("create a class");
+        AppUser me = requireAdmin("create a class");
         String cleanName = require(name, "Class name");
 
         classes.findByNameIgnoreCase(cleanName).ifPresent(existing -> {
@@ -145,9 +145,183 @@ public class SchoolService {
         return ClassView.of(saved, 0);
     }
 
-    /** The register: who is in this class. Teacher only. */
+    // =============================================================================
+    // EDITING AND REMOVING THE TIMETABLE
+    // =============================================================================
+    /*
+     * WHY EVERY DELETE BELOW CHECKS FIRST, AND WHY NONE OF THEM CASCADE
+     *
+     * Every foreign key in this schema is ON DELETE NO_ACTION, deliberately (see
+     * V4). So the database ALREADY refuses to delete a subject that still has
+     * courses, or a class that still has enrolments - the data cannot be
+     * corrupted whatever this code does.
+     *
+     * What the database cannot do is explain itself. Without the checks below
+     * the refusal arrives as a driver-level constraint violation, which
+     * GlobalExceptionHandler can only honestly report as a 500 - a server fault,
+     * for what is actually a legitimate answer to a reasonable request. The
+     * checks turn that into a 409 naming exactly what is in the way.
+     *
+     * So: the CHECK is the message, the CONSTRAINT is the guarantee. Deleting
+     * either one leaves the system correct but worse. Adding ON DELETE CASCADE
+     * instead would remove somebody's marks as a side effect of tidying a
+     * subject list, which is the one thing this whole design refuses to do.
+     */
+
+    @Transactional
+    public SubjectView renameSubject(Long id, String code, String name) {
+        AppUser me = requireAdmin("rename a subject");
+        Subject subject = requireSubject(id);
+
+        String cleanCode = require(code, "Subject code");
+        String cleanName = require(name, "Subject name");
+
+        // "Taken by another subject", not "taken" - or renaming a subject
+        // without changing its code would collide with itself.
+        subjects.findByCodeIgnoreCase(cleanCode).ifPresent(other -> {
+            if (!other.getId().equals(subject.getId())) {
+                throw new IllegalStateException(
+                        "A subject with code '" + cleanCode + "' already exists.");
+            }
+        });
+        subjects.findByNameIgnoreCase(cleanName).ifPresent(other -> {
+            if (!other.getId().equals(subject.getId())) {
+                throw new IllegalStateException(
+                        "A subject named '" + cleanName + "' already exists.");
+            }
+        });
+
+        String before = subject.getCode() + " / " + subject.getName();
+        subject.setCode(cleanCode);
+        subject.setName(cleanName);
+
+        audit.record("Subject", subject.getId(), AuditAction.UPDATE, me,
+                "Renamed subject " + before + " to " + cleanCode + " / " + cleanName + ".");
+        return SubjectView.of(subject);
+    }
+
+    /**
+     * Remove a subject.
+     *
+     * Refused while any course still teaches it. A course carries assignments,
+     * submissions and marks behind it, so a subject is never the only thing
+     * being removed - it is the top of a chain the caller cannot see from here.
+     */
+    @Transactional
+    public void deleteSubject(Long id) {
+        AppUser me = requireAdmin("delete a subject");
+        Subject subject = requireSubject(id);
+
+        if (courses.existsBySubject(subject)) {
+            throw new IllegalStateException(
+                    "'" + subject.getName() + "' is still taught on at least one course and "
+                            + "cannot be deleted. Remove those courses first.");
+        }
+
+        String name = subject.getName();
+        Long subjectId = subject.getId();
+        subjects.delete(subject);
+
+        audit.record("Subject", subjectId, AuditAction.DELETE, me,
+                "Deleted subject '" + name + "'.");
+    }
+
+    @Transactional
+    public ClassView renameClass(Long id, String name) {
+        AppUser me = requireAdmin("rename a class");
+        SchoolClass schoolClass = requireClass(id);
+        String cleanName = require(name, "Class name");
+
+        classes.findByNameIgnoreCase(cleanName).ifPresent(other -> {
+            if (!other.getId().equals(schoolClass.getId())) {
+                throw new IllegalStateException(
+                        "A class named '" + cleanName + "' already exists.");
+            }
+        });
+
+        String before = schoolClass.getName();
+        schoolClass.setName(cleanName);
+
+        audit.record("SchoolClass", schoolClass.getId(), AuditAction.UPDATE, me,
+                "Renamed class '" + before + "' to '" + cleanName + "'.");
+        return ClassView.of(schoolClass,
+                enrolments.findBySchoolClassOrderByIdAsc(schoolClass).size());
+    }
+
+    /**
+     * Remove a class.
+     *
+     * Refused while anyone is enrolled OR any course is taught to it. Both are
+     * checked, and the enrolment one is checked FIRST because it is the easier
+     * mistake to make: a class looks empty on the timetable page when it has no
+     * courses, while still holding a register of students.
+     */
+    @Transactional
+    public void deleteClass(Long id) {
+        AppUser me = requireAdmin("delete a class");
+        SchoolClass schoolClass = requireClass(id);
+
+        if (enrolments.existsBySchoolClass(schoolClass)) {
+            throw new IllegalStateException(
+                    "'" + schoolClass.getName() + "' still has students enrolled and cannot be "
+                            + "deleted. Withdraw them first.");
+        }
+        if (courses.existsBySchoolClass(schoolClass)) {
+            throw new IllegalStateException(
+                    "'" + schoolClass.getName() + "' is still taught at least one course and "
+                            + "cannot be deleted. Remove those courses first.");
+        }
+
+        String name = schoolClass.getName();
+        Long classId = schoolClass.getId();
+        classes.delete(schoolClass);
+
+        audit.record("SchoolClass", classId, AuditAction.DELETE, me,
+                "Deleted class '" + name + "'.");
+    }
+
+    /**
+     * Remove a course - one teacher's teaching of one subject to one class.
+     *
+     * Refused while any assignment was set for it. This is the most important
+     * refusal of the set: an assignment fans out to a submission per enrolled
+     * student, and each of those may carry a PDF and a mark. Removing the
+     * course would strand all of it, so the work has to be dealt with first,
+     * as an explicit decision by somebody who can see what it is.
+     */
+    @Transactional
+    public void deleteCourse(Long id) {
+        AppUser me = requireAdmin("delete a course");
+        if (id == null) {
+            throw new IllegalArgumentException("Course id must not be null.");
+        }
+        Course course = Require.orThrow(courses.findById(id),
+                () -> new ResourceNotFoundException("course", id));
+
+        if (assignments.existsByCourse(course)) {
+            throw new IllegalStateException(
+                    "Work has already been set for " + labelOf(course) + ", so the course cannot "
+                            + "be deleted. Delete that work first - doing so is what decides "
+                            + "whether the submissions and marks behind it go with it.");
+        }
+
+        String label = labelOf(course);
+        Long courseId = course.getId();
+        courses.delete(course);
+
+        audit.record("Course", courseId, AuditAction.DELETE, me,
+                "Deleted course " + label + ".");
+    }
+
+    /** "Mathematics - Grade 10A (teacher)", for messages and the audit log. */
+    private String labelOf(Course course) {
+        return course.getSubject().getName() + " - " + course.getSchoolClass().getName()
+                + " (" + course.getTeacher().getUsername() + ")";
+    }
+
+    /** The register: who is in this class. Teacher or admin, never a student. */
     public List<String> listStudentsInClass(Long classId) {
-        requireTeacher("view a class register");
+        requireTeacherOrAdmin("view a class register");
         SchoolClass schoolClass = requireClass(classId);
 
         return enrolments.findBySchoolClassOrderByIdAsc(schoolClass).stream()
@@ -168,7 +342,7 @@ public class SchoolService {
      */
     @Transactional
     public void enrolStudent(Long classId, String username) {
-        AppUser me = requireTeacher("enrol a student");
+        AppUser me = requireAdmin("enrol a student");
 
         SchoolClass schoolClass = requireClass(classId);
         AppUser student = users.findByUsernameOrReject(require(username, "Username"));
@@ -205,7 +379,7 @@ public class SchoolService {
      */
     @Transactional
     public void withdrawStudent(Long classId, String username) {
-        AppUser me = requireTeacher("withdraw a student");
+        AppUser me = requireAdmin("withdraw a student");
 
         SchoolClass schoolClass = requireClass(classId);
         AppUser student = users.findByUsernameOrReject(require(username, "Username"));
@@ -256,27 +430,30 @@ public class SchoolService {
 
     /** Every course in the school. Teacher only - used when setting up teaching. */
     public List<CourseView> listAllCourses() {
-        requireTeacher("view every course");
+        requireTeacherOrAdmin("view every course");
         return courses.findAllByOrderByIdAsc().stream().map(CourseView::of).toList();
     }
 
     /**
      * Record that a teacher teaches a subject to a class.
      *
-     * The teacher defaults to the caller, so the common case - "I teach this" -
-     * needs no extra field. Naming somebody else is allowed, because timetables
-     * are usually entered by one person on behalf of many.
+     * THE TEACHER MUST BE NAMED. It used to default to the caller, which made
+     * sense while a teacher built their own timetable - "I teach this" needed no
+     * extra field. Now that only an admin may write the timetable, that default
+     * would resolve to the admin and then fail the role check below with
+     * "'admin' is a ADMIN, and only a teacher can teach a course" - an error
+     * about the caller, for a request whose real fault is a missing field.
+     * Rejecting the blank up front says the useful thing instead.
      */
     @Transactional
     public CourseView createCourse(Long subjectId, Long classId, String teacherUsername) {
-        AppUser me = requireTeacher("set up a course");
+        AppUser me = requireAdmin("set up a course");
 
         Subject subject = requireSubject(subjectId);
         SchoolClass schoolClass = requireClass(classId);
 
-        AppUser teacher = (teacherUsername == null || teacherUsername.isBlank())
-                ? me
-                : users.findByUsernameOrReject(teacherUsername.trim());
+        AppUser teacher = users.findByUsernameOrReject(
+                require(teacherUsername, "Teacher username"));
 
         if (teacher.getRole() != Role.TEACHER) {
             throw new IllegalArgumentException(
@@ -524,6 +701,28 @@ public class SchoolService {
         AppUser me = users.currentActiveUser();
         if (me.getRole() != Role.TEACHER) {
             throw new AccessDeniedException("Only a teacher can " + action + ".");
+        }
+        return me;
+    }
+
+    /**
+     * Allow either a teacher or an admin.
+     *
+     * This exists because writing the timetable became admin-only while READING
+     * it stayed with teachers. Neither single guard fits: requireTeacher would
+     * lock the admin out of the very registers they now maintain - able to enrol
+     * a student but not to see who is already enrolled, which is how a class
+     * quietly ends up with somebody added twice - and requireAdmin would take a
+     * teacher's own class list away from them.
+     *
+     * A student is still refused, which is the part that matters: a register
+     * names every classmate, and that is not theirs to read.
+     */
+    @NonNull
+    private AppUser requireTeacherOrAdmin(String action) {
+        AppUser me = users.currentActiveUser();
+        if (me.getRole() != Role.TEACHER && me.getRole() != Role.ADMIN) {
+            throw new AccessDeniedException("Only a teacher or an admin can " + action + ".");
         }
         return me;
     }

@@ -21,6 +21,22 @@ export interface PersonFields {
   temporaryPassword: string;
 }
 
+/** The same fields an edit sends: everything except the credential. */
+export type PersonEditFields = Omit<PersonFields, 'temporaryPassword'>;
+
+/**
+ * Drop the temporary password before sending an edit.
+ *
+ * Editing and creating share a form, so the same object reaches both. Deleting
+ * the key here rather than trusting each call site means an edit cannot carry a
+ * credential even by accident - and the server, which has no password field on
+ * its update DTO at all, would ignore it regardless.
+ */
+function withoutPassword(fields: PersonFields): PersonEditFields {
+  const { temporaryPassword, ...rest } = fields;
+  return rest;
+}
+
 /** One (subject, class) pair a newly created teacher starts out teaching. */
 export interface CourseAssignment {
   subjectId: number;
@@ -38,6 +54,11 @@ export interface Teacher {
   externalId: string | null;
   mustChangePassword: boolean;
   fullName: string | null;
+  /* The name in parts as well as joined - an edit form needs the three fields
+     back, and splitting a joined name to recover them is guesswork. */
+  firstName: string | null;
+  middleName: string | null;
+  lastName: string | null;
   nationalId: string | null;
   dateOfBirth: string | null;
   contactEmail: string | null;
@@ -59,6 +80,11 @@ export interface Student {
   className: string | null;
   mustChangePassword: boolean;
   fullName: string | null;
+  /* The name in parts as well as joined - an edit form needs the three fields
+     back, and splitting a joined name to recover them is guesswork. */
+  firstName: string | null;
+  middleName: string | null;
+  lastName: string | null;
   nationalId: string | null;
   dateOfBirth: string | null;
   contactEmail: string | null;
@@ -197,6 +223,40 @@ export class AdminService {
     const form = new FormData();
     form.append('file', file, file.name);
     return this.http.post<ImportSummary>(`${this.api}/api/students/import`, form, this.opts);
+  }
+
+  /**
+   * Issue a student a new temporary password.
+   *
+   * The account is marked pending by the server, so the password the admin
+   * just typed must be replaced before the student can do anything with it.
+   */
+  resetStudentPassword(id: number, temporaryPassword: string): Observable<Student> {
+    return this.http.put<Student>(
+      `${this.api}/api/students/${id}/password`, { temporaryPassword }, this.opts);
+  }
+
+  /**
+   * Correct a person's biographical detail.
+   *
+   * PersonFields carries a temporaryPassword because CREATING an account needs
+   * one; an edit must not send it, or correcting a spelling would rotate the
+   * credential. The field is stripped here rather than left to each caller to
+   * remember - the server rejects it too, but one place is better than four.
+   */
+  updateStudent(id: number, fields: PersonFields): Observable<Student> {
+    return this.http.put<Student>(
+      `${this.api}/api/students/${id}`, withoutPassword(fields), this.opts);
+  }
+
+  updateTeacher(id: number, fields: PersonFields): Observable<Teacher> {
+    return this.http.put<Teacher>(
+      `${this.api}/api/teachers/${id}`, withoutPassword(fields), this.opts);
+  }
+
+  /** Refused with 409 while the student has any submission or recorded mark. */
+  deleteStudent(id: number): Observable<void> {
+    return this.http.delete<void>(`${this.api}/api/students/${id}`, this.opts);
   }
 
   /** One student's current teachers, by subject. */

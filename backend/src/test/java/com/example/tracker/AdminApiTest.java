@@ -674,4 +674,383 @@ class AdminApiTest {
                .andExpect(jsonPath("$.page.size", is(1)));
         }
     }
+
+    // =============================================================================
+    // THE TIMETABLE IS THE ADMIN'S TO WRITE
+    // =============================================================================
+
+    @Nested
+    @DisplayName("writing the timetable")
+    class Timetable {
+
+        /*
+         * These endpoints used to be teacher-only, which meant a teacher could
+         * invent a subject, a class, or a course naming any colleague as its
+         * teacher. The timetable decides who receives every future assignment,
+         * so it is now the admin's alone.
+         *
+         * Every case is asserted in BOTH directions - refused for a teacher, and
+         * accepted for an admin. A one-sided test passes just as happily when the
+         * endpoint is broken for everybody.
+         *
+         * Note these could not have been caught by the existing validation tests:
+         * @Valid runs at the web edge, BEFORE the service guard, so a request with
+         * a bad body returns 400 no matter who sent it. Only a well-formed request
+         * reaches the role check at all.
+         */
+
+        @Test
+        @DisplayName("a teacher can no longer create a subject, a class, or a course")
+        void teacherIsRefused() throws Exception {
+            mvc.perform(post("/api/subjects").with(asTeacher()).with(csrf())
+                            .contentType("application/json")
+                            .content("{\"code\":\"TCH1\",\"name\":\"Teacher made this\"}"))
+               .andExpect(status().isForbidden());
+
+            mvc.perform(post("/api/classes").with(asTeacher()).with(csrf())
+                            .contentType("application/json")
+                            .content("{\"name\":\"Teacher made this class\"}"))
+               .andExpect(status().isForbidden());
+
+            mvc.perform(post("/api/courses").with(asTeacher()).with(csrf())
+                            .contentType("application/json")
+                            .content("{\"subjectId\":" + requireSubjectId("MATH")
+                                    + ",\"classId\":" + requireClassId("Grade 10A")
+                                    + ",\"teacherUsername\":\"teacher\"}"))
+               .andExpect(status().isForbidden());
+        }
+
+        @Test
+        @DisplayName("a teacher can no longer enrol or withdraw a student")
+        void teacherCannotChangeTheRegister() throws Exception {
+            Long classId = requireClassId("Grade 10A");
+
+            mvc.perform(post("/api/classes/" + classId + "/students")
+                            .with(asTeacher()).with(csrf())
+                            .contentType("application/json")
+                            .content("{\"username\":\"student\"}"))
+               .andExpect(status().isForbidden());
+
+            mvc.perform(delete("/api/classes/" + classId + "/students/student")
+                            .with(asTeacher()).with(csrf()))
+               .andExpect(status().isForbidden());
+        }
+
+        @Test
+        @DisplayName("an admin can create a subject and a class")
+        void adminCanWriteTheTimetable() throws Exception {
+            mvc.perform(post("/api/subjects").with(asAdmin()).with(csrf())
+                            .contentType("application/json")
+                            .content("{\"code\":\"ADM1\",\"name\":\"Admin made this\"}"))
+               .andExpect(status().isOk())
+               .andExpect(jsonPath("$.code", is("ADM1")));
+
+            mvc.perform(post("/api/classes").with(asAdmin()).with(csrf())
+                            .contentType("application/json")
+                            .content("{\"name\":\"Admin made this class\"}"))
+               .andExpect(status().isOk())
+               .andExpect(jsonPath("$.name", is("Admin made this class")));
+        }
+
+        /*
+         * createCourse used to default the teacher to the caller. That default is
+         * gone, because the caller is now always an admin and an admin cannot
+         * teach - it would have failed with a message about the admin's role
+         * rather than about the field that was actually missing.
+         */
+        @Test
+        @DisplayName("a course must name its teacher, and says so plainly")
+        void courseMustNameItsTeacher() throws Exception {
+            mvc.perform(post("/api/courses").with(asAdmin()).with(csrf())
+                            .contentType("application/json")
+                            .content("{\"subjectId\":" + requireSubjectId("MATH")
+                                    + ",\"classId\":" + requireClassId("Grade 10A") + "}"))
+               .andExpect(status().isBadRequest())
+               .andExpect(jsonPath("$.message", containsStringIgnoringCase("teacher username")));
+        }
+
+        /*
+         * A register names every classmate, so a student must not read it. The
+         * admin must, or they would be enrolling students into a class whose
+         * current membership they cannot see.
+         */
+        @Test
+        @DisplayName("an admin and a teacher may read a class register; a student may not")
+        void registerIsReadableByStaffOnly() throws Exception {
+            Long classId = requireClassId("Grade 10A");
+
+            mvc.perform(get("/api/classes/" + classId + "/students").with(asAdmin()))
+               .andExpect(status().isOk());
+            mvc.perform(get("/api/classes/" + classId + "/students").with(asTeacher()))
+               .andExpect(status().isOk());
+            mvc.perform(get("/api/classes/" + classId + "/students").with(asStudent()))
+               .andExpect(status().isForbidden());
+        }
+    }
+
+    // =============================================================================
+    // EDITING AND REMOVING - AND WHAT MUST REFUSE TO BE REMOVED
+    // =============================================================================
+
+    @Nested
+    @DisplayName("maintaining student accounts - reset, edit, delete")
+    class StudentAccountMaintenance {
+
+        /*
+         * A student could previously be created and listed, and nothing else.
+         * The reset in particular closed a dead end: a password is a one-way
+         * hash, so a lost temporary password left the account unusable with
+         * nothing in the system able to rewrite it.
+         */
+
+        @Test
+        @DisplayName("an admin can reset a student's password, marking the account pending again")
+        void adminCanResetAStudentPassword() throws Exception {
+            String body = mvc.perform(post("/api/students")
+                            .contentType("application/json")
+                            .content(personJson("777000111"))
+                            .with(asAdmin()).with(csrf()))
+                    .andExpect(status().isCreated())
+                    .andReturn().getResponse().getContentAsString();
+            JsonNode created = new ObjectMapper().readTree(body);
+            Long id = created.get("id").asLong();
+            String externalId = created.get("externalId").asText();
+
+            mvc.perform(put("/api/students/" + id + "/password")
+                            .contentType("application/json")
+                            .content("{\"temporaryPassword\":\"brand-new-password\"}")
+                            .with(asAdmin()).with(csrf()))
+               .andExpect(status().isOk());
+
+            AppUser after = users.findByUsername(externalId).orElseThrow();
+            assertThat(encoder.matches("brand-new-password", after.getPasswordHash())).isTrue();
+            assertThat(after.isMustChangePassword())
+                    .as("a reset password is temporary, so the account is pending again")
+                    .isTrue();
+        }
+
+        @Test
+        @DisplayName("a teacher cannot reset a student's password")
+        void teacherCannotResetAStudentPassword() throws Exception {
+            mvc.perform(put("/api/students/" + idOf("student") + "/password")
+                            .contentType("application/json")
+                            .content("{\"temporaryPassword\":\"not-allowed-1\"}")
+                            .with(asTeacher()).with(csrf()))
+               .andExpect(status().isForbidden());
+        }
+
+        @Test
+        @DisplayName("an admin can correct a student's details")
+        void adminCanEditAStudent() throws Exception {
+            String body = mvc.perform(post("/api/students")
+                            .contentType("application/json")
+                            .content(personJson("777000222"))
+                            .with(asAdmin()).with(csrf()))
+                    .andReturn().getResponse().getContentAsString();
+            Long id = new ObjectMapper().readTree(body).get("id").asLong();
+
+            mvc.perform(put("/api/students/" + id)
+                            .contentType("application/json")
+                            .content("{\"firstName\":\"Corrected\",\"lastName\":\"Name\","
+                                    + "\"nationalId\":\"777000222\",\"dateOfBirth\":\"2001-02-03\"}")
+                            .with(asAdmin()).with(csrf()))
+               .andExpect(status().isOk())
+               .andExpect(jsonPath("$.fullName", containsString("Corrected")));
+        }
+
+        /*
+         * The edit path asks "is this national id somebody ELSE's", not "does it
+         * exist". Saving a record without touching its id would otherwise
+         * collide with itself and refuse every edit - a bug that only shows up
+         * when the field is left alone, which is the common case.
+         */
+        @Test
+        @DisplayName("editing a student without changing their national id is not a duplicate")
+        void editingWithoutChangingNationalIdIsAllowed() throws Exception {
+            String body = mvc.perform(post("/api/students")
+                            .contentType("application/json")
+                            .content(personJson("777000333"))
+                            .with(asAdmin()).with(csrf()))
+                    .andReturn().getResponse().getContentAsString();
+            Long id = new ObjectMapper().readTree(body).get("id").asLong();
+
+            mvc.perform(put("/api/students/" + id)
+                            .contentType("application/json")
+                            .content("{\"firstName\":\"Same\",\"lastName\":\"Id\","
+                                    + "\"nationalId\":\"777000333\",\"dateOfBirth\":\"2001-02-03\"}")
+                            .with(asAdmin()).with(csrf()))
+               .andExpect(status().isOk());
+        }
+
+        @Test
+        @DisplayName("taking another person's national id is refused with 409")
+        void cannotTakeSomebodyElsesNationalId() throws Exception {
+            mvc.perform(post("/api/students").contentType("application/json")
+                            .content(personJson("777000444")).with(asAdmin()).with(csrf()))
+               .andExpect(status().isCreated());
+
+            String body = mvc.perform(post("/api/students")
+                            .contentType("application/json")
+                            .content(personJson("777000555"))
+                            .with(asAdmin()).with(csrf()))
+                    .andReturn().getResponse().getContentAsString();
+            Long id = new ObjectMapper().readTree(body).get("id").asLong();
+
+            mvc.perform(put("/api/students/" + id)
+                            .contentType("application/json")
+                            .content("{\"firstName\":\"Thief\",\"lastName\":\"Of Ids\","
+                                    + "\"nationalId\":\"777000444\",\"dateOfBirth\":\"2001-02-03\"}")
+                            .with(asAdmin()).with(csrf()))
+               .andExpect(status().isConflict());
+        }
+
+        @Test
+        @DisplayName("an admin can delete a student who has no work, and their enrolment goes too")
+        void adminCanDeleteAnUnencumberedStudent() throws Exception {
+            String body = mvc.perform(post("/api/students")
+                            .contentType("application/json")
+                            .content("{\"firstName\":\"Temp\",\"lastName\":\"Student\","
+                                    + "\"nationalId\":\"777000666\",\"dateOfBirth\":\"2001-02-03\","
+                                    + "\"temporaryPassword\":\"temp-password-1\","
+                                    + "\"classId\":" + requireClassId("Grade 10A") + "}")
+                            .with(asAdmin()).with(csrf()))
+                    .andExpect(status().isCreated())
+                    .andReturn().getResponse().getContentAsString();
+            JsonNode created = new ObjectMapper().readTree(body);
+            Long id = created.get("id").asLong();
+            String externalId = created.get("externalId").asText();
+
+            mvc.perform(delete("/api/students/" + id).with(asAdmin()).with(csrf()))
+               .andExpect(status().isNoContent());
+
+            assertThat(users.findByUsername(externalId))
+                    .as("the account is gone, enrolment and profile with it")
+                    .isEmpty();
+        }
+
+        /*
+         * THE POINT OF THE WHOLE EXERCISE. 'student' is seeded with submissions
+         * and marks. Every foreign key is ON DELETE NO_ACTION, so the database
+         * would refuse this anyway - but as a raw constraint violation, which is
+         * only honestly reportable as a 500. The service check turns it into a
+         * 409 that names what is in the way.
+         */
+        @Test
+        @DisplayName("deleting a student who has work or marks is refused with 409, not a 500")
+        void deletingAStudentWithWorkIsRefused() throws Exception {
+            mvc.perform(delete("/api/students/" + idOf("student")).with(asAdmin()).with(csrf()))
+               .andExpect(status().isConflict())
+               .andExpect(jsonPath("$.message", anyOf(
+                       containsStringIgnoringCase("mark"),
+                       containsStringIgnoringCase("submission"))));
+
+            assertThat(users.findByUsername("student"))
+                    .as("a refused delete must leave the account exactly where it was")
+                    .isPresent();
+        }
+
+        @Test
+        @DisplayName("a teacher cannot delete a student")
+        void teacherCannotDeleteAStudent() throws Exception {
+            mvc.perform(delete("/api/students/" + idOf("student")).with(asTeacher()).with(csrf()))
+               .andExpect(status().isForbidden());
+        }
+    }
+
+    @Nested
+    @DisplayName("editing and removing the timetable")
+    class TimetableEditing {
+
+        @Test
+        @DisplayName("an admin can rename a subject and a class")
+        void adminCanRename() throws Exception {
+            // Created here rather than reusing a seeded subject: MATH, SCI and
+            // HIST are all taught on courses, and renaming shared fixture data
+            // would leak into whichever test happened to run next.
+            String created = mvc.perform(post("/api/subjects").contentType("application/json")
+                            .content("{\"code\":\"REN1\",\"name\":\"Renameable\"}")
+                            .with(asAdmin()).with(csrf()))
+                    .andExpect(status().isOk())
+                    .andReturn().getResponse().getContentAsString();
+            Long subjectId = new ObjectMapper().readTree(created).get("id").asLong();
+
+            mvc.perform(put("/api/subjects/" + subjectId)
+                            .contentType("application/json")
+                            .content("{\"code\":\"REN1\",\"name\":\"General Studies\"}")
+                            .with(asAdmin()).with(csrf()))
+               .andExpect(status().isOk())
+               .andExpect(jsonPath("$.name", is("General Studies")));
+
+            Long classId = requireClassId("Grade 10B");
+            mvc.perform(put("/api/classes/" + classId)
+                            .contentType("application/json")
+                            .content("{\"name\":\"Grade 10B renamed\"}")
+                            .with(asAdmin()).with(csrf()))
+               .andExpect(status().isOk())
+               .andExpect(jsonPath("$.name", is("Grade 10B renamed")));
+        }
+
+        @Test
+        @DisplayName("a teacher cannot rename or delete anything on the timetable")
+        void teacherCannotEditTheTimetable() throws Exception {
+            Long subjectId = requireSubjectId("MATH");
+            mvc.perform(put("/api/subjects/" + subjectId).contentType("application/json")
+                            .content("{\"code\":\"MATH\",\"name\":\"Mine now\"}")
+                            .with(asTeacher()).with(csrf()))
+               .andExpect(status().isForbidden());
+
+            mvc.perform(delete("/api/subjects/" + subjectId).with(asTeacher()).with(csrf()))
+               .andExpect(status().isForbidden());
+
+            mvc.perform(delete("/api/classes/" + requireClassId("Grade 10A"))
+                            .with(asTeacher()).with(csrf()))
+               .andExpect(status().isForbidden());
+        }
+
+        @Test
+        @DisplayName("a subject still taught on a course cannot be deleted")
+        void subjectInUseIsRefused() throws Exception {
+            mvc.perform(delete("/api/subjects/" + requireSubjectId("MATH"))
+                            .with(asAdmin()).with(csrf()))
+               .andExpect(status().isConflict())
+               .andExpect(jsonPath("$.message", containsStringIgnoringCase("course")));
+        }
+
+        @Test
+        @DisplayName("a class with students enrolled cannot be deleted")
+        void classWithStudentsIsRefused() throws Exception {
+            mvc.perform(delete("/api/classes/" + requireClassId("Grade 10A"))
+                            .with(asAdmin()).with(csrf()))
+               .andExpect(status().isConflict())
+               .andExpect(jsonPath("$.message", containsStringIgnoringCase("enrolled")));
+        }
+
+        @Test
+        @DisplayName("a course that already has work set cannot be deleted")
+        void courseWithWorkIsRefused() throws Exception {
+            String body = mvc.perform(get("/api/courses/all").with(asAdmin()))
+                    .andReturn().getResponse().getContentAsString();
+            JsonNode courses = new ObjectMapper().readTree(body);
+            assertThat(courses).as("the seed sets work, so some course must exist").isNotEmpty();
+
+            Long courseId = courses.get(0).get("id").asLong();
+            mvc.perform(delete("/api/courses/" + courseId).with(asAdmin()).with(csrf()))
+               .andExpect(status().isConflict())
+               .andExpect(jsonPath("$.message", containsStringIgnoringCase("work")));
+        }
+
+        @Test
+        @DisplayName("an unused subject CAN be deleted - the refusals are about dependants, not a blanket ban")
+        void unusedSubjectCanBeDeleted() throws Exception {
+            String body = mvc.perform(post("/api/subjects").contentType("application/json")
+                            .content("{\"code\":\"DEL1\",\"name\":\"Delete me\"}")
+                            .with(asAdmin()).with(csrf()))
+                    .andExpect(status().isOk())
+                    .andReturn().getResponse().getContentAsString();
+            Long id = new ObjectMapper().readTree(body).get("id").asLong();
+
+            mvc.perform(delete("/api/subjects/" + id).with(asAdmin()).with(csrf()))
+               .andExpect(status().isNoContent());
+        }
+    }
 }

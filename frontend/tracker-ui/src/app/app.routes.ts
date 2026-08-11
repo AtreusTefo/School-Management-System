@@ -81,6 +81,14 @@ export const routes: Routes = [
     canActivate: [adminAuthGuard]
   },
   {
+    // Subjects, classes, courses and enrolment. Guarded like every other admin
+    // page - and, unlike a hidden card, actually unreachable without the role.
+    path: 'admin/timetable',
+    loadComponent: () => import('./admin-timetable-page.component')
+      .then(m => m.AdminTimetablePageComponent),
+    canActivate: [adminAuthGuard]
+  },
+  {
     path: 'admin/teachers',
     loadComponent: () => import('./admin-teachers-page.component').then(m => m.AdminTeachersPageComponent),
     canActivate: [adminAuthGuard]

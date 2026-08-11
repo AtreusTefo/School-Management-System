@@ -13,5 +13,13 @@ public interface PersonProfileRepository extends JpaRepository<PersonProfile, Lo
 
     Optional<PersonProfile> findByAppUser(AppUser appUser);
 
+    /**
+     * Used when EDITING a profile, where existsByNationalId is the wrong
+     * question. An edit that leaves the national id untouched would collide
+     * with itself under an exists check and refuse every save; the caller needs
+     * the owning row back so it can ask "is this somebody else's?" instead.
+     */
+    Optional<PersonProfile> findByNationalId(String nationalId);
+
     boolean existsByNationalId(String nationalId);
 }

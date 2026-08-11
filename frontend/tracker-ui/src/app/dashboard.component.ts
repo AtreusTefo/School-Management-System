@@ -1,52 +1,38 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { AssignmentService, Course, SchoolClass, Subject } from './assignment.service';
+import { AssignmentService, Course } from './assignment.service';
 import { SessionService } from './session.service';
 import { NotificationService } from './notification.service';
-import { FieldErrorComponent } from './field-error.component';
-import {
-  SUBJECT_CODE_MAX_LENGTH, SUBJECT_NAME_MAX_LENGTH,
-  CLASS_NAME_MAX_LENGTH, USERNAME_MAX_LENGTH
-} from './validation';
 
 /**
  * THE LANDING PAGE
  * -----------------
- * What is left once "Work I have set", "Marking queue" and "Reports" each
- * became their own page: a student or teacher's own timetable, quick links to
- * the three working pages, and - teachers only - the timetable itself
- * (subjects, classes, courses, enrolment). Creating accounts moved to the
- * admin panel entirely - see /admin/students and /admin/teachers - since
- * onboarding is now admin-only.
+ * What a student or teacher lands on: their own timetable, read-only, and quick
+ * links to the three working pages.
+ *
+ * It is now read-only by design. Creating accounts moved to the admin panel
+ * (/admin/students, /admin/teachers), and WRITING the timetable moved to
+ * /admin/timetable - subjects, classes, courses and enrolment decide who
+ * receives every future assignment, so a teacher inventing a class, or naming a
+ * colleague as the teacher of a course, put that decision in the wrong hands.
+ *
+ * An admin never reaches this page at all: AppComponent sends them to /admin on
+ * sign-in. That is exactly why the timetable had to MOVE rather than simply be
+ * re-gated here - see AdminTimetablePageComponent for the regression that
+ * caused.
  */
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, FieldErrorComponent],
+  imports: [CommonModule, RouterLink],
   templateUrl: './dashboard.component.html'
 })
 export class DashboardComponent implements OnInit {
 
-  readonly usernameMaxLength = USERNAME_MAX_LENGTH;
-  readonly subjectCodeMaxLength = SUBJECT_CODE_MAX_LENGTH;
-  readonly subjectNameMaxLength = SUBJECT_NAME_MAX_LENGTH;
-  readonly classNameMaxLength = CLASS_NAME_MAX_LENGTH;
 
   courses: Course[] = [];
-  subjects: Subject[] = [];
-  classes: SchoolClass[] = [];
 
-  showTimetable = false;
-  newSubjectCode = '';
-  newSubjectName = '';
-  newClassName = '';
-  courseSubjectId: number | null = null;
-  courseClassId: number | null = null;
-  enrolClassId: number | null = null;
-  enrolUsername = '';
-  timetableNotice: string | null = null;
 
   constructor(
     private service: AssignmentService,
@@ -63,6 +49,7 @@ export class DashboardComponent implements OnInit {
     return this.session.isTeacher;
   }
 
+
   get mySubjects(): string[] {
     return [...new Set(this.courses.map(c => c.subjectName))].sort();
   }
@@ -71,89 +58,55 @@ export class DashboardComponent implements OnInit {
     return [...new Set(this.courses.map(c => c.teacherUsername))].sort();
   }
 
+  get myClasses(): string[] {
+    return [...new Set(this.courses.map(c => c.className))].sort();
+  }
+
+  /**
+   * The course list grouped by subject, and again by class.
+   *
+   * All three views - subjects, classes, and the timetable itself - are the
+   * SAME rows read differently. A teacher asking "what do I teach" and "which
+   * classes am I assigned to" is asking about one relationship from two ends,
+   * so grouping in the browser is correct: a second request would fetch the
+   * same data and could disagree with the first if anything changed between
+   * them.
+   *
+   * Sorted by name so the order is stable between visits. The server returns
+   * courses in id order, which is the order they were created in - meaningful
+   * to nobody reading a timetable.
+   */
+  get bySubject(): { name: string; code: string; entries: Course[] }[] {
+    const groups = new Map<string, { name: string; code: string; entries: Course[] }>();
+    for (const c of this.courses) {
+      const group = groups.get(c.subjectName)
+        ?? { name: c.subjectName, code: c.subjectCode, entries: [] };
+      group.entries.push(c);
+      groups.set(c.subjectName, group);
+    }
+    return [...groups.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  get byClass(): { name: string; entries: Course[] }[] {
+    const groups = new Map<string, { name: string; entries: Course[] }>();
+    for (const c of this.courses) {
+      const group = groups.get(c.className) ?? { name: c.className, entries: [] };
+      group.entries.push(c);
+      groups.set(c.className, group);
+    }
+    return [...groups.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  /** The timetable rows themselves, ordered by subject then class. */
+  get timetable(): Course[] {
+    return [...this.courses].sort((a, b) =>
+      a.subjectName.localeCompare(b.subjectName) || a.className.localeCompare(b.className));
+  }
+
   loadCourses(): void {
     this.service.getCourses().subscribe({
       next: (data) => this.courses = data,
       error: (err) => this.notifications.showError(err, 'Could not load your courses')
-    });
-  }
-
-  // ----- the timetable (teachers only) ----------------------------------------
-
-  openTimetable(): void {
-    this.showTimetable = true;
-    this.timetableNotice = null;
-    this.service.getSubjects().subscribe({
-      next: (data) => this.subjects = data,
-      error: (err) => this.notifications.showError(err, 'Could not load subjects')
-    });
-    this.service.getClasses().subscribe({
-      next: (data) => this.classes = data,
-      error: (err) => this.notifications.showError(err, 'Could not load classes')
-    });
-  }
-
-  closeTimetable(): void {
-    this.showTimetable = false;
-  }
-
-  onCreateSubject(): void {
-    const code = this.newSubjectCode.trim();
-    const name = this.newSubjectName.trim();
-    if (!code || !name) {
-      return;
-    }
-    this.service.createSubject(code, name).subscribe({
-      next: (created) => {
-        this.subjects = [...this.subjects, created].sort((a, b) => a.name.localeCompare(b.name));
-        this.newSubjectCode = '';
-        this.newSubjectName = '';
-        this.timetableNotice = `Subject "${created.name}" added.`;
-      },
-      error: (err) => this.notifications.showError(err, 'Could not add the subject')
-    });
-  }
-
-  onCreateClass(): void {
-    const name = this.newClassName.trim();
-    if (!name) {
-      return;
-    }
-    this.service.createClass(name).subscribe({
-      next: (created) => {
-        this.classes = [...this.classes, created].sort((a, b) => a.name.localeCompare(b.name));
-        this.newClassName = '';
-        this.timetableNotice = `Class "${created.name}" added.`;
-      },
-      error: (err) => this.notifications.showError(err, 'Could not add the class')
-    });
-  }
-
-  onCreateCourse(): void {
-    if (this.courseSubjectId === null || this.courseClassId === null) {
-      return;
-    }
-    this.service.createCourse(this.courseSubjectId, this.courseClassId, null).subscribe({
-      next: (created) => {
-        this.timetableNotice = `You now teach ${created.label}.`;
-        this.loadCourses();
-      },
-      error: (err) => this.notifications.showError(err, 'Could not set up that course')
-    });
-  }
-
-  onEnrol(): void {
-    const username = this.enrolUsername.trim();
-    if (this.enrolClassId === null || !username) {
-      return;
-    }
-    this.service.enrolStudent(this.enrolClassId, username).subscribe({
-      next: () => {
-        this.timetableNotice = `"${username}" enrolled.`;
-        this.enrolUsername = '';
-        this.openTimetable();   // refresh the counts
-      },
-      error: (err) => this.notifications.showError(err, 'Could not enrol that student')
     });
   }
 }

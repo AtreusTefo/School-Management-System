@@ -193,17 +193,103 @@
         </tr>
       </thead>
       <tbody>
-        <tr *ngFor="let s of students">
-          <td>{{ s.fullName ?? s.username }}</td>
-          <td>{{ s.externalId ?? s.username }}</td>
-          <td>
-            <span *ngIf="s.className; else noClass">{{ s.className }}</span>
-            <ng-template #noClass><span class="muted">not enrolled</span></ng-template>
-          </td>
-          <td class="col-actions">
-            <a class="btn btn--sm" [routerLink]="['/admin/students', s.id]">Manage</a>
-          </td>
-        </tr>
+        <ng-container *ngFor="let s of students">
+          <tr [class.is-editing]="editingId === s.id || resettingId === s.id">
+            <td>{{ s.fullName ?? s.username }}</td>
+            <td>{{ s.externalId ?? s.username }}</td>
+            <td>
+              <span *ngIf="s.className; else noClass">{{ s.className }}</span>
+              <ng-template #noClass><span class="muted">not enrolled</span></ng-template>
+            </td>
+            <td class="col-actions">
+              <div class="row-actions">
+                <a class="btn btn--sm" [routerLink]="['/admin/students', s.id]">Manage</a>
+                <button type="button" class="btn btn--sm" (click)="startEdit(s)"
+                        [attr.aria-label]="'Edit ' + (s.fullName ?? s.username)">Edit</button>
+                <button type="button" class="btn btn--sm" (click)="startReset(s)"
+                        [attr.aria-label]="'Reset the password of ' + (s.fullName ?? s.username)">
+                  Reset password
+                </button>
+                <button type="button" class="btn btn--sm btn--danger" (click)="onDelete(s)"
+                        title="Refused while the student has any submission or recorded mark"
+                        [attr.aria-label]="'Delete ' + (s.fullName ?? s.username)">Delete</button>
+              </div>
+            </td>
+          </tr>
+
+          <!-- Reset and edit open as a row BENEATH the one they act on, rather
+               than replacing its cells. The name and id stay visible, which is
+               what stops an admin resetting the wrong person's password when
+               two students share a surname. -->
+          <tr *ngIf="resettingId === s.id" class="is-editing">
+            <td colspan="4">
+              <div class="subform__head">
+                <h3>New temporary password for {{ s.externalId ?? s.username }}</h3>
+              </div>
+              <div class="create-form">
+                <div class="field">
+                  <label class="field__label" for="resetPassword">Temporary password</label>
+                  <input id="resetPassword" class="input" type="text" name="resetPassword"
+                         [(ngModel)]="resetTemporaryPassword"
+                         [minlength]="passwordMinLength" placeholder="At least 8 characters" />
+                  <span class="field__hint">
+                    The student must change this before the account can be used again.
+                  </span>
+                </div>
+                <button type="button" class="btn btn--sm btn--primary"
+                        (click)="saveReset(s)" [disabled]="!canSaveReset">Save</button>
+                <button type="button" class="btn btn--sm btn--ghost"
+                        (click)="cancelReset()">Cancel</button>
+              </div>
+            </td>
+          </tr>
+
+          <tr *ngIf="editingId === s.id" class="is-editing">
+            <td colspan="4">
+              <div class="subform__head">
+                <h3>Edit {{ s.externalId ?? s.username }}</h3>
+              </div>
+              <!-- No username field, deliberately: it is the generated login id
+                   and every audit entry names the student by it. -->
+              <div class="create-form">
+                <div class="field">
+                  <label class="field__label" for="editFirstName">First name</label>
+                  <input id="editFirstName" class="input" type="text" name="editFirstName"
+                         [(ngModel)]="editFirstName" [maxlength]="personNameMaxLength" required />
+                </div>
+                <div class="field">
+                  <label class="field__label" for="editMiddleName">Middle name</label>
+                  <input id="editMiddleName" class="input" type="text" name="editMiddleName"
+                         [(ngModel)]="editMiddleName" [maxlength]="personNameMaxLength" />
+                </div>
+                <div class="field">
+                  <label class="field__label" for="editLastName">Last name</label>
+                  <input id="editLastName" class="input" type="text" name="editLastName"
+                         [(ngModel)]="editLastName" [maxlength]="personNameMaxLength" required />
+                </div>
+                <div class="field">
+                  <label class="field__label" for="editNationalId">National id</label>
+                  <input id="editNationalId" class="input" type="text" name="editNationalId"
+                         [(ngModel)]="editNationalId" [maxlength]="nationalIdMaxLength" required />
+                </div>
+                <div class="field">
+                  <label class="field__label" for="editDateOfBirth">Date of birth</label>
+                  <input id="editDateOfBirth" class="input" type="date" name="editDateOfBirth"
+                         [(ngModel)]="editDateOfBirth" required />
+                </div>
+                <div class="field">
+                  <label class="field__label" for="editEmail">Contact email</label>
+                  <input id="editEmail" class="input" type="email" name="editEmail"
+                         [(ngModel)]="editEmail" [maxlength]="contactEmailMaxLength" />
+                </div>
+                <button type="button" class="btn btn--sm btn--primary"
+                        (click)="saveEdit(s)" [disabled]="!canSaveEdit">Save</button>
+                <button type="button" class="btn btn--sm btn--ghost"
+                        (click)="cancelEdit()">Cancel</button>
+              </div>
+            </td>
+          </tr>
+        </ng-container>
       </tbody>
     </table>
   </div>

@@ -24,6 +24,15 @@ public record StudentView(
         String className,
         boolean mustChangePassword,
         String fullName,
+        /*
+         * The name in PARTS as well as joined. fullName is what a list wants;
+         * an edit form needs the three fields back, and splitting a joined name
+         * to recover them is guesswork - "van der Merwe" has no reliable seam.
+         * Sending both costs three strings and removes the guess entirely.
+         */
+        String firstName,
+        String middleName,
+        String lastName,
         String nationalId,
         LocalDate dateOfBirth,
         String contactEmail,
@@ -37,6 +46,9 @@ public record StudentView(
                 className,
                 student.isMustChangePassword(),
                 profile == null ? null : profile.getFullName(),
+                profile == null ? null : profile.getFirstName(),
+                profile == null ? null : profile.getMiddleName(),
+                profile == null ? null : profile.getLastName(),
                 profile == null ? null : profile.getNationalId(),
                 profile == null ? null : profile.getDateOfBirth(),
                 profile == null ? null : profile.getContactEmail(),

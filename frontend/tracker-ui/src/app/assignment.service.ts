@@ -279,7 +279,43 @@ export class AssignmentService {
       `${this.api}/api/courses`, { subjectId, classId, teacherUsername }, this.opts);
   }
 
-  /** The register for a class. Teacher only. */
+  /** Every course in the school, not just the caller's. Teacher or admin. */
+  getAllCourses(): Observable<Course[]> {
+    return this.http.get<Course[]>(`${this.api}/api/courses/all`, this.opts);
+  }
+
+  // ----- editing and removing the timetable (admin only) ---------------------
+  /*
+   * Each delete below can legitimately answer 409: the server refuses to remove
+   * anything that still has dependants, and says which. Callers must surface
+   * that message rather than a generic failure - it is the whole reason the
+   * check exists, since the database alone could only produce a 500.
+   */
+
+  renameSubject(id: number, code: string, name: string): Observable<Subject> {
+    return this.http.put<Subject>(`${this.api}/api/subjects/${id}`, { code, name }, this.opts);
+  }
+
+  /** Refused with 409 while any course still teaches it. */
+  deleteSubject(id: number): Observable<void> {
+    return this.http.delete<void>(`${this.api}/api/subjects/${id}`, this.opts);
+  }
+
+  renameClass(id: number, name: string): Observable<SchoolClass> {
+    return this.http.put<SchoolClass>(`${this.api}/api/classes/${id}`, { name }, this.opts);
+  }
+
+  /** Refused with 409 while anyone is enrolled or any course is taught to it. */
+  deleteClass(id: number): Observable<void> {
+    return this.http.delete<void>(`${this.api}/api/classes/${id}`, this.opts);
+  }
+
+  /** Refused with 409 once any work has been set for it. */
+  deleteCourse(id: number): Observable<void> {
+    return this.http.delete<void>(`${this.api}/api/courses/${id}`, this.opts);
+  }
+
+  /** The register for a class. Teacher or admin, never a student. */
   getClassStudents(classId: number): Observable<string[]> {
     return this.http.get<string[]>(
       `${this.api}/api/classes/${classId}/students`, this.opts);
