@@ -1262,13 +1262,29 @@ class AdminApiTest {
                .andExpect(status().isOk())
                .andExpect(jsonPath("$.name", is("General Studies")));
 
-            Long classId = requireClassId("Grade 10B");
+            // Created here rather than reusing "Grade 10B", for the identical
+            // reason the subject above is created rather than reusing MATH:
+            // renaming shared seed data is a permanent write for the rest of
+            // this JVM's test run, and any OTHER test that looks up "Grade
+            // 10B" by its original name - see requireClassId("Grade 10B") a
+            // few hundred lines above - would fail with "not found" if it
+            // happened to run afterwards. JUnit does not guarantee execution
+            // order across nested classes, so this is not hypothetical: it
+            // passed locally by coincidence of ordering and failed on CI,
+            // where the order came out differently.
+            String createdClass = mvc.perform(post("/api/classes").contentType("application/json")
+                            .content("{\"name\":\"Renameable Class\"}")
+                            .with(asAdmin()).with(csrf()))
+                    .andExpect(status().isOk())
+                    .andReturn().getResponse().getContentAsString();
+            Long classId = new ObjectMapper().readTree(createdClass).get("id").asLong();
+
             mvc.perform(put("/api/classes/" + classId)
                             .contentType("application/json")
-                            .content("{\"name\":\"Grade 10B renamed\"}")
+                            .content("{\"name\":\"Renamed Class\"}")
                             .with(asAdmin()).with(csrf()))
                .andExpect(status().isOk())
-               .andExpect(jsonPath("$.name", is("Grade 10B renamed")));
+               .andExpect(jsonPath("$.name", is("Renamed Class")));
         }
 
         @Test
