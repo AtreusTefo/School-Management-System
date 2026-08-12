@@ -2,11 +2,12 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AssignmentService, Course, SchoolClass, Subject } from './assignment.service';
+import { AdminService, Student, Teacher } from './admin.service';
 import { NotificationService } from './notification.service';
+import { ConfirmService } from './confirm.service';
 import { FieldErrorComponent } from './field-error.component';
 import {
-  SUBJECT_CODE_MAX_LENGTH, SUBJECT_NAME_MAX_LENGTH,
-  CLASS_NAME_MAX_LENGTH, USERNAME_MAX_LENGTH
+  SUBJECT_CODE_MAX_LENGTH, SUBJECT_NAME_MAX_LENGTH, CLASS_NAME_MAX_LENGTH
 } from './validation';
 
 /**
@@ -37,7 +38,6 @@ import {
 })
 export class AdminTimetablePageComponent implements OnInit {
 
-  readonly usernameMaxLength = USERNAME_MAX_LENGTH;
   readonly subjectCodeMaxLength = SUBJECT_CODE_MAX_LENGTH;
   readonly subjectNameMaxLength = SUBJECT_NAME_MAX_LENGTH;
   readonly classNameMaxLength = CLASS_NAME_MAX_LENGTH;
@@ -45,6 +45,15 @@ export class AdminTimetablePageComponent implements OnInit {
   subjects: Subject[] = [];
   classes: SchoolClass[] = [];
   courses: Course[] = [];
+  /*
+   * Loaded so the Teacher and Student fields below can be dropdowns rather
+   * than free-typed usernames. A typo in a hand-typed username used to fail
+   * only once submitted - `findByUsernameOrReject` on the backend has no way
+   * to tell "misspelled" from "does not exist" - and a dropdown removes the
+   * chance of the typo entirely, rather than catching it after the fact.
+   */
+  teachers: Teacher[] = [];
+  students: Student[] = [];
 
   /**
    * Which row is being renamed, and the text in its box.
@@ -83,7 +92,9 @@ export class AdminTimetablePageComponent implements OnInit {
 
   constructor(
     private service: AssignmentService,
-    private notifications: NotificationService
+    private admin: AdminService,
+    private notifications: NotificationService,
+    private confirmDialog: ConfirmService
   ) {}
 
   ngOnInit(): void {
@@ -91,7 +102,7 @@ export class AdminTimetablePageComponent implements OnInit {
     this.reload();
   }
 
-  /** Subjects, classes and courses: every form and list on this page needs them. */
+  /** Subjects, classes, courses, and who could be picked for the two dropdowns. */
   reload(): void {
     this.service.getSubjects().subscribe({
       next: (data) => this.subjects = data,
@@ -104,6 +115,14 @@ export class AdminTimetablePageComponent implements OnInit {
     this.service.getAllCourses().subscribe({
       next: (data) => this.courses = data,
       error: (err) => this.notifications.showError(err, 'Could not load courses')
+    });
+    this.admin.listTeachers().subscribe({
+      next: (data) => this.teachers = data,
+      error: (err) => this.notifications.showError(err, 'Could not load teachers')
+    });
+    this.admin.listStudents().subscribe({
+      next: (data) => this.students = data,
+      error: (err) => this.notifications.showError(err, 'Could not load students')
     });
   }
 
@@ -171,8 +190,8 @@ export class AdminTimetablePageComponent implements OnInit {
    * own sentence in front of the user rather than a generic failure.
    */
 
-  onDeleteSubject(s: Subject): void {
-    if (!confirm(`Delete the subject "${s.name}"? This cannot be undone.`)) {
+  async onDeleteSubject(s: Subject): Promise<void> {
+    if (!await this.confirmDialog.ask(`Delete the subject "${s.name}"? This cannot be undone.`)) {
       return;
     }
     this.service.deleteSubject(s.id).subscribe({
@@ -184,8 +203,8 @@ export class AdminTimetablePageComponent implements OnInit {
     });
   }
 
-  onDeleteClass(c: SchoolClass): void {
-    if (!confirm(`Delete the class "${c.name}"? This cannot be undone.`)) {
+  async onDeleteClass(c: SchoolClass): Promise<void> {
+    if (!await this.confirmDialog.ask(`Delete the class "${c.name}"? This cannot be undone.`)) {
       return;
     }
     this.service.deleteClass(c.id).subscribe({
@@ -197,8 +216,8 @@ export class AdminTimetablePageComponent implements OnInit {
     });
   }
 
-  onDeleteCourse(c: Course): void {
-    if (!confirm(`Delete the course "${c.label}"? This cannot be undone.`)) {
+  async onDeleteCourse(c: Course): Promise<void> {
+    if (!await this.confirmDialog.ask(`Delete the course "${c.label}"? This cannot be undone.`)) {
       return;
     }
     this.service.deleteCourse(c.id).subscribe({

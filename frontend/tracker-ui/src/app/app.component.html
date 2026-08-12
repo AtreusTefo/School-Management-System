@@ -46,6 +46,8 @@
            class="nav__link">Teachers</a>
         <a routerLink="/admin/students" routerLinkActive="nav__link--active"
            class="nav__link">Students</a>
+        <a routerLink="/admin/accounts" routerLinkActive="nav__link--active"
+           class="nav__link">All accounts</a>
         <a routerLink="/admin/timetable" routerLinkActive="nav__link--active"
            class="nav__link">Timetable</a>
         <a routerLink="/admin/audit-log" routerLinkActive="nav__link--active"
@@ -57,6 +59,8 @@
            [routerLinkActiveOptions]="{ exact: true }" class="nav__link">Dashboard</a>
         <a *ngIf="isTeacher" routerLink="/assignments" routerLinkActive="nav__link--active"
            class="nav__link">Work I have set</a>
+        <a *ngIf="isTeacher" routerLink="/my-students" routerLinkActive="nav__link--active"
+           class="nav__link">My students</a>
         <a routerLink="/marking-queue" routerLinkActive="nav__link--active" class="nav__link">
           {{ isTeacher ? 'Marking queue' : 'My work' }}
         </a>
@@ -237,11 +241,11 @@
               <div class="field">
                 <label class="field__label" for="newPassword">New password</label>
                 <input id="newPassword" class="input" type="password" name="newPassword"
-                       #newPasswordModel="ngModel"
+                       #newPasswordModel="ngModel" appPasswordStrength
                        [(ngModel)]="newPassword" autocomplete="new-password"
                        required [minlength]="passwordMinLength" />
                 <span class="field__hint" *ngIf="newPasswordModel.valid || !(newPasswordModel.touched || newPasswordModel.dirty)">
-                  At least {{ passwordMinLength }} characters.
+                  At least {{ passwordMinLength }} characters, with an uppercase letter, a digit and a symbol.
                 </span>
                 <app-field-error [control]="newPasswordModel" label="New password" />
               </div>
@@ -282,4 +286,27 @@
     </ng-container>
 
   </main>
+
+  <!-- ===== THE CONFIRMATION DIALOG =====
+       Replaces the browser's own confirm(), which had a real failure mode -
+       see ConfirmService's own header comment for why a Delete button could
+       appear to simply stop responding. One dialog, shared through
+       ConfirmService the same way the error banner is shared through
+       NotificationService, so any page can ask a yes/no question without
+       needing a reference to this component.
+
+       role="alertdialog" rather than plain "dialog": this box interrupts the
+       user to confirm something that cannot be undone, which is exactly what
+       alertdialog exists to announce. -->
+  <div *ngIf="confirmDialog.message()" class="modal-backdrop" (click)="confirmDialog.cancel()">
+    <div class="modal" role="alertdialog" aria-modal="true" aria-labelledby="confirmMessage"
+         (click)="$event.stopPropagation()">
+      <p id="confirmMessage" class="modal__message">{{ confirmDialog.message() }}</p>
+      <div class="modal__actions">
+        <button type="button" class="btn btn--ghost" (click)="confirmDialog.cancel()">Cancel</button>
+        <button type="button" class="btn btn--danger" autofocus
+                (click)="confirmDialog.confirm()">Delete</button>
+      </div>
+    </div>
+  </div>
 </div>

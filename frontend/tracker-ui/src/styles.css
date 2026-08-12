@@ -1269,3 +1269,71 @@ table.dataTable .input { min-width: 140px; }
     margin-top: 8px;
   }
 }
+
+/* -----------------------------------------------------------------------------
+   CONFIRMATION DIALOG
+   Replaces window.confirm() - see ConfirmService for why. Sits above the
+   sticky app bar (z-index: 20), and above everything else drawn so far.
+-------------------------------------------------------------------------------- */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(15, 23, 42, 0.5);
+}
+
+.modal {
+  width: 100%;
+  max-width: 420px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: 22px;
+}
+
+.modal__message {
+  margin: 0 0 20px;
+  color: var(--text);
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+/* -----------------------------------------------------------------------------
+   PHONE FIELD
+   The country code is fixed UI, not a typed character - Botswana is the only
+   country this school operates in, so asking for it every time would be one
+   more way to get it wrong for zero benefit. Only the 8 local digits are a
+   real input.
+-------------------------------------------------------------------------------- */
+.phone-field {
+  display: flex;
+  align-items: stretch;
+}
+
+.phone-field__prefix {
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  border: 1px solid var(--border-strong);
+  border-right: none;
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+  background: var(--surface-muted);
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.phone-field__input {
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}

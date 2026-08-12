@@ -63,6 +63,14 @@ export class FieldErrorComponent {
   /** A cross-field message from the host component, shown once the field has been touched. */
   @Input() externalError: string | null = null;
 
+  /**
+   * Replaces the generic "is not in the right format" a bare `pattern`
+   * failure would otherwise produce with the actual rule - see
+   * fieldErrorMessage's own doc comment. Optional: most fields using this
+   * component carry no `[pattern]` attribute at all.
+   */
+  @Input() patternHint: string | null = null;
+
   get message(): string | null {
     const interacted = !!this.control && (this.control.touched || this.control.dirty);
     if (!interacted) {
@@ -74,6 +82,6 @@ export class FieldErrorComponent {
     if (!this.control || this.control.valid) {
       return null;
     }
-    return fieldErrorMessage(this.control.errors, this.label);
+    return fieldErrorMessage(this.control.errors, this.label, this.patternHint);
   }
 }

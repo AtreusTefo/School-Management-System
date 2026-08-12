@@ -105,6 +105,19 @@ public class PersonProfile {
     @Column(name = "date_enrolled", nullable = false)
     private LocalDate dateEnrolled;
 
+    /**
+     * A Botswana mobile number in E.164 form: +267 followed by eight digits.
+     *
+     * NULLABLE for the same reason contactEmail is - see V9's own header. The
+     * profiles created before this column existed have no honest value to
+     * backfill it with; every profile the admin forms save from here on is
+     * required to carry one at the DTO layer, and ck_person_profile_phone_format
+     * enforces the shape at the database whichever layer wrote it.
+     */
+    @Size(max = 20)
+    @Column(name = "phone", length = 20)
+    private String phone;
+
     @jakarta.persistence.Version
     @JsonIgnore
     private Long version;
@@ -115,7 +128,7 @@ public class PersonProfile {
 
     public PersonProfile(AppUser appUser, String firstName, String middleName, String lastName,
                          String nationalId, LocalDate dateOfBirth, String contactEmail,
-                         LocalDate dateEnrolled) {
+                         String phone, LocalDate dateEnrolled) {
         this.appUser = appUser;
         this.firstName = firstName;
         this.middleName = middleName;
@@ -123,6 +136,7 @@ public class PersonProfile {
         this.nationalId = nationalId;
         this.dateOfBirth = dateOfBirth;
         this.contactEmail = contactEmail;
+        this.phone = phone;
         this.dateEnrolled = dateEnrolled;
     }
 
@@ -193,6 +207,14 @@ public class PersonProfile {
 
     public void setContactEmail(String contactEmail) {
         this.contactEmail = contactEmail;
+    }
+
+    public String getPhone() {
+        return phone;
+    }
+
+    public void setPhone(String phone) {
+        this.phone = phone;
     }
 
     public LocalDate getDateEnrolled() {

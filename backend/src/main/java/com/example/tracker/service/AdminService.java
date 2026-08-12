@@ -23,6 +23,7 @@ import com.example.tracker.repository.PersonProfileRepository;
 import com.example.tracker.repository.SchoolClassRepository;
 import com.example.tracker.repository.SubjectRepository;
 import com.example.tracker.repository.SubmissionRepository;
+import com.example.tracker.validation.PersonPatterns;
 import org.springframework.lang.NonNull;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -73,6 +74,12 @@ public class AdminService {
     /** Mirrors PersonProfile's own column bound, and the admin form's field. */
     private static final Pattern EMAIL_PATTERN =
             Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
+
+    /**
+     * A Botswana mobile number in E.164 form - mirrors PersonPatterns.PHONE,
+     * compiled once rather than re-parsed on every call.
+     */
+    private static final Pattern PHONE_PATTERN = Pattern.compile(PersonPatterns.PHONE);
 
     private final AppUserRepository users;
     private final PersonProfileRepository profiles;
@@ -143,6 +150,25 @@ public class AdminService {
                 .toList();
     }
 
+    /**
+     * Every admin account. ADMIN ONLY, same as the teacher and student lists.
+     *
+     * NO PersonProfile IS RETURNED, because none is collected - "Admin
+     * accounts do not get one - only the student and teacher forms ask for
+     * this detail" is a deliberate, documented decision (see the Scope Guard
+     * in CLAUDE.md), not a gap this method works around. AuthController's own
+     * UserView (id, username, role, mustChangePassword) is already the exact
+     * shape an admin account has to show; reusing it here says that plainly
+     * instead of inventing an AdminView that would carry null profile fields
+     * nobody could ever fill in.
+     */
+    public List<AuthController.UserView> listAdmins() {
+        requireAdmin("view the admin list");
+        return users.findByRoleOrderByUsernameAsc(Role.ADMIN).stream()
+                .map(AuthController.UserView::of)
+                .toList();
+    }
+
     // ----- single-record creation ------------------------------------------------
 
     /**
@@ -154,7 +180,8 @@ public class AdminService {
     @Transactional
     public StudentView createStudent(String firstName, String middleName, String lastName,
                                      String nationalId, LocalDate dateOfBirth, String contactEmail,
-                                     LocalDate dateEnrolled, String temporaryPassword, Long classId) {
+                                     String phone, LocalDate dateEnrolled, String temporaryPassword,
+                                     Long classId) {
         AppUser me = requireAdmin("create a student account");
         requireTemporaryPasswordLength(temporaryPassword);
 
@@ -163,7 +190,7 @@ public class AdminService {
                 externalId, encoder.encode(temporaryPassword), Role.STUDENT, true, externalId));
 
         PersonProfile profile = saveProfile(created, firstName, middleName, lastName,
-                nationalId, dateOfBirth, contactEmail, dateEnrolled);
+                nationalId, dateOfBirth, contactEmail, phone, dateEnrolled);
 
         String className = null;
         if (classId != null) {
@@ -190,7 +217,7 @@ public class AdminService {
     @Transactional
     public TeacherView createTeacher(String firstName, String middleName, String lastName,
                                      String nationalId, LocalDate dateOfBirth, String contactEmail,
-                                     LocalDate dateEnrolled, String temporaryPassword,
+                                     String phone, LocalDate dateEnrolled, String temporaryPassword,
                                      List<CourseAssignment> initialCourses) {
         AppUser me = requireAdmin("create a teacher account");
         requireTemporaryPasswordLength(temporaryPassword);
@@ -200,7 +227,7 @@ public class AdminService {
                 externalId, encoder.encode(temporaryPassword), Role.TEACHER, true, externalId));
 
         PersonProfile profile = saveProfile(created, firstName, middleName, lastName,
-                nationalId, dateOfBirth, contactEmail, dateEnrolled);
+                nationalId, dateOfBirth, contactEmail, phone, dateEnrolled);
 
         if (initialCourses != null) {
             for (CourseAssignment assignment : initialCourses) {
@@ -338,6 +365,10 @@ public class AdminService {
         String nationalId = cell(row, "nationalId");
         LocalDate dateOfBirth = parseDate(cell(row, "dateOfBirth"), "dateOfBirth");
         String email = cellOrNull(row, "email");
+        // Optional, unlike on the single-record admin form - a spreadsheet a
+        // school already has does not gain a phone column overnight. See
+        // saveProfile's own comment on why presence is a caller decision.
+        String phone = cellOrNull(row, "phone");
         String className = cellOrNull(row, "className");
         LocalDate dateEnrolled = parseOptionalDate(cellOrNull(row, "dateEnrolled"));
         String temporaryPassword = generateTemporaryPassword();
@@ -346,7 +377,7 @@ public class AdminService {
         AppUser created = users.save(new AppUser(
                 externalId, encoder.encode(temporaryPassword), Role.STUDENT, true, externalId));
         PersonProfile profile = saveProfile(created, firstName, middleName, lastName,
-                nationalId, dateOfBirth, email, dateEnrolled);
+                nationalId, dateOfBirth, email, phone, dateEnrolled);
 
         if (className != null) {
             SchoolClass schoolClass = classes.findByNameIgnoreCase(className)
@@ -371,6 +402,7 @@ public class AdminService {
         String nationalId = cell(row, "nationalId");
         LocalDate dateOfBirth = parseDate(cell(row, "dateOfBirth"), "dateOfBirth");
         String email = cellOrNull(row, "email");
+        String phone = cellOrNull(row, "phone");
         LocalDate dateEnrolled = parseOptionalDate(cellOrNull(row, "dateEnrolled"));
         String temporaryPassword = generateTemporaryPassword();
 
@@ -378,7 +410,7 @@ public class AdminService {
         AppUser created = users.save(new AppUser(
                 externalId, encoder.encode(temporaryPassword), Role.TEACHER, true, externalId));
         PersonProfile profile = saveProfile(created, firstName, middleName, lastName,
-                nationalId, dateOfBirth, email, dateEnrolled);
+                nationalId, dateOfBirth, email, phone, dateEnrolled);
 
         audit.record("AppUser", created.getId(), AuditAction.CREATE, me,
                 "Imported teacher '" + profile.getFullName() + "' (" + externalId + ").");
@@ -487,12 +519,12 @@ public class AdminService {
     @Transactional
     public StudentView updateStudent(Long id, String firstName, String middleName,
                                      String lastName, String nationalId, LocalDate dateOfBirth,
-                                     String contactEmail, LocalDate dateEnrolled) {
+                                     String contactEmail, String phone, LocalDate dateEnrolled) {
         AppUser me = requireAdmin("edit a student");
         AppUser student = requireStudent(id);
 
         PersonProfile profile = updateProfile(student, firstName, middleName, lastName,
-                nationalId, dateOfBirth, contactEmail, dateEnrolled);
+                nationalId, dateOfBirth, contactEmail, phone, dateEnrolled);
 
         audit.record("PersonProfile", student.getId(), AuditAction.UPDATE, me,
                 "Updated the profile of student '" + student.getUsername() + "'.");
@@ -563,12 +595,12 @@ public class AdminService {
     @Transactional
     public TeacherView updateTeacher(Long id, String firstName, String middleName,
                                      String lastName, String nationalId, LocalDate dateOfBirth,
-                                     String contactEmail, LocalDate dateEnrolled) {
+                                     String contactEmail, String phone, LocalDate dateEnrolled) {
         AppUser me = requireAdmin("edit a teacher");
         AppUser teacher = requireTeacher(id);
 
         PersonProfile profile = updateProfile(teacher, firstName, middleName, lastName,
-                nationalId, dateOfBirth, contactEmail, dateEnrolled);
+                nationalId, dateOfBirth, contactEmail, phone, dateEnrolled);
 
         audit.record("PersonProfile", teacher.getId(), AuditAction.UPDATE, me,
                 "Updated the profile of teacher '" + teacher.getUsername() + "'.");
@@ -608,12 +640,13 @@ public class AdminService {
      */
     private PersonProfile updateProfile(AppUser account, String firstName, String middleName,
                                         String lastName, String nationalId, LocalDate dateOfBirth,
-                                        String contactEmail, LocalDate dateEnrolled) {
+                                        String contactEmail, String phone, LocalDate dateEnrolled) {
         String cleanFirst = require(firstName, "First name");
         String cleanLast = require(lastName, "Last name");
         String cleanNationalId = require(nationalId, "National id");
         String cleanEmail = (contactEmail == null || contactEmail.isBlank())
                 ? null : contactEmail.trim();
+        String cleanPhone = (phone == null || phone.isBlank()) ? null : phone.trim();
 
         if (dateOfBirth == null) {
             throw new IllegalArgumentException("Date of birth is required.");
@@ -623,6 +656,10 @@ public class AdminService {
         }
         if (cleanEmail != null && !EMAIL_PATTERN.matcher(cleanEmail).matches()) {
             throw new IllegalArgumentException("'" + cleanEmail + "' is not a valid email address.");
+        }
+        if (cleanPhone != null && !PHONE_PATTERN.matcher(cleanPhone).matches()) {
+            throw new IllegalArgumentException(
+                    "'" + cleanPhone + "' is not a valid phone number - use +267 followed by 8 digits.");
         }
 
         PersonProfile existing = profiles.findByAppUser(account).orElse(null);
@@ -643,7 +680,7 @@ public class AdminService {
 
         if (existing == null) {
             return profiles.save(new PersonProfile(account, cleanFirst, cleanMiddle, cleanLast,
-                    cleanNationalId, dateOfBirth, cleanEmail, enrolled));
+                    cleanNationalId, dateOfBirth, cleanEmail, cleanPhone, enrolled));
         }
 
         existing.setFirstName(cleanFirst);
@@ -652,18 +689,30 @@ public class AdminService {
         existing.setNationalId(cleanNationalId);
         existing.setDateOfBirth(dateOfBirth);
         existing.setContactEmail(cleanEmail);
+        existing.setPhone(cleanPhone);
         existing.setDateEnrolled(enrolled);
         return profiles.save(existing);
     }
 
     private PersonProfile saveProfile(AppUser account, String firstName, String middleName,
                                       String lastName, String nationalId, LocalDate dateOfBirth,
-                                      String contactEmail, LocalDate dateEnrolled) {
+                                      String contactEmail, String phone, LocalDate dateEnrolled) {
         String cleanFirst = require(firstName, "First name");
         String cleanLast = require(lastName, "Last name");
         String cleanNationalId = require(nationalId, "National id");
         String cleanEmail = (contactEmail == null || contactEmail.isBlank())
                 ? null : contactEmail.trim();
+        /*
+         * Format-checked when present, never REQUIRED at this layer - the same
+         * treatment as cleanEmail just above. Presence is the CALLER's
+         * decision: the single-record admin form requires it via NotBlank on
+         * PersonRequest before this method is ever reached, while bulk import
+         * has no phone column to require one from - see importOneStudent and
+         * importOneTeacher below. Enforcing presence here would make every
+         * already-working CSV import fail the moment this method changed
+         * underneath it.
+         */
+        String cleanPhone = (phone == null || phone.isBlank()) ? null : phone.trim();
 
         if (dateOfBirth == null) {
             throw new IllegalArgumentException("Date of birth is required.");
@@ -673,6 +722,10 @@ public class AdminService {
         }
         if (cleanEmail != null && !EMAIL_PATTERN.matcher(cleanEmail).matches()) {
             throw new IllegalArgumentException("'" + cleanEmail + "' is not a valid email address.");
+        }
+        if (cleanPhone != null && !PHONE_PATTERN.matcher(cleanPhone).matches()) {
+            throw new IllegalArgumentException(
+                    "'" + cleanPhone + "' is not a valid phone number - use +267 followed by 8 digits.");
         }
 
         /*
@@ -688,7 +741,7 @@ public class AdminService {
 
         return profiles.save(new PersonProfile(account, cleanFirst,
                 (middleName == null || middleName.isBlank()) ? null : middleName.trim(),
-                cleanLast, cleanNationalId, dateOfBirth, cleanEmail, enrolled));
+                cleanLast, cleanNationalId, dateOfBirth, cleanEmail, cleanPhone, enrolled));
     }
 
     /**

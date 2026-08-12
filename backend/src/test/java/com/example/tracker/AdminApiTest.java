@@ -90,7 +90,8 @@ class AdminApiTest {
     private String personJson(String nationalId) {
         return "{\"firstName\":\"Kagiso\",\"lastName\":\"Molefe\","
                 + "\"nationalId\":\"" + nationalId + "\",\"dateOfBirth\":\"2000-01-01\","
-                + "\"temporaryPassword\":\"temp-password-1\"}";
+                + "\"phone\":\"+26771234567\","
+                + "\"temporaryPassword\":\"Temp-Password-1\"}";
     }
 
     private Long requireSubjectId(String code) throws Exception {
@@ -171,7 +172,7 @@ class AdminApiTest {
 
             mvc.perform(post("/api/auth/login")
                             .contentType("application/json")
-                            .content("{\"username\":\"" + externalId + "\",\"password\":\"temp-password-1\"}")
+                            .content("{\"username\":\"" + externalId + "\",\"password\":\"Temp-Password-1\"}")
                             .with(csrf()))
                .andExpect(status().isOk())
                .andExpect(jsonPath("$.role", is("TEACHER")))
@@ -231,7 +232,8 @@ class AdminApiTest {
                             .contentType("application/json")
                             .content("{\"firstName\":\"\",\"lastName\":\"Molefe\","
                                     + "\"nationalId\":\"333333333\",\"dateOfBirth\":\"2000-01-01\","
-                                    + "\"temporaryPassword\":\"temp-password-1\"}")
+                                    + "\"phone\":\"+26771234567\","
+                                    + "\"temporaryPassword\":\"Temp-Password-1\"}")
                             .with(asAdmin()).with(csrf()))
                .andExpect(status().isBadRequest());
         }
@@ -267,13 +269,13 @@ class AdminApiTest {
 
             mvc.perform(put("/api/teachers/" + id + "/password")
                             .contentType("application/json")
-                            .content("{\"temporaryPassword\":\"fresh-temp-password\"}")
+                            .content("{\"temporaryPassword\":\"Fresh-Temp-Password1\"}")
                             .with(asAdmin()).with(csrf()))
                .andExpect(status().isOk())
                .andExpect(jsonPath("$.mustChangePassword", is(true)));
 
             AppUser after = users.findById(id).orElseThrow();
-            assertThat(encoder.matches("fresh-temp-password", after.getPasswordHash())).isTrue();
+            assertThat(encoder.matches("Fresh-Temp-Password1", after.getPasswordHash())).isTrue();
         }
 
         @Test
@@ -308,7 +310,8 @@ class AdminApiTest {
                             .contentType("application/json")
                             .content("{\"firstName\":\"Boitumelo\",\"lastName\":\"Kgosi\","
                                     + "\"nationalId\":\"666666666\",\"dateOfBirth\":\"1985-05-05\","
-                                    + "\"temporaryPassword\":\"temp-password-1\","
+                                    + "\"phone\":\"+26771234567\","
+                                    + "\"temporaryPassword\":\"Temp-Password-1\","
                                     + "\"initialCourses\":[{\"subjectId\":" + subjectId
                                     + ",\"classId\":" + classId + "}]}")
                             .with(asAdmin()).with(csrf()))
@@ -318,6 +321,256 @@ class AdminApiTest {
                .andExpect(status().isOk())
                .andExpect(jsonPath("$[?(@.teacherUsername == 'Boitumelo Kgosi' "
                        + "|| @.subjectCode == 'HIST' && @.className == 'Grade 10B')]").exists());
+        }
+    }
+
+    // =============================================================================
+    // PHONE, NAME AND PASSWORD FORMAT - Jakarta Bean Validation on PersonRequest
+    // =============================================================================
+    /*
+     * These live here rather than in InputValidationApiTest, matching this
+     * file's own established precedent: blankFirstNameIsRefused, just above,
+     * already tests a PersonRequest field's Bean Validation from inside
+     * AdminApiTest rather than the generic validation suite. Admin-account
+     * field rules stay with the admin tests that already exercise the rest of
+     * that DTO.
+     */
+
+    @Nested
+    @DisplayName("phone, name and password format")
+    class PersonFieldValidation {
+
+        /** A valid body, with one field swapped out - isolates exactly what is under test. */
+        private String personJsonWithout(String nationalId, String fieldName, String fieldValue) {
+            String base = "{\"firstName\":\"Kagiso\",\"lastName\":\"Molefe\","
+                    + "\"nationalId\":\"" + nationalId + "\",\"dateOfBirth\":\"2000-01-01\","
+                    + "\"phone\":\"+26771234567\","
+                    + "\"temporaryPassword\":\"Temp-Password-1\"";
+            return base + ",\"" + fieldName + "\":" + fieldValue + "}";
+        }
+
+        @Test
+        @DisplayName("a phone number is required to create a teacher")
+        void phoneIsRequired() throws Exception {
+            mvc.perform(post("/api/teachers")
+                            .contentType("application/json")
+                            .content("{\"firstName\":\"Kagiso\",\"lastName\":\"Molefe\","
+                                    + "\"nationalId\":\"400000001\",\"dateOfBirth\":\"2000-01-01\","
+                                    + "\"temporaryPassword\":\"Temp-Password-1\"}")
+                            .with(asAdmin()).with(csrf()))
+               .andExpect(status().isBadRequest())
+               .andExpect(jsonPath("$.message", containsStringIgnoringCase("phone")));
+        }
+
+        @Test
+        @DisplayName("a phone number without the +267 country code is refused")
+        void phoneWithoutCountryCodeIsRefused() throws Exception {
+            mvc.perform(post("/api/teachers")
+                            .contentType("application/json")
+                            .content(personJsonWithout("400000002", "phone", "\"71234567\""))
+                            .with(asAdmin()).with(csrf()))
+               .andExpect(status().isBadRequest())
+               .andExpect(jsonPath("$.message", containsStringIgnoringCase("phone")));
+        }
+
+        @Test
+        @DisplayName("a phone number with the wrong digit count is refused")
+        void phoneWithWrongDigitCountIsRefused() throws Exception {
+            mvc.perform(post("/api/teachers")
+                            .contentType("application/json")
+                            .content(personJsonWithout("400000003", "phone", "\"+2677123456\""))
+                            .with(asAdmin()).with(csrf()))
+               .andExpect(status().isBadRequest())
+               .andExpect(jsonPath("$.message", containsStringIgnoringCase("phone")));
+        }
+
+        @Test
+        @DisplayName("a well-formed Botswana number is accepted and comes back on the created account")
+        void validPhoneIsAccepted() throws Exception {
+            mvc.perform(post("/api/teachers")
+                            .contentType("application/json")
+                            .content(personJsonWithout("400000004", "phone", "\"+26772345678\""))
+                            .with(asAdmin()).with(csrf()))
+               .andExpect(status().isCreated())
+               .andExpect(jsonPath("$.phone", is("+26772345678")));
+        }
+
+        @Test
+        @DisplayName("a first name containing a digit is refused")
+        void firstNameWithDigitIsRefused() throws Exception {
+            mvc.perform(post("/api/teachers")
+                            .contentType("application/json")
+                            .content("{\"firstName\":\"Kag1so\",\"lastName\":\"Molefe\","
+                                    + "\"nationalId\":\"400000005\",\"dateOfBirth\":\"2000-01-01\","
+                                    + "\"phone\":\"+26771234567\","
+                                    + "\"temporaryPassword\":\"Temp-Password-1\"}")
+                            .with(asAdmin()).with(csrf()))
+               .andExpect(status().isBadRequest())
+               .andExpect(jsonPath("$.message", containsStringIgnoringCase("first name")));
+        }
+
+        /*
+         * A hyphenated or apostrophe'd name must NOT be refused - the rule is
+         * "letters, spaces, hyphens and apostrophes", not "letters only". A
+         * regex that forgot the hyphen would reject "Van der Merwe" and
+         * "O'Brien", real names, not edge cases.
+         */
+        @Test
+        @DisplayName("a hyphenated last name is accepted")
+        void hyphenatedLastNameIsAccepted() throws Exception {
+            mvc.perform(post("/api/teachers")
+                            .contentType("application/json")
+                            .content("{\"firstName\":\"Kagiso\",\"lastName\":\"Van der Merwe\","
+                                    + "\"nationalId\":\"400000006\",\"dateOfBirth\":\"2000-01-01\","
+                                    + "\"phone\":\"+26771234567\","
+                                    + "\"temporaryPassword\":\"Temp-Password-1\"}")
+                            .with(asAdmin()).with(csrf()))
+               .andExpect(status().isCreated())
+               .andExpect(jsonPath("$.fullName", containsString("Van der Merwe")));
+        }
+
+        @Test
+        @DisplayName("a national id containing letters is refused")
+        void nationalIdWithLettersIsRefused() throws Exception {
+            mvc.perform(post("/api/teachers")
+                            .contentType("application/json")
+                            .content("{\"firstName\":\"Kagiso\",\"lastName\":\"Molefe\","
+                                    + "\"nationalId\":\"ABC000007\",\"dateOfBirth\":\"2000-01-01\","
+                                    + "\"phone\":\"+26771234567\","
+                                    + "\"temporaryPassword\":\"Temp-Password-1\"}")
+                            .with(asAdmin()).with(csrf()))
+               .andExpect(status().isBadRequest())
+               .andExpect(jsonPath("$.message", containsStringIgnoringCase("national id")));
+        }
+
+        @Test
+        @DisplayName("a temporary password with no uppercase letter is refused")
+        void passwordWithoutUppercaseIsRefused() throws Exception {
+            mvc.perform(post("/api/teachers")
+                            .contentType("application/json")
+                            .content("{\"firstName\":\"Kagiso\",\"lastName\":\"Molefe\","
+                                    + "\"nationalId\":\"400000008\",\"dateOfBirth\":\"2000-01-01\","
+                                    + "\"phone\":\"+26771234567\","
+                                    + "\"temporaryPassword\":\"lowercase-1\"}")
+                            .with(asAdmin()).with(csrf()))
+               .andExpect(status().isBadRequest())
+               .andExpect(jsonPath("$.message", containsStringIgnoringCase("uppercase")));
+        }
+
+        @Test
+        @DisplayName("a temporary password with no digit is refused")
+        void passwordWithoutDigitIsRefused() throws Exception {
+            mvc.perform(post("/api/teachers")
+                            .contentType("application/json")
+                            .content("{\"firstName\":\"Kagiso\",\"lastName\":\"Molefe\","
+                                    + "\"nationalId\":\"400000009\",\"dateOfBirth\":\"2000-01-01\","
+                                    + "\"phone\":\"+26771234567\","
+                                    + "\"temporaryPassword\":\"NoDigitsHere\"}")
+                            .with(asAdmin()).with(csrf()))
+               .andExpect(status().isBadRequest())
+               .andExpect(jsonPath("$.message", containsStringIgnoringCase("digit")));
+        }
+
+        @Test
+        @DisplayName("a temporary password with no symbol is refused")
+        void passwordWithoutSymbolIsRefused() throws Exception {
+            mvc.perform(post("/api/teachers")
+                            .contentType("application/json")
+                            .content("{\"firstName\":\"Kagiso\",\"lastName\":\"Molefe\","
+                                    + "\"nationalId\":\"400000010\",\"dateOfBirth\":\"2000-01-01\","
+                                    + "\"phone\":\"+26771234567\","
+                                    + "\"temporaryPassword\":\"NoSymbol123\"}")
+                            .with(asAdmin()).with(csrf()))
+               .andExpect(status().isBadRequest())
+               .andExpect(jsonPath("$.message", containsStringIgnoringCase("symbol")));
+        }
+
+        @Test
+        @DisplayName("a password satisfying every rule is accepted")
+        void compliantPasswordIsAccepted() throws Exception {
+            mvc.perform(post("/api/teachers")
+                            .contentType("application/json")
+                            .content("{\"firstName\":\"Kagiso\",\"lastName\":\"Molefe\","
+                                    + "\"nationalId\":\"400000011\",\"dateOfBirth\":\"2000-01-01\","
+                                    + "\"phone\":\"+26771234567\","
+                                    + "\"temporaryPassword\":\"Valid-Pass-1\"}")
+                            .with(asAdmin()).with(csrf()))
+               .andExpect(status().isCreated());
+        }
+
+        @Test
+        @DisplayName("editing a student without a phone number is refused")
+        void editWithoutPhoneIsRefused() throws Exception {
+            String body = mvc.perform(post("/api/students")
+                            .contentType("application/json")
+                            .content("{\"firstName\":\"Kagiso\",\"lastName\":\"Molefe\","
+                                    + "\"nationalId\":\"400000012\",\"dateOfBirth\":\"2000-01-01\","
+                                    + "\"phone\":\"+26771234567\","
+                                    + "\"temporaryPassword\":\"Temp-Password-1\"}")
+                            .with(asAdmin()).with(csrf()))
+                    .andReturn().getResponse().getContentAsString();
+            Long id = new ObjectMapper().readTree(body).get("id").asLong();
+
+            mvc.perform(put("/api/students/" + id)
+                            .contentType("application/json")
+                            .content("{\"firstName\":\"Kagiso\",\"lastName\":\"Molefe\","
+                                    + "\"nationalId\":\"400000012\",\"dateOfBirth\":\"2000-01-01\"}")
+                            .with(asAdmin()).with(csrf()))
+               .andExpect(status().isBadRequest())
+               .andExpect(jsonPath("$.message", containsStringIgnoringCase("phone")));
+        }
+
+        @Test
+        @DisplayName("bulk import does not require a phone column - a school's existing spreadsheet still works")
+        void bulkImportWithoutPhoneColumnStillSucceeds() throws Exception {
+            String csv = "firstName,lastName,nationalId,dateOfBirth\n"
+                    + "NoPhone,Person,400000013,2000-01-01\n";
+            MockMultipartFile file = new MockMultipartFile(
+                    "file", "students.csv", "text/csv", csv.getBytes(StandardCharsets.UTF_8));
+
+            mvc.perform(multipart("/api/students/import").file(file)
+                            .with(asAdmin()).with(csrf()))
+               .andExpect(status().isOk())
+               .andExpect(jsonPath("$.succeeded", is(1)));
+        }
+    }
+
+    // =============================================================================
+    // GET /api/teachers/me/students - A TEACHER'S OWN STUDENTS, FULL DETAIL
+    // =============================================================================
+
+    @Nested
+    @DisplayName("a teacher's own students")
+    class MyStudents {
+
+        @Test
+        @DisplayName("a teacher sees full detail for students in their own classes, and nobody else's")
+        void teacherSeesOnlyTheirOwnStudents() throws Exception {
+            String body = mvc.perform(get("/api/teachers/me/students").with(asTeacher()))
+                    .andExpect(status().isOk())
+                    .andReturn().getResponse().getContentAsString();
+            JsonNode root = new ObjectMapper().readTree(body);
+
+            assertThat(root).as("the seed enrols 'student' into Grade 10A, which 'teacher' teaches")
+                    .isNotEmpty();
+            for (JsonNode node : root) {
+                assertThat(node.get("nationalId")).as("full profile detail, not just a username").isNotNull();
+                assertThat(node.get("fullName")).isNotNull();
+            }
+        }
+
+        @Test
+        @DisplayName("a student cannot read the teacher's-students endpoint")
+        void studentCannotReadMyStudents() throws Exception {
+            mvc.perform(get("/api/teachers/me/students").with(asStudent()))
+               .andExpect(status().isForbidden());
+        }
+
+        @Test
+        @DisplayName("an anonymous caller cannot read the teacher's-students endpoint")
+        void anonymousCannotReadMyStudents() throws Exception {
+            mvc.perform(get("/api/teachers/me/students"))
+               .andExpect(status().isUnauthorized());
         }
     }
 
@@ -360,7 +613,8 @@ class AdminApiTest {
                             .contentType("application/json")
                             .content("{\"firstName\":\"Naledi\",\"lastName\":\"Pule\","
                                     + "\"nationalId\":\"888888888\",\"dateOfBirth\":\"2010-03-03\","
-                                    + "\"temporaryPassword\":\"temp-password-1\",\"classId\":" + classId + "}")
+                                    + "\"phone\":\"+26771234567\","
+                                    + "\"temporaryPassword\":\"Temp-Password-1\",\"classId\":" + classId + "}")
                             .with(asAdmin()).with(csrf()))
                     .andReturn().getResponse().getContentAsString();
 
@@ -460,7 +714,7 @@ class AdminApiTest {
         void adminCanCreateAdmin() throws Exception {
             mvc.perform(post("/api/admins")
                             .contentType("application/json")
-                            .content("{\"temporaryPassword\":\"temp-password-1\"}")
+                            .content("{\"temporaryPassword\":\"Temp-Password-1\"}")
                             .with(asAdmin()).with(csrf()))
                .andExpect(status().isCreated())
                .andExpect(jsonPath("$.username", startsWith("ADM")))
@@ -473,9 +727,32 @@ class AdminApiTest {
         void teacherCannotCreateAdmin() throws Exception {
             mvc.perform(post("/api/admins")
                             .contentType("application/json")
-                            .content("{\"temporaryPassword\":\"temp-password-1\"}")
+                            .content("{\"temporaryPassword\":\"Temp-Password-1\"}")
                             .with(asTeacher()).with(csrf()))
                .andExpect(status().isForbidden());
+        }
+
+        @Test
+        @DisplayName("an admin can list every admin account, with no profile fields")
+        void adminCanListAdmins() throws Exception {
+            mvc.perform(get("/api/admins").with(asAdmin()))
+               .andExpect(status().isOk())
+               .andExpect(jsonPath("$[?(@.username == 'admin')]").exists())
+               .andExpect(jsonPath("$[0].role", is("ADMIN")));
+        }
+
+        @Test
+        @DisplayName("a teacher cannot list admin accounts")
+        void teacherCannotListAdmins() throws Exception {
+            mvc.perform(get("/api/admins").with(asTeacher()))
+               .andExpect(status().isForbidden());
+        }
+
+        @Test
+        @DisplayName("an anonymous caller cannot list admin accounts")
+        void anonymousCannotListAdmins() throws Exception {
+            mvc.perform(get("/api/admins"))
+               .andExpect(status().isUnauthorized());
         }
     }
 
@@ -818,12 +1095,12 @@ class AdminApiTest {
 
             mvc.perform(put("/api/students/" + id + "/password")
                             .contentType("application/json")
-                            .content("{\"temporaryPassword\":\"brand-new-password\"}")
+                            .content("{\"temporaryPassword\":\"Brand-New-Password1\"}")
                             .with(asAdmin()).with(csrf()))
                .andExpect(status().isOk());
 
             AppUser after = users.findByUsername(externalId).orElseThrow();
-            assertThat(encoder.matches("brand-new-password", after.getPasswordHash())).isTrue();
+            assertThat(encoder.matches("Brand-New-Password1", after.getPasswordHash())).isTrue();
             assertThat(after.isMustChangePassword())
                     .as("a reset password is temporary, so the account is pending again")
                     .isTrue();
@@ -834,7 +1111,7 @@ class AdminApiTest {
         void teacherCannotResetAStudentPassword() throws Exception {
             mvc.perform(put("/api/students/" + idOf("student") + "/password")
                             .contentType("application/json")
-                            .content("{\"temporaryPassword\":\"not-allowed-1\"}")
+                            .content("{\"temporaryPassword\":\"Not-Allowed-1\"}")
                             .with(asTeacher()).with(csrf()))
                .andExpect(status().isForbidden());
         }
@@ -852,7 +1129,8 @@ class AdminApiTest {
             mvc.perform(put("/api/students/" + id)
                             .contentType("application/json")
                             .content("{\"firstName\":\"Corrected\",\"lastName\":\"Name\","
-                                    + "\"nationalId\":\"777000222\",\"dateOfBirth\":\"2001-02-03\"}")
+                                    + "\"nationalId\":\"777000222\",\"dateOfBirth\":\"2001-02-03\","
+                                    + "\"phone\":\"+26771234567\"}")
                             .with(asAdmin()).with(csrf()))
                .andExpect(status().isOk())
                .andExpect(jsonPath("$.fullName", containsString("Corrected")));
@@ -877,7 +1155,8 @@ class AdminApiTest {
             mvc.perform(put("/api/students/" + id)
                             .contentType("application/json")
                             .content("{\"firstName\":\"Same\",\"lastName\":\"Id\","
-                                    + "\"nationalId\":\"777000333\",\"dateOfBirth\":\"2001-02-03\"}")
+                                    + "\"nationalId\":\"777000333\",\"dateOfBirth\":\"2001-02-03\","
+                                    + "\"phone\":\"+26771234567\"}")
                             .with(asAdmin()).with(csrf()))
                .andExpect(status().isOk());
         }
@@ -899,7 +1178,8 @@ class AdminApiTest {
             mvc.perform(put("/api/students/" + id)
                             .contentType("application/json")
                             .content("{\"firstName\":\"Thief\",\"lastName\":\"Of Ids\","
-                                    + "\"nationalId\":\"777000444\",\"dateOfBirth\":\"2001-02-03\"}")
+                                    + "\"nationalId\":\"777000444\",\"dateOfBirth\":\"2001-02-03\","
+                                    + "\"phone\":\"+26771234567\"}")
                             .with(asAdmin()).with(csrf()))
                .andExpect(status().isConflict());
         }
@@ -911,7 +1191,8 @@ class AdminApiTest {
                             .contentType("application/json")
                             .content("{\"firstName\":\"Temp\",\"lastName\":\"Student\","
                                     + "\"nationalId\":\"777000666\",\"dateOfBirth\":\"2001-02-03\","
-                                    + "\"temporaryPassword\":\"temp-password-1\","
+                                    + "\"phone\":\"+26771234567\","
+                                    + "\"temporaryPassword\":\"Temp-Password-1\","
                                     + "\"classId\":" + requireClassId("Grade 10A") + "}")
                             .with(asAdmin()).with(csrf()))
                     .andExpect(status().isCreated())

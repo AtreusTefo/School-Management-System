@@ -64,7 +64,7 @@ class AccountSelfServiceTest {
             // session must not be enough on its own to seize the account.
             mvc.perform(put("/api/auth/password")
                             .contentType("application/json")
-                            .content(changeBody("not-the-password", "a-good-new-password"))
+                            .content(changeBody("not-the-password", "A-good-new-password1"))
                             .with(as("student")).with(csrf()))
                .andExpect(status().isUnauthorized());
         }
@@ -84,7 +84,7 @@ class AccountSelfServiceTest {
         void csrfIsRequired() throws Exception {
             mvc.perform(put("/api/auth/password")
                             .contentType("application/json")
-                            .content(changeBody("password123", "a-good-new-password"))
+                            .content(changeBody("password123", "A-good-new-password1"))
                             .with(as("student")))
                .andExpect(status().isForbidden());
         }
@@ -94,7 +94,7 @@ class AccountSelfServiceTest {
         void anonymousIsRefused() throws Exception {
             mvc.perform(put("/api/auth/password")
                             .contentType("application/json")
-                            .content(changeBody("password123", "a-good-new-password"))
+                            .content(changeBody("password123", "A-good-new-password1"))
                             .with(csrf()))
                .andExpect(status().isUnauthorized());
         }
@@ -107,21 +107,21 @@ class AccountSelfServiceTest {
 
             String response = mvc.perform(put("/api/auth/password")
                             .contentType("application/json")
-                            .content(changeBody("password123", "brand-new-password"))
+                            .content(changeBody("password123", "Brand-new-password1"))
                             .with(as("teacher")).with(csrf()))
                     .andExpect(status().isOk())
                     .andReturn().getResponse().getContentAsString();
 
             // The regression that matters: no hash, and no password, in the body.
             assertThat(response).doesNotContain("passwordHash");
-            assertThat(response).doesNotContain("brand-new-password");
+            assertThat(response).doesNotContain("Brand-new-password1");
             assertThat(response).doesNotContain("$2a$");
 
             AppUser after = users.findByUsername("teacher").orElseThrow();
             assertThat(after.getPasswordHash()).isNotEqualTo(oldHash);
             // Stored hashed, never as typed - the whole reason BCrypt is here.
-            assertThat(after.getPasswordHash()).isNotEqualTo("brand-new-password");
-            assertThat(encoder.matches("brand-new-password", after.getPasswordHash())).isTrue();
+            assertThat(after.getPasswordHash()).isNotEqualTo("Brand-new-password1");
+            assertThat(encoder.matches("Brand-new-password1", after.getPasswordHash())).isTrue();
         }
     }
 
@@ -180,7 +180,7 @@ class AccountSelfServiceTest {
 
             mvc.perform(put("/api/auth/password")
                             .contentType("application/json")
-                            .content(changeBody("temp-password-1", "chosen-by-the-owner"))
+                            .content(changeBody("temp-password-1", "Chosen-by-the-owner1"))
                             .with(as("pending3")).with(csrf()))
                .andExpect(status().isOk())
                .andExpect(jsonPath("$.mustChangePassword", is(false)));

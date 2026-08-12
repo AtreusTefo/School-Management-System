@@ -2,6 +2,10 @@ import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { environment } from '../environments/environment';
+// Type-only: admin.service.ts imports Course FROM this file, so importing a
+// concrete value the other way would be circular. A type import is erased at
+// compile time and carries no runtime dependency, so this direction is safe.
+import type { Student } from './admin.service';
 
 /**
  * The states a student's work can be in. Mirrors the backend AssignmentStatus
@@ -319,6 +323,16 @@ export class AssignmentService {
   getClassStudents(classId: number): Observable<string[]> {
     return this.http.get<string[]>(
       `${this.api}/api/classes/${classId}/students`, this.opts);
+  }
+
+  /**
+   * Full biographical detail for every distinct student across the CALLING
+   * teacher's own courses only - not the admin panel's whole-school list.
+   * See SchoolService.listMyStudents on the backend for why that scoping
+   * could not simply reuse the admin endpoint.
+   */
+  getMyStudents(): Observable<Student[]> {
+    return this.http.get<Student[]>(`${this.api}/api/teachers/me/students`, this.opts);
   }
 
   enrolStudent(classId: number, username: string): Observable<void> {

@@ -34,6 +34,7 @@ public record TeacherView(
         String nationalId,
         LocalDate dateOfBirth,
         String contactEmail,
+        String phone,
         LocalDate dateEnrolled) {
 
     public static TeacherView of(AppUser teacher, PersonProfile profile) {
@@ -49,6 +50,7 @@ public record TeacherView(
                 profile == null ? null : profile.getNationalId(),
                 profile == null ? null : profile.getDateOfBirth(),
                 profile == null ? null : profile.getContactEmail(),
+                profile == null ? null : profile.getPhone(),
                 profile == null ? null : profile.getDateEnrolled());
     }
 }

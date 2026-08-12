@@ -59,9 +59,36 @@ export const CLASS_NAME_MAX_LENGTH = 50;              // school_class.name
 export const ASSESSMENT_NAME_MAX_LENGTH = 100;        // assessment.name
 
 // person_profile - the admin panel's student/teacher onboarding forms.
+export const PERSON_NAME_MIN_LENGTH = 2;              // first_name / last_name
 export const PERSON_NAME_MAX_LENGTH = 50;             // first_name / middle_name / last_name
 export const NATIONAL_ID_MAX_LENGTH = 20;             // person_profile.national_id
 export const CONTACT_EMAIL_MAX_LENGTH = 100;          // person_profile.contact_email
+
+/**
+ * Unicode letters, spaces, hyphens and apostrophes - mirrors
+ * PersonPatterns.NAME on the backend exactly, so a name refused here is
+ * refused there for the identical reason. Not ASCII-only: this project
+ * already treats names as carrying accented characters elsewhere (the
+ * localeCompare sort in AssignmentTableComponent), and "O'Brien" or
+ * "Van der Merwe" are real names, not edge cases a stricter pattern would
+ * have to special-case.
+ */
+export const NAME_PATTERN = /^[\p{L} '-]+$/u;
+
+/** Digits only - mirrors PersonPatterns.NATIONAL_ID. */
+export const NATIONAL_ID_PATTERN = /^[0-9]{4,20}$/;
+
+/**
+ * A Botswana mobile number stored as +267 followed by eight digits - mirrors
+ * PersonPatterns.PHONE. The form only ever asks for the eight digits (see
+ * PHONE_LOCAL_PATTERN); this is the shape of the value once the fixed prefix
+ * is joined to it, used to validate what is actually sent to the server.
+ */
+export const PHONE_PATTERN = /^\+267[0-9]{8}$/;
+
+/** What the phone INPUT itself accepts - the +267 prefix is fixed UI, not typed. */
+export const PHONE_LOCAL_PATTERN = /^[0-9]{8}$/;
+export const PHONE_COUNTRY_CODE = '+267';
 
 export type DecimalRejectReason =
   | 'format' | 'tooManyDigits' | 'tooManyDecimals' | 'negative' | 'notPositive';
@@ -120,19 +147,64 @@ export function checkDecimal(
   return { ok: true };
 }
 
+export type PasswordRejectReason = 'uppercase' | 'digit' | 'symbol';
+
+export interface PasswordStrengthResult {
+  ok: boolean;
+  reason?: PasswordRejectReason;
+}
+
+/**
+ * Check a password against the same three rules the backend's
+ * PersonPatterns.PASSWORD_HAS_* constants enforce - deliberately as three
+ * SEPARATE checks rather than one combined regex, for the reason given there:
+ * a single regex that fails can only say "invalid", never which of
+ * "needs an uppercase letter", "needs a digit" or "needs a symbol" is still
+ * missing, and a person correcting a password one attempt at a time needs to
+ * know which.
+ *
+ * Length is NOT checked here - `minlength` already does that natively, and
+ * bundling it in would make this function lie about which rule failed, the
+ * same reasoning checkDecimal's own doc comment gives for leaving presence to
+ * `required`.
+ */
+export function checkPasswordStrength(raw: string): PasswordStrengthResult {
+  if (raw === '') {
+    return { ok: true };
+  }
+  if (!/[A-Z]/.test(raw)) {
+    return { ok: false, reason: 'uppercase' };
+  }
+  if (!/[0-9]/.test(raw)) {
+    return { ok: false, reason: 'digit' };
+  }
+  if (!/[^a-zA-Z0-9]/.test(raw)) {
+    return { ok: false, reason: 'symbol' };
+  }
+  return { ok: true };
+}
+
 /**
  * Turn a validator's error object into a sentence a person reads.
  *
  * `errors` is whatever Angular's built-in validators (`required`, `minlength`,
- * `maxlength`) or this app's own `DecimalValidatorDirective` produced. Only
- * the FIRST applicable error is worded - showing three error messages under
- * one field at once reads as the form shouting, not helping.
+ * `maxlength`, `pattern`) or this app's own `DecimalValidatorDirective` /
+ * `PasswordStrengthValidatorDirective` produced. Only the FIRST applicable
+ * error is worded - showing three error messages under one field at once
+ * reads as the form shouting, not helping.
  *
  * `label` names the field in the sentence ("Username is required" rather than
  * "This field is required"), because a message that could belong to any input
  * on the page is a message the reader has to work to place.
+ *
+ * `patternHint`, when given, replaces the generic "is not in the right
+ * format" for a `pattern` failure with the actual rule - "Letters, spaces,
+ * hyphens and apostrophes only", say. It is optional because most callers of
+ * this function are not pattern-validated fields at all.
  */
-export function fieldErrorMessage(errors: ValidationErrors | null, label: string): string | null {
+export function fieldErrorMessage(
+  errors: ValidationErrors | null, label: string, patternHint: string | null = null
+): string | null {
   if (!errors) {
     return null;
   }
@@ -150,6 +222,24 @@ export function fieldErrorMessage(errors: ValidationErrors | null, label: string
   if (errors['maxlength']) {
     const { requiredLength } = errors['maxlength'];
     return `${label} must be at most ${requiredLength} characters.`;
+  }
+
+  if (errors['pattern']) {
+    return patternHint ? `${label} ${patternHint}.` : `${label} is not in the right format.`;
+  }
+
+  if (errors['passwordStrength']) {
+    const reason: PasswordRejectReason | undefined = errors['passwordStrength'].reason;
+    switch (reason) {
+      case 'uppercase':
+        return `${label} must contain at least one uppercase letter.`;
+      case 'digit':
+        return `${label} must contain at least one digit.`;
+      case 'symbol':
+        return `${label} must contain at least one symbol.`;
+      default:
+        return `${label} is not strong enough.`;
+    }
   }
 
   if (errors['decimal']) {

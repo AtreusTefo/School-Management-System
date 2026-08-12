@@ -17,6 +17,12 @@ export interface PersonFields {
   nationalId: string;
   dateOfBirth: string;
   email?: string | null;
+  /**
+   * Required, unlike email - +267 followed by 8 digits (E.164). The server
+   * rejects a missing or malformed one with 400; see PersonPatterns.PHONE on
+   * the backend and PHONE_PATTERN here.
+   */
+  phone: string;
   dateEnrolled?: string | null;
   temporaryPassword: string;
 }
@@ -62,6 +68,7 @@ export interface Teacher {
   nationalId: string | null;
   dateOfBirth: string | null;
   contactEmail: string | null;
+  phone: string | null;
   dateEnrolled: string | null;
 }
 
@@ -88,7 +95,20 @@ export interface Student {
   nationalId: string | null;
   dateOfBirth: string | null;
   contactEmail: string | null;
+  phone: string | null;
   dateEnrolled: string | null;
+}
+
+/**
+ * An admin account, as GET /api/admins publishes it - mirrors
+ * AuthController.UserView. No profile fields: admin accounts do not get one,
+ * a deliberate decision recorded in CLAUDE.md's Scope Guard, not a gap.
+ */
+export interface AdminAccount {
+  id: number;
+  username: string;
+  role: string;
+  mustChangePassword: boolean;
 }
 
 /** Mirrors the backend AuditAction enum. */
@@ -172,6 +192,11 @@ export class AdminService {
 
   listTeachers(): Observable<Teacher[]> {
     return this.http.get<Teacher[]>(`${this.api}/api/teachers`, this.opts);
+  }
+
+  /** Every admin account. No profile fields - see AdminAccount's own comment. */
+  listAdmins(): Observable<AdminAccount[]> {
+    return this.http.get<AdminAccount[]>(`${this.api}/api/admins`, this.opts);
   }
 
   /**

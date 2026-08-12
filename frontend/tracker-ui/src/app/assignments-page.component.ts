@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Assignment, AssignmentService, Course } from './assignment.service';
 import { NotificationService } from './notification.service';
+import { ConfirmService } from './confirm.service';
 import { FieldErrorComponent } from './field-error.component';
 import { ASSIGNMENT_DESCRIPTION_MAX_LENGTH, ASSIGNMENT_TITLE_MAX_LENGTH } from './validation';
 
@@ -46,7 +47,8 @@ export class AssignmentsPageComponent implements OnInit {
 
   constructor(
     private service: AssignmentService,
-    private notifications: NotificationService
+    private notifications: NotificationService,
+    private confirmDialog: ConfirmService
   ) {}
 
   ngOnInit(): void {
@@ -161,8 +163,8 @@ export class AssignmentsPageComponent implements OnInit {
     });
   }
 
-  onDeleteAssignment(a: Assignment): void {
-    if (!confirm(`Delete "${a.title}" for ${a.className}? This cannot be undone.`)) {
+  async onDeleteAssignment(a: Assignment): Promise<void> {
+    if (!await this.confirmDialog.ask(`Delete "${a.title}" for ${a.className}? This cannot be undone.`)) {
       return;
     }
     this.service.deleteAssignment(a.id).subscribe({

@@ -4,7 +4,9 @@ import { FormsModule } from '@angular/forms';
 import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { SessionService } from './session.service';
 import { NotificationService } from './notification.service';
+import { ConfirmService } from './confirm.service';
 import { FieldErrorComponent } from './field-error.component';
+import { PasswordStrengthValidatorDirective } from './password-strength-validator.directive';
 import { PASSWORD_MIN_LENGTH, USERNAME_MAX_LENGTH } from './validation';
 
 /**
@@ -25,7 +27,8 @@ import { PASSWORD_MIN_LENGTH, USERNAME_MAX_LENGTH } from './validation';
   selector: 'app-root',
   standalone: true,
   imports: [
-    CommonModule, FormsModule, RouterLink, RouterLinkActive, RouterOutlet, FieldErrorComponent
+    CommonModule, FormsModule, RouterLink, RouterLinkActive, RouterOutlet,
+    FieldErrorComponent, PasswordStrengthValidatorDirective
   ],
   templateUrl: './app.component.html'
 })
@@ -51,6 +54,7 @@ export class AppComponent implements OnInit {
   constructor(
     public session: SessionService,
     public notifications: NotificationService,
+    public confirmDialog: ConfirmService,
     private router: Router
   ) {}
 

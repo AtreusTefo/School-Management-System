@@ -5,6 +5,7 @@ import { ActivatedRoute, RouterLink } from '@angular/router';
 import { AdminService, Student, Teacher } from './admin.service';
 import { AssignmentService, Course, Subject } from './assignment.service';
 import { NotificationService } from './notification.service';
+import { ConfirmService } from './confirm.service';
 
 /**
  * '/admin/students/:id' - one student's current teachers, and the form to
@@ -50,7 +51,8 @@ export class AdminStudentDetailComponent implements OnInit {
     private route: ActivatedRoute,
     private admin: AdminService,
     private service: AssignmentService,
-    private notifications: NotificationService
+    private notifications: NotificationService,
+    private confirmDialog: ConfirmService
   ) {}
 
   ngOnInit(): void {
@@ -138,12 +140,12 @@ export class AdminStudentDetailComponent implements OnInit {
     return this.teachers.find((t) => t.username === username)?.id;
   }
 
-  onUnassign(course: Course): void {
+  async onUnassign(course: Course): Promise<void> {
     const teacherId = this.teacherIdFor(course.teacherUsername);
     if (teacherId === undefined) {
       return;
     }
-    if (!confirm(`Unassign '${course.teacherUsername}' from teaching `
+    if (!await this.confirmDialog.ask(`Unassign '${course.teacherUsername}' from teaching `
         + `'${course.subjectName}' to this student?`)) {
       return;
     }

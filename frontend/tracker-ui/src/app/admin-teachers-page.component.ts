@@ -4,10 +4,13 @@ import { FormsModule } from '@angular/forms';
 import { AdminService, ImportSummary, PersonFields, Teacher } from './admin.service';
 import { AssignmentService, Course, SchoolClass, Subject } from './assignment.service';
 import { NotificationService } from './notification.service';
+import { ConfirmService } from './confirm.service';
 import { FieldErrorComponent } from './field-error.component';
+import { PasswordStrengthValidatorDirective } from './password-strength-validator.directive';
 import {
   CONTACT_EMAIL_MAX_LENGTH, NATIONAL_ID_MAX_LENGTH,
-  PASSWORD_MIN_LENGTH, PERSON_NAME_MAX_LENGTH
+  PASSWORD_MIN_LENGTH, PERSON_NAME_MAX_LENGTH,
+  PHONE_COUNTRY_CODE, PHONE_LOCAL_PATTERN
 } from './validation';
 
 /**
@@ -24,7 +27,7 @@ import {
 @Component({
   selector: 'app-admin-teachers-page',
   standalone: true,
-  imports: [CommonModule, FormsModule, FieldErrorComponent],
+  imports: [CommonModule, FormsModule, FieldErrorComponent, PasswordStrengthValidatorDirective],
   templateUrl: './admin-teachers-page.component.html'
 })
 export class AdminTeachersPageComponent implements OnInit {
@@ -33,6 +36,8 @@ export class AdminTeachersPageComponent implements OnInit {
   readonly nationalIdMaxLength = NATIONAL_ID_MAX_LENGTH;
   readonly contactEmailMaxLength = CONTACT_EMAIL_MAX_LENGTH;
   readonly passwordMinLength = PASSWORD_MIN_LENGTH;
+  readonly phoneLocalPatternSource = PHONE_LOCAL_PATTERN.source;
+  readonly phoneCountryCode = PHONE_COUNTRY_CODE;
 
   teachers: Teacher[] = [];
   subjects: Subject[] = [];
@@ -47,8 +52,10 @@ export class AdminTeachersPageComponent implements OnInit {
   nationalId = '';
   dateOfBirth = '';
   email = '';
+  phoneLocal = '';
   dateEnrolled = '';
   temporaryPassword = '';
+  confirmTemporaryPassword = '';
   initialSubjectId: number | null = null;
   initialClassId: number | null = null;
 
@@ -64,7 +71,9 @@ export class AdminTeachersPageComponent implements OnInit {
   editNationalId = '';
   editDateOfBirth = '';
   editEmail = '';
+  editPhoneLocal = '';
   resetTemporaryPassword = '';
+  confirmResetTemporaryPassword = '';
 
   showImport = false;
   importFile: File | null = null;
@@ -74,7 +83,8 @@ export class AdminTeachersPageComponent implements OnInit {
   constructor(
     private admin: AdminService,
     private service: AssignmentService,
-    private notifications: NotificationService
+    private notifications: NotificationService,
+    private confirmDialog: ConfirmService
   ) {}
 
   ngOnInit(): void {
@@ -115,8 +125,10 @@ export class AdminTeachersPageComponent implements OnInit {
     this.nationalId = '';
     this.dateOfBirth = '';
     this.email = '';
+    this.phoneLocal = '';
     this.dateEnrolled = '';
     this.temporaryPassword = '';
+    this.confirmTemporaryPassword = '';
     this.initialSubjectId = null;
     this.initialClassId = null;
   }
@@ -125,12 +137,24 @@ export class AdminTeachersPageComponent implements OnInit {
     this.showCreate = false;
   }
 
+  get passwordsMatch(): boolean {
+    return this.temporaryPassword === this.confirmTemporaryPassword;
+  }
+
+  get confirmPasswordError(): string | null {
+    return this.confirmTemporaryPassword.length > 0 && !this.passwordsMatch
+      ? 'The two passwords do not match.'
+      : null;
+  }
+
   get canCreate(): boolean {
     return this.firstName.trim().length > 0
         && this.lastName.trim().length > 0
         && this.nationalId.trim().length > 0
         && this.dateOfBirth.length > 0
-        && this.temporaryPassword.length >= PASSWORD_MIN_LENGTH;
+        && PHONE_LOCAL_PATTERN.test(this.phoneLocal)
+        && this.temporaryPassword.length >= PASSWORD_MIN_LENGTH
+        && this.passwordsMatch;
   }
 
   onCreate(): void {
@@ -148,6 +172,7 @@ export class AdminTeachersPageComponent implements OnInit {
       nationalId: this.nationalId.trim(),
       dateOfBirth: this.dateOfBirth,
       email: this.email.trim() || null,
+      phone: PHONE_COUNTRY_CODE + this.phoneLocal,
       dateEnrolled: this.dateEnrolled || null,
       temporaryPassword: this.temporaryPassword
     }, initialCourses).subscribe({
@@ -166,14 +191,25 @@ export class AdminTeachersPageComponent implements OnInit {
   startReset(teacher: Teacher): void {
     this.resettingId = teacher.id;
     this.resetTemporaryPassword = '';
+    this.confirmResetTemporaryPassword = '';
   }
 
   cancelReset(): void {
     this.resettingId = null;
   }
 
+  get resetPasswordsMatch(): boolean {
+    return this.resetTemporaryPassword === this.confirmResetTemporaryPassword;
+  }
+
+  get confirmResetPasswordError(): string | null {
+    return this.confirmResetTemporaryPassword.length > 0 && !this.resetPasswordsMatch
+      ? 'The two passwords do not match.'
+      : null;
+  }
+
   get canSaveReset(): boolean {
-    return this.resetTemporaryPassword.length >= PASSWORD_MIN_LENGTH;
+    return this.resetTemporaryPassword.length >= PASSWORD_MIN_LENGTH && this.resetPasswordsMatch;
   }
 
   saveReset(teacher: Teacher): void {
@@ -201,6 +237,8 @@ export class AdminTeachersPageComponent implements OnInit {
     this.editNationalId = teacher.nationalId ?? '';
     this.editDateOfBirth = teacher.dateOfBirth ?? '';
     this.editEmail = teacher.contactEmail ?? '';
+    this.editPhoneLocal = teacher.phone?.startsWith(PHONE_COUNTRY_CODE)
+      ? teacher.phone.slice(PHONE_COUNTRY_CODE.length) : '';
   }
 
   cancelEdit(): void {
@@ -211,7 +249,8 @@ export class AdminTeachersPageComponent implements OnInit {
     return this.editFirstName.trim() !== ''
         && this.editLastName.trim() !== ''
         && this.editNationalId.trim() !== ''
-        && this.editDateOfBirth !== '';
+        && this.editDateOfBirth !== ''
+        && PHONE_LOCAL_PATTERN.test(this.editPhoneLocal);
   }
 
   /** The username is absent by design - see the student page for why. */
@@ -226,6 +265,7 @@ export class AdminTeachersPageComponent implements OnInit {
       nationalId: this.editNationalId.trim(),
       dateOfBirth: this.editDateOfBirth,
       email: this.editEmail.trim() || null,
+      phone: PHONE_COUNTRY_CODE + this.editPhoneLocal,
       temporaryPassword: ''   // stripped by AdminService before the request
     } as PersonFields;
 
@@ -241,8 +281,8 @@ export class AdminTeachersPageComponent implements OnInit {
 
   // ----- delete ------------------------------------------------------------------
 
-  onDelete(teacher: Teacher): void {
-    if (!confirm(`Delete the account '${teacher.username}'? This cannot be undone.`)) {
+  async onDelete(teacher: Teacher): Promise<void> {
+    if (!await this.confirmDialog.ask(`Delete the account '${teacher.username}'? This cannot be undone.`)) {
       return;
     }
     this.admin.deleteTeacher(teacher.id).subscribe({

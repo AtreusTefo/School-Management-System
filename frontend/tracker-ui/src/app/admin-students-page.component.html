@@ -141,6 +141,23 @@
                  [(ngModel)]="email" [maxlength]="contactEmailMaxLength" />
           <app-field-error [control]="emailModel" label="Email" />
         </div>
+        <div class="field">
+          <label class="field__label" for="sPhone">Phone</label>
+          <div class="phone-field">
+            <span class="phone-field__prefix" aria-hidden="true">{{ phoneCountryCode }}</span>
+            <input id="sPhone" class="input phone-field__input" type="text" name="sPhone"
+                   #phoneModel="ngModel" inputmode="numeric" autocomplete="off"
+                   aria-describedby="sPhoneHint"
+                   [(ngModel)]="phoneLocal" required
+                   [pattern]="phoneLocalPatternSource" maxlength="8" />
+          </div>
+          <span id="sPhoneHint" class="field__hint"
+                *ngIf="phoneModel.valid || !(phoneModel.touched || phoneModel.dirty)">
+            {{ phoneCountryCode }} then 8 digits, e.g. 71234567.
+          </span>
+          <app-field-error [control]="phoneModel" label="Phone number"
+                            patternHint="must be exactly 8 digits" />
+        </div>
       </div>
 
       <div class="create-form">
@@ -163,9 +180,21 @@
         <div class="field">
           <label class="field__label" for="sTemporaryPassword">Temporary password</label>
           <input id="sTemporaryPassword" class="input" type="text"
-                 name="sTemporaryPassword" #tempPasswordModel="ngModel"
+                 name="sTemporaryPassword" #tempPasswordModel="ngModel" appPasswordStrength
                  [(ngModel)]="temporaryPassword" required [minlength]="passwordMinLength" />
+          <span class="field__hint"
+                *ngIf="tempPasswordModel.valid || !(tempPasswordModel.touched || tempPasswordModel.dirty)">
+            At least {{ passwordMinLength }} characters, with an uppercase letter, a digit and a symbol.
+          </span>
           <app-field-error [control]="tempPasswordModel" label="Temporary password" />
+        </div>
+        <div class="field">
+          <label class="field__label" for="sConfirmPassword">Confirm password</label>
+          <input id="sConfirmPassword" class="input" type="text"
+                 name="sConfirmPassword" #confirmTempPasswordModel="ngModel"
+                 [(ngModel)]="confirmTemporaryPassword" required />
+          <app-field-error [control]="confirmTempPasswordModel" label="Confirm password"
+                            [externalError]="confirmPasswordError" />
         </div>
       </div>
 
@@ -230,11 +259,23 @@
                 <div class="field">
                   <label class="field__label" for="resetPassword">Temporary password</label>
                   <input id="resetPassword" class="input" type="text" name="resetPassword"
-                         [(ngModel)]="resetTemporaryPassword"
+                         #resetPasswordModel="ngModel" appPasswordStrength
+                         [(ngModel)]="resetTemporaryPassword" required
                          [minlength]="passwordMinLength" placeholder="At least 8 characters" />
-                  <span class="field__hint">
-                    The student must change this before the account can be used again.
+                  <span class="field__hint"
+                        *ngIf="resetPasswordModel.valid || !(resetPasswordModel.touched || resetPasswordModel.dirty)">
+                    The student must change this before the account can be used again -
+                    an uppercase letter, a digit and a symbol required.
                   </span>
+                  <app-field-error [control]="resetPasswordModel" label="Temporary password" />
+                </div>
+                <div class="field">
+                  <label class="field__label" for="confirmResetPassword">Confirm password</label>
+                  <input id="confirmResetPassword" class="input" type="text" name="confirmResetPassword"
+                         #confirmResetPasswordModel="ngModel"
+                         [(ngModel)]="confirmResetTemporaryPassword" required />
+                  <app-field-error [control]="confirmResetPasswordModel" label="Confirm password"
+                                    [externalError]="confirmResetPasswordError" />
                 </div>
                 <button type="button" class="btn btn--sm btn--primary"
                         (click)="saveReset(s)" [disabled]="!canSaveReset">Save</button>
@@ -281,6 +322,18 @@
                   <label class="field__label" for="editEmail">Contact email</label>
                   <input id="editEmail" class="input" type="email" name="editEmail"
                          [(ngModel)]="editEmail" [maxlength]="contactEmailMaxLength" />
+                </div>
+                <div class="field">
+                  <label class="field__label" for="editPhone">Phone</label>
+                  <div class="phone-field">
+                    <span class="phone-field__prefix" aria-hidden="true">{{ phoneCountryCode }}</span>
+                    <input id="editPhone" class="input phone-field__input" type="text" name="editPhone"
+                           #editPhoneModel="ngModel" inputmode="numeric" autocomplete="off"
+                           [(ngModel)]="editPhoneLocal" required
+                           [pattern]="phoneLocalPatternSource" maxlength="8" />
+                  </div>
+                  <app-field-error [control]="editPhoneModel" label="Phone number"
+                                    patternHint="must be exactly 8 digits" />
                 </div>
                 <button type="button" class="btn btn--sm btn--primary"
                         (click)="saveEdit(s)" [disabled]="!canSaveEdit">Save</button>

@@ -24,7 +24,9 @@ import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * SERVICE (BUSINESS LOGIC) LAYER for the structure of the school itself:
@@ -491,6 +493,51 @@ public class SchoolService {
                     return StudentView.of(student, className, profile);
                 })
                 .toList();
+    }
+
+    /**
+     * Every DISTINCT student in any class the calling teacher has a course
+     * in - the teacher's own equivalent of listStudents(), scoped to the
+     * students they actually teach.
+     *
+     * WHY THIS COULD NOT REUSE listStudents()
+     * listStudents() is admin-only and returns the whole school. A teacher
+     * asking "which students do I teach" is asking a narrower question, and
+     * widening the admin method's guard to admit a teacher would have handed
+     * every teacher the entire student roster - every class, every subject,
+     * not just their own. A register already refuses a teacher who does not
+     * teach that class (see requireTeacherOrAdmin on listStudentsInClass);
+     * this method applies the identical boundary to the cross-class view.
+     *
+     * DISTINCT, DELIBERATELY - a teacher who teaches a class both Mathematics
+     * and History has ONE relationship with each of that class's students,
+     * not two. Deduplicating by id is what keeps a student who is taught two
+     * subjects by the same teacher from appearing twice in their own list.
+     */
+    public List<StudentView> listMyStudents() {
+        AppUser me = requireTeacherOrAdmin("view the students you teach");
+
+        // Deduplicated by CLASS ID explicitly, not by relying on two Course
+        // rows resolving to the same SchoolClass Java object - that happens
+        // to be true within one Hibernate session, but a reader should not
+        // have to know that to trust this is correct.
+        Map<Long, SchoolClass> myClasses = new LinkedHashMap<>();
+        for (Course course : courses.findByTeacherOrderByIdAsc(me)) {
+            SchoolClass schoolClass = course.getSchoolClass();
+            myClasses.putIfAbsent(schoolClass.getId(), schoolClass);
+        }
+
+        Map<Long, StudentView> byId = new LinkedHashMap<>();
+        for (SchoolClass schoolClass : myClasses.values()) {
+            for (Enrolment enrolment : enrolments.findBySchoolClassOrderByIdAsc(schoolClass)) {
+                AppUser student = enrolment.getStudent();
+                byId.computeIfAbsent(student.getId(), id -> {
+                    PersonProfile profile = profiles.findByAppUser(student).orElse(null);
+                    return StudentView.of(student, schoolClass.getName(), profile);
+                });
+            }
+        }
+        return List.copyOf(byId.values());
     }
 
     /**

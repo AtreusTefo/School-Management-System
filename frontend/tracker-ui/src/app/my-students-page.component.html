@@ -1,0 +1,30 @@
+<div class="card">
+  <div class="card__header">
+    <div class="card__title">
+      <h2>My students</h2>
+      <span class="badge badge--neutral">{{ students.length }}</span>
+    </div>
+  </div>
+
+  <p class="card__note">
+    Every student in a class you teach, with the biographical detail on
+    record for each. A student taught by you in two subjects appears once,
+    not twice.
+  </p>
+
+  <!-- ===== LOADING ===== -->
+  <div *ngIf="loading" class="loading">
+    <span class="spinner" aria-hidden="true"></span>
+    <span>Loading your students...</span>
+  </div>
+
+  <div *ngIf="!loading && students.length === 0" class="empty">
+    <div class="empty__title">No students yet</div>
+    <p class="empty__text">
+      You are not assigned to any courses. An admin sets these up under Timetable.
+    </p>
+  </div>
+
+  <app-admin-accounts-table *ngIf="!loading && students.length > 0" [accounts]="students">
+  </app-admin-accounts-table>
+</div>

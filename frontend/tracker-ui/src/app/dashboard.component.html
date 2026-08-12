@@ -148,4 +148,8 @@
     <span class="quick-link__title">Work I have set</span>
     <span class="quick-link__hint">Set new work, or edit and delete what you have set</span>
   </a>
+  <a *ngIf="isTeacher" routerLink="/my-students" class="quick-link">
+    <span class="quick-link__title">My students</span>
+    <span class="quick-link__hint">Full detail for every student across your own courses</span>
+  </a>
 </section>

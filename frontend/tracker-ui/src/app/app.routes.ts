@@ -44,6 +44,14 @@ export const routes: Routes = [
     canActivate: [authGuard, teacherGuard]
   },
   {
+    // Full detail for every student across the teacher's own courses only -
+    // see SchoolService.listMyStudents for the server-side scoping this page
+    // trusts completely rather than re-deriving.
+    path: 'my-students',
+    loadComponent: () => import('./my-students-page.component').then(m => m.MyStudentsPageComponent),
+    canActivate: [authGuard, teacherGuard]
+  },
+  {
     path: 'marking-queue',
     loadComponent: () => import('./marking-queue-page.component').then(m => m.MarkingQueuePageComponent),
     canActivate: [authGuard]
@@ -96,6 +104,14 @@ export const routes: Routes = [
   {
     path: 'admin/students',
     loadComponent: () => import('./admin-students-page.component').then(m => m.AdminStudentsPageComponent),
+    canActivate: [adminAuthGuard]
+  },
+  {
+    // Every student, teacher and admin account in one read-only table - see
+    // AdminAccountsPageComponent for why this exists alongside the two pages
+    // above rather than replacing either.
+    path: 'admin/accounts',
+    loadComponent: () => import('./admin-accounts-page.component').then(m => m.AdminAccountsPageComponent),
     canActivate: [adminAuthGuard]
   },
   {

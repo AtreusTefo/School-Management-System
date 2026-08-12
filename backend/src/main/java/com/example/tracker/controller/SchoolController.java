@@ -2,6 +2,7 @@ package com.example.tracker.controller;
 
 import com.example.tracker.dto.ClassView;
 import com.example.tracker.dto.CourseView;
+import com.example.tracker.dto.StudentView;
 import com.example.tracker.dto.SubjectView;
 import com.example.tracker.service.SchoolService;
 import jakarta.validation.Valid;
@@ -60,6 +61,19 @@ public class SchoolController {
     @GetMapping("/classes/{id}/students")
     public List<String> listStudents(@PathVariable Long id) {
         return school.listStudentsInClass(id);
+    }
+
+    /**
+     * GET /api/teachers/me/students - full biographical detail for every
+     * distinct student across the CALLING teacher's own courses only.
+     *
+     * Not the admin panel's whole-school /api/students - see
+     * SchoolService.listMyStudents for why that method could not simply be
+     * widened to admit a teacher.
+     */
+    @GetMapping("/teachers/me/students")
+    public List<StudentView> listMyStudents() {
+        return school.listMyStudents();
     }
 
     /** POST /api/classes/{id}/students - put a student in this class. */

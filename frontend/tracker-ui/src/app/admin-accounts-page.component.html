@@ -1,0 +1,53 @@
+<!-- ===== EVERY ACCOUNT, ONE TABLE =====
+     Read-only, deliberately - see the component's own header for why editing
+     stays on the Students and Teachers pages rather than being duplicated
+     here. -->
+<section class="stats" aria-label="Summary">
+  <div class="stat">
+    <div class="stat__label">Students</div>
+    <div class="stat__value">{{ studentCount }}</div>
+  </div>
+  <div class="stat">
+    <div class="stat__label">Teachers</div>
+    <div class="stat__value">{{ teacherCount }}</div>
+  </div>
+  <div class="stat">
+    <div class="stat__label">Admins</div>
+    <div class="stat__value">{{ adminCount }}</div>
+  </div>
+  <div class="stat">
+    <div class="stat__label">Total</div>
+    <div class="stat__value">{{ accounts.length }}</div>
+  </div>
+</section>
+
+<div class="card">
+  <div class="card__header">
+    <div class="card__title">
+      <h2>All accounts</h2>
+      <span class="badge badge--neutral">{{ accounts.length }}</span>
+    </div>
+  </div>
+
+  <p class="card__note">
+    Every student, teacher and admin account, with the biographical detail on
+    record for each. Admin accounts show no profile fields by design - only
+    the student and teacher onboarding forms collect one. To reset a
+    password, correct a detail, or remove an account, use the Students or
+    Teachers page: this table only shows what exists.
+  </p>
+
+  <!-- ===== LOADING ===== -->
+  <div *ngIf="loading" class="loading">
+    <span class="spinner" aria-hidden="true"></span>
+    <span>Loading accounts...</span>
+  </div>
+
+  <div *ngIf="!loading && accounts.length === 0" class="empty">
+    <div class="empty__title">No accounts yet</div>
+    <p class="empty__text">Onboard a student or a teacher to see them here.</p>
+  </div>
+
+  <app-admin-accounts-table *ngIf="!loading && accounts.length > 0" [accounts]="accounts">
+  </app-admin-accounts-table>
+</div>

@@ -5,10 +5,13 @@ import { RouterLink } from '@angular/router';
 import { AdminService, ImportSummary, PersonFields, Student } from './admin.service';
 import { AssignmentService, SchoolClass } from './assignment.service';
 import { NotificationService } from './notification.service';
+import { ConfirmService } from './confirm.service';
 import { FieldErrorComponent } from './field-error.component';
+import { PasswordStrengthValidatorDirective } from './password-strength-validator.directive';
 import {
   CONTACT_EMAIL_MAX_LENGTH, NATIONAL_ID_MAX_LENGTH,
-  PASSWORD_MIN_LENGTH, PERSON_NAME_MAX_LENGTH
+  PASSWORD_MIN_LENGTH, PERSON_NAME_MAX_LENGTH,
+  PHONE_COUNTRY_CODE, PHONE_LOCAL_PATTERN
 } from './validation';
 
 /**
@@ -20,7 +23,9 @@ import {
 @Component({
   selector: 'app-admin-students-page',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, FieldErrorComponent],
+  imports: [
+    CommonModule, FormsModule, RouterLink, FieldErrorComponent, PasswordStrengthValidatorDirective
+  ],
   templateUrl: './admin-students-page.component.html'
 })
 export class AdminStudentsPageComponent implements OnInit {
@@ -29,6 +34,9 @@ export class AdminStudentsPageComponent implements OnInit {
   readonly nationalIdMaxLength = NATIONAL_ID_MAX_LENGTH;
   readonly contactEmailMaxLength = CONTACT_EMAIL_MAX_LENGTH;
   readonly passwordMinLength = PASSWORD_MIN_LENGTH;
+  /** The HTML `pattern` attribute takes a string source, not a RegExp. */
+  readonly phoneLocalPatternSource = PHONE_LOCAL_PATTERN.source;
+  readonly phoneCountryCode = PHONE_COUNTRY_CODE;
 
   students: Student[] = [];
   classes: SchoolClass[] = [];
@@ -42,8 +50,11 @@ export class AdminStudentsPageComponent implements OnInit {
   nationalId = '';
   dateOfBirth = '';
   email = '';
+  /** Just the 8 digits typed - +267 is fixed UI, joined on submit. */
+  phoneLocal = '';
   dateEnrolled = '';
   temporaryPassword = '';
+  confirmTemporaryPassword = '';
   classId: number | null = null;
 
   /*
@@ -57,6 +68,7 @@ export class AdminStudentsPageComponent implements OnInit {
    */
   resettingId: number | null = null;
   resetTemporaryPassword = '';
+  confirmResetTemporaryPassword = '';
 
   editingId: number | null = null;
   editFirstName = '';
@@ -65,6 +77,7 @@ export class AdminStudentsPageComponent implements OnInit {
   editNationalId = '';
   editDateOfBirth = '';
   editEmail = '';
+  editPhoneLocal = '';
 
   showImport = false;
   importFile: File | null = null;
@@ -74,7 +87,8 @@ export class AdminStudentsPageComponent implements OnInit {
   constructor(
     private admin: AdminService,
     private service: AssignmentService,
-    private notifications: NotificationService
+    private notifications: NotificationService,
+    private confirmDialog: ConfirmService
   ) {}
 
   ngOnInit(): void {
@@ -111,8 +125,10 @@ export class AdminStudentsPageComponent implements OnInit {
     this.nationalId = '';
     this.dateOfBirth = '';
     this.email = '';
+    this.phoneLocal = '';
     this.dateEnrolled = '';
     this.temporaryPassword = '';
+    this.confirmTemporaryPassword = '';
     this.classId = null;
   }
 
@@ -120,12 +136,25 @@ export class AdminStudentsPageComponent implements OnInit {
     this.showCreate = false;
   }
 
+  get passwordsMatch(): boolean {
+    return this.temporaryPassword === this.confirmTemporaryPassword;
+  }
+
+  /** Fed to app-field-error's externalError - see FieldErrorComponent's own comment on why. */
+  get confirmPasswordError(): string | null {
+    return this.confirmTemporaryPassword.length > 0 && !this.passwordsMatch
+      ? 'The two passwords do not match.'
+      : null;
+  }
+
   get canCreate(): boolean {
     return this.firstName.trim().length > 0
         && this.lastName.trim().length > 0
         && this.nationalId.trim().length > 0
         && this.dateOfBirth.length > 0
-        && this.temporaryPassword.length >= PASSWORD_MIN_LENGTH;
+        && PHONE_LOCAL_PATTERN.test(this.phoneLocal)
+        && this.temporaryPassword.length >= PASSWORD_MIN_LENGTH
+        && this.passwordsMatch;
   }
 
   onCreate(): void {
@@ -139,6 +168,7 @@ export class AdminStudentsPageComponent implements OnInit {
       nationalId: this.nationalId.trim(),
       dateOfBirth: this.dateOfBirth,
       email: this.email.trim() || null,
+      phone: PHONE_COUNTRY_CODE + this.phoneLocal,
       dateEnrolled: this.dateEnrolled || null,
       temporaryPassword: this.temporaryPassword
     }, this.classId ?? undefined).subscribe({
@@ -157,6 +187,7 @@ export class AdminStudentsPageComponent implements OnInit {
   startReset(student: Student): void {
     this.resettingId = student.id;
     this.resetTemporaryPassword = '';
+    this.confirmResetTemporaryPassword = '';
     this.editingId = null;
   }
 
@@ -164,8 +195,18 @@ export class AdminStudentsPageComponent implements OnInit {
     this.resettingId = null;
   }
 
+  get resetPasswordsMatch(): boolean {
+    return this.resetTemporaryPassword === this.confirmResetTemporaryPassword;
+  }
+
+  get confirmResetPasswordError(): string | null {
+    return this.confirmResetTemporaryPassword.length > 0 && !this.resetPasswordsMatch
+      ? 'The two passwords do not match.'
+      : null;
+  }
+
   get canSaveReset(): boolean {
-    return this.resetTemporaryPassword.length >= PASSWORD_MIN_LENGTH;
+    return this.resetTemporaryPassword.length >= PASSWORD_MIN_LENGTH && this.resetPasswordsMatch;
   }
 
   saveReset(student: Student): void {
@@ -194,6 +235,10 @@ export class AdminStudentsPageComponent implements OnInit {
     this.editNationalId = student.nationalId ?? '';
     this.editDateOfBirth = student.dateOfBirth ?? '';
     this.editEmail = student.contactEmail ?? '';
+    // A profile saved before this column existed has no phone at all - the
+    // local field starts blank rather than showing a bare "+267".
+    this.editPhoneLocal = student.phone?.startsWith(PHONE_COUNTRY_CODE)
+      ? student.phone.slice(PHONE_COUNTRY_CODE.length) : '';
   }
 
   cancelEdit(): void {
@@ -204,7 +249,8 @@ export class AdminStudentsPageComponent implements OnInit {
     return this.editFirstName.trim() !== ''
         && this.editLastName.trim() !== ''
         && this.editNationalId.trim() !== ''
-        && this.editDateOfBirth !== '';
+        && this.editDateOfBirth !== ''
+        && PHONE_LOCAL_PATTERN.test(this.editPhoneLocal);
   }
 
   /**
@@ -226,6 +272,7 @@ export class AdminStudentsPageComponent implements OnInit {
       nationalId: this.editNationalId.trim(),
       dateOfBirth: this.editDateOfBirth,
       email: this.editEmail.trim() || null,
+      phone: PHONE_COUNTRY_CODE + this.editPhoneLocal,
       temporaryPassword: ''   // stripped by AdminService before the request
     } as PersonFields;
 
@@ -247,8 +294,8 @@ export class AdminStudentsPageComponent implements OnInit {
    * that work was handed in and judged. The server's own sentence reaches the
    * user through showError.
    */
-  onDelete(student: Student): void {
-    if (!confirm(`Delete the account '${student.username}'? This cannot be undone.`)) {
+  async onDelete(student: Student): Promise<void> {
+    if (!await this.confirmDialog.ask(`Delete the account '${student.username}'? This cannot be undone.`)) {
       return;
     }
     this.admin.deleteStudent(student.id).subscribe({

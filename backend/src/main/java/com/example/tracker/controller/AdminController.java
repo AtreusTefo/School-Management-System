@@ -10,9 +10,11 @@ import com.example.tracker.service.AdminService;
 import com.example.tracker.service.AuditLogService;
 import com.example.tracker.service.SchoolService;
 import jakarta.validation.Valid;
+import com.example.tracker.validation.PersonPatterns;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -65,6 +67,16 @@ public class AdminController {
     }
 
     /**
+     * GET /api/admins - every admin account. No profile fields, because none
+     * are collected for an admin - see AdminService.listAdmins for why that
+     * is a documented design decision, not an oversight in this endpoint.
+     */
+    @GetMapping("/admins")
+    public List<AuthController.UserView> listAdmins() {
+        return admin.listAdmins();
+    }
+
+    /**
      * POST /api/teachers - onboard a teacher. 201 Created, and the response
      * deliberately carries no password - the caller supplied the temporary
      * one, so echoing it back would put a live credential into logs and
@@ -83,7 +95,8 @@ public class AdminController {
         return admin.createTeacher(
                 request.getFirstName(), request.getMiddleName(), request.getLastName(),
                 request.getNationalId(), request.getDateOfBirth(), request.getEmail(),
-                request.getDateEnrolled(), request.getTemporaryPassword(), initialCourses);
+                request.getPhone(), request.getDateEnrolled(), request.getTemporaryPassword(),
+                initialCourses);
     }
 
     /** PUT /api/teachers/{id}/password - issue a new temporary password. */
@@ -127,7 +140,8 @@ public class AdminController {
         return admin.createStudent(
                 request.getFirstName(), request.getMiddleName(), request.getLastName(),
                 request.getNationalId(), request.getDateOfBirth(), request.getEmail(),
-                request.getDateEnrolled(), request.getTemporaryPassword(), request.getClassId());
+                request.getPhone(), request.getDateEnrolled(), request.getTemporaryPassword(),
+                request.getClassId());
     }
 
     /** POST /api/students/import - bulk onboard from a CSV or Excel file. */
@@ -161,7 +175,7 @@ public class AdminController {
         return admin.updateStudent(id,
                 request.getFirstName(), request.getMiddleName(), request.getLastName(),
                 request.getNationalId(), request.getDateOfBirth(), request.getEmail(),
-                request.getDateEnrolled());
+                request.getPhone(), request.getDateEnrolled());
     }
 
     /** DELETE /api/students/{id} - refused with 409 if they have work or marks. */
@@ -178,7 +192,7 @@ public class AdminController {
         return admin.updateTeacher(id,
                 request.getFirstName(), request.getMiddleName(), request.getLastName(),
                 request.getNationalId(), request.getDateOfBirth(), request.getEmail(),
-                request.getDateEnrolled());
+                request.getPhone(), request.getDateEnrolled());
     }
 
     /** GET /api/students/{id}/teachers - who currently teaches this student, by subject. */
@@ -262,18 +276,26 @@ public class AdminController {
      */
     abstract static class PersonRequest {
         @NotBlank(message = "First name must not be blank")
-        @Size(max = 50, message = "First name must be at most 50 characters")
+        @Size(min = 2, max = 50, message = "First name must be 2 to 50 characters")
+        @Pattern(regexp = PersonPatterns.NAME,
+                message = "First name can only contain letters, spaces, hyphens and apostrophes")
         private String firstName;
 
         @Size(max = 50, message = "Middle name must be at most 50 characters")
+        @Pattern(regexp = PersonPatterns.NAME,
+                message = "Middle name can only contain letters, spaces, hyphens and apostrophes")
         private String middleName;
 
         @NotBlank(message = "Last name must not be blank")
-        @Size(max = 50, message = "Last name must be at most 50 characters")
+        @Size(min = 2, max = 50, message = "Last name must be 2 to 50 characters")
+        @Pattern(regexp = PersonPatterns.NAME,
+                message = "Last name can only contain letters, spaces, hyphens and apostrophes")
         private String lastName;
 
         @NotBlank(message = "National id must not be blank")
         @Size(max = 20, message = "National id must be at most 20 characters")
+        @Pattern(regexp = PersonPatterns.NATIONAL_ID,
+                message = "National id must contain only digits")
         private String nationalId;
 
         @NotNull(message = "Date of birth is required")
@@ -283,11 +305,28 @@ public class AdminController {
         @Size(max = 100, message = "Email must be at most 100 characters")
         private String email;
 
+        /**
+         * Required, unlike email - a school onboarding a student or a teacher
+         * has always asked for a phone number, and the admin form now enforces
+         * that rather than merely inviting it. +267 followed by eight digits;
+         * see PersonPatterns.PHONE and V9's own header.
+         */
+        @NotBlank(message = "Phone number must not be blank")
+        @Pattern(regexp = PersonPatterns.PHONE,
+                message = "Phone number must be +267 followed by 8 digits")
+        private String phone;
+
         /** Optional - AdminService defaults to today when this is null. */
         private LocalDate dateEnrolled;
 
         @NotBlank(message = "Temporary password must not be blank")
         @Size(min = 8, message = "Temporary password must be at least 8 characters")
+        @Pattern(regexp = PersonPatterns.PASSWORD_HAS_UPPERCASE,
+                message = "Temporary password must contain at least one uppercase letter")
+        @Pattern(regexp = PersonPatterns.PASSWORD_HAS_DIGIT,
+                message = "Temporary password must contain at least one digit")
+        @Pattern(regexp = PersonPatterns.PASSWORD_HAS_SYMBOL,
+                message = "Temporary password must contain at least one symbol")
         private String temporaryPassword;
 
         public String getFirstName() {
@@ -338,6 +377,14 @@ public class AdminController {
             this.email = email;
         }
 
+        public String getPhone() {
+            return phone;
+        }
+
+        public void setPhone(String phone) {
+            this.phone = phone;
+        }
+
         public LocalDate getDateEnrolled() {
             return dateEnrolled;
         }
@@ -370,18 +417,26 @@ public class AdminController {
      */
     static class UpdatePersonRequest {
         @NotBlank(message = "First name must not be blank")
-        @Size(max = 50, message = "First name must be at most 50 characters")
+        @Size(min = 2, max = 50, message = "First name must be 2 to 50 characters")
+        @Pattern(regexp = PersonPatterns.NAME,
+                message = "First name can only contain letters, spaces, hyphens and apostrophes")
         private String firstName;
 
         @Size(max = 50, message = "Middle name must be at most 50 characters")
+        @Pattern(regexp = PersonPatterns.NAME,
+                message = "Middle name can only contain letters, spaces, hyphens and apostrophes")
         private String middleName;
 
         @NotBlank(message = "Last name must not be blank")
-        @Size(max = 50, message = "Last name must be at most 50 characters")
+        @Size(min = 2, max = 50, message = "Last name must be 2 to 50 characters")
+        @Pattern(regexp = PersonPatterns.NAME,
+                message = "Last name can only contain letters, spaces, hyphens and apostrophes")
         private String lastName;
 
         @NotBlank(message = "National id must not be blank")
         @Size(max = 20, message = "National id must be at most 20 characters")
+        @Pattern(regexp = PersonPatterns.NATIONAL_ID,
+                message = "National id must contain only digits")
         private String nationalId;
 
         @NotNull(message = "Date of birth is required")
@@ -390,6 +445,11 @@ public class AdminController {
         @Email(message = "Enter a valid email address")
         @Size(max = 100, message = "Email must be at most 100 characters")
         private String email;
+
+        @NotBlank(message = "Phone number must not be blank")
+        @Pattern(regexp = PersonPatterns.PHONE,
+                message = "Phone number must be +267 followed by 8 digits")
+        private String phone;
 
         /** Optional - the existing value is kept when this is null. */
         private LocalDate dateEnrolled;
@@ -411,6 +471,9 @@ public class AdminController {
 
         public String getEmail() { return email; }
         public void setEmail(String email) { this.email = email; }
+
+        public String getPhone() { return phone; }
+        public void setPhone(String phone) { this.phone = phone; }
 
         public LocalDate getDateEnrolled() { return dateEnrolled; }
         public void setDateEnrolled(LocalDate dateEnrolled) { this.dateEnrolled = dateEnrolled; }
@@ -469,6 +532,12 @@ public class AdminController {
     static class CreateAdminRequest {
         @NotBlank(message = "Temporary password must not be blank")
         @Size(min = 8, message = "Temporary password must be at least 8 characters")
+        @Pattern(regexp = PersonPatterns.PASSWORD_HAS_UPPERCASE,
+                message = "Temporary password must contain at least one uppercase letter")
+        @Pattern(regexp = PersonPatterns.PASSWORD_HAS_DIGIT,
+                message = "Temporary password must contain at least one digit")
+        @Pattern(regexp = PersonPatterns.PASSWORD_HAS_SYMBOL,
+                message = "Temporary password must contain at least one symbol")
         private String temporaryPassword;
 
         public String getTemporaryPassword() {
@@ -483,6 +552,12 @@ public class AdminController {
     static class ResetPasswordRequest {
         @NotBlank(message = "Temporary password must not be blank")
         @Size(min = 8, message = "Temporary password must be at least 8 characters")
+        @Pattern(regexp = PersonPatterns.PASSWORD_HAS_UPPERCASE,
+                message = "Temporary password must contain at least one uppercase letter")
+        @Pattern(regexp = PersonPatterns.PASSWORD_HAS_DIGIT,
+                message = "Temporary password must contain at least one digit")
+        @Pattern(regexp = PersonPatterns.PASSWORD_HAS_SYMBOL,
+                message = "Temporary password must contain at least one symbol")
         private String temporaryPassword;
 
         public String getTemporaryPassword() {

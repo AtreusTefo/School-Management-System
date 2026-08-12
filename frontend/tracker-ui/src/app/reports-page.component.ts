@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { Assessment, AssignmentService, Course, Performance } from './assignment.service';
 import { SessionService } from './session.service';
 import { NotificationService } from './notification.service';
+import { ConfirmService } from './confirm.service';
 import { MarksTableComponent } from './marks-table.component';
 import { PerformanceTableComponent } from './performance-table.component';
 import { FieldErrorComponent } from './field-error.component';
@@ -66,7 +67,8 @@ export class ReportsPageComponent implements OnInit {
   constructor(
     private service: AssignmentService,
     public session: SessionService,
-    private notifications: NotificationService
+    private notifications: NotificationService,
+    private confirmDialog: ConfirmService
   ) {}
 
   ngOnInit(): void {
@@ -270,8 +272,8 @@ export class ReportsPageComponent implements OnInit {
     this.markMaxScore = mark.maxScore;
   }
 
-  onDeleteMark(mark: Assessment): void {
-    if (!confirm(`Delete "${mark.name}" for ${mark.studentUsername}? This cannot be undone.`)) {
+  async onDeleteMark(mark: Assessment): Promise<void> {
+    if (!await this.confirmDialog.ask(`Delete "${mark.name}" for ${mark.studentUsername}? This cannot be undone.`)) {
       return;
     }
     this.service.deleteMark(mark.id).subscribe({

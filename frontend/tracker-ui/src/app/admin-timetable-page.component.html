@@ -73,11 +73,20 @@
     <form (ngSubmit)="onCreateCourse()" class="create-form">
       <div class="field">
         <label class="field__label" for="courseTeacher">Teacher</label>
-        <input id="courseTeacher" class="input" type="text" name="courseTeacher"
-               #courseTeacherModel="ngModel"
-               [(ngModel)]="courseTeacherUsername" placeholder="Teacher username"
-               required [maxlength]="usernameMaxLength" />
-        <app-field-error [control]="courseTeacherModel" label="Teacher username" />
+        <!-- A dropdown of EXISTING teachers, not free text - a hand-typed
+             username used to fail only after Add course was pressed, since
+             findByUsernameOrReject cannot tell "misspelled" from "does not
+             exist" until the request lands. Picking from the real list
+             removes that mistake rather than catching it afterwards. -->
+        <select id="courseTeacher" class="input" name="courseTeacher"
+                #courseTeacherModel="ngModel"
+                [(ngModel)]="courseTeacherUsername" required>
+          <option [ngValue]="''">Choose a teacher</option>
+          <option *ngFor="let t of teachers" [ngValue]="t.username">
+            {{ t.fullName ?? t.username }}
+          </option>
+        </select>
+        <app-field-error [control]="courseTeacherModel" label="Teacher" />
       </div>
       <div class="field">
         <label class="field__label" for="courseSubject">teaches</label>
@@ -118,18 +127,20 @@
       </div>
       <div class="field">
         <label class="field__label" for="enrolUsername">Student</label>
-        <input id="enrolUsername" class="input" type="text" name="enrolUsername"
-               #enrolUsernameModel="ngModel"
-               [(ngModel)]="enrolUsername" placeholder="Username"
-               required [maxlength]="usernameMaxLength" />
-        <!-- The server refuses a teacher here, and so does the database: only
-             a STUDENT can be enrolled, enforced by a composite foreign key
-             rather than by this form being careful. -->
-        <span class="field__hint"
-              *ngIf="enrolUsernameModel.valid || !(enrolUsernameModel.touched || enrolUsernameModel.dirty)">
-          Only a student account can be enrolled.
-        </span>
-        <app-field-error [control]="enrolUsernameModel" label="Student username" />
+        <!-- A dropdown of existing students, for the same reason the Teacher
+             field above is one - see that field's comment. The server and the
+             database both still refuse a teacher here regardless, enforced by
+             a composite foreign key rather than by this form being careful;
+             the dropdown removes a TYPO, not the role check. -->
+        <select id="enrolUsername" class="input" name="enrolUsername"
+                #enrolUsernameModel="ngModel"
+                [(ngModel)]="enrolUsername" required>
+          <option [ngValue]="''">Choose a student</option>
+          <option *ngFor="let s of students" [ngValue]="s.username">
+            {{ s.fullName ?? s.username }}
+          </option>
+        </select>
+        <app-field-error [control]="enrolUsernameModel" label="Student" />
       </div>
       <button type="submit" class="btn btn--sm" [disabled]="enrolForm.invalid">
         Enrol

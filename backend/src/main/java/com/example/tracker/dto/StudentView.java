@@ -36,6 +36,7 @@ public record StudentView(
         String nationalId,
         LocalDate dateOfBirth,
         String contactEmail,
+        String phone,
         LocalDate dateEnrolled) {
 
     public static StudentView of(AppUser student, String className, PersonProfile profile) {
@@ -52,6 +53,7 @@ public record StudentView(
                 profile == null ? null : profile.getNationalId(),
                 profile == null ? null : profile.getDateOfBirth(),
                 profile == null ? null : profile.getContactEmail(),
+                profile == null ? null : profile.getPhone(),
                 profile == null ? null : profile.getDateEnrolled());
     }
 }

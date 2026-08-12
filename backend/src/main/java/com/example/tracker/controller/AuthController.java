@@ -5,8 +5,10 @@ import com.example.tracker.service.AppUserService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
+import com.example.tracker.validation.PersonPatterns;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -186,6 +188,12 @@ public class AuthController {
 
         @NotBlank(message = "New password must not be blank")
         @Size(min = 8, message = "New password must be at least 8 characters")
+        @Pattern(regexp = PersonPatterns.PASSWORD_HAS_UPPERCASE,
+                message = "New password must contain at least one uppercase letter")
+        @Pattern(regexp = PersonPatterns.PASSWORD_HAS_DIGIT,
+                message = "New password must contain at least one digit")
+        @Pattern(regexp = PersonPatterns.PASSWORD_HAS_SYMBOL,
+                message = "New password must contain at least one symbol")
         private String newPassword;
 
         public String getCurrentPassword() {
