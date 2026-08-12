@@ -52,6 +52,7 @@ document permitted to sit loose in `docs/`; everything else belongs in a subfold
 
 | Document | Contents |
 |----------|----------|
+| [`2026-08-12.md`](daily-reports/2026-08-12.md) | Work of 12 August 2026: replacing window.confirm() everywhere after it silently stopped a delete button from responding, adding a phone number with a database-level format constraint, dropdowns replacing free-typed usernames, two new full-detail account tables, a validation pass, and a same-day CI fix for a test-order-dependency bug. |
 | [`2026-08-11.md`](daily-reports/2026-08-11.md) | Work of 11 August 2026: making the timetable admin-only, giving every delete a dependency check that answers 409 rather than letting the database refuse it as a 500, completing student and teacher account management, and rebuilding both dashboards around subjects, classes and a timetable. |
 | [`2026-08-05.md`](daily-reports/2026-08-05.md) | Work of 5 August 2026: marks, automatic scoring and performance levels; a report with PDF export for both roles; nothing derived stored; and the mark-ownership guard that stops a mark being attached to another student's work. |
 | [`2026-08-04.md`](daily-reports/2026-08-04.md) | Work of 4 August 2026: splitting `Assignment` into assignment and submission, adding subjects, classes, enrolment and courses, PDF upload and download, and making the role rules facts about the data through composite foreign keys. |
