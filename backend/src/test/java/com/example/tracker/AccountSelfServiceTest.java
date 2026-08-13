@@ -102,13 +102,32 @@ class AccountSelfServiceTest {
         @Test
         @DisplayName("a successful change stores a new hash and never echoes it")
         void successStoresHashAndLeaksNothing() throws Exception {
-            AppUser before = users.findByUsername("teacher").orElseThrow();
-            String oldHash = before.getPasswordHash();
+            /*
+             * A THROWAWAY ACCOUNT, NOT THE SEEDED "teacher" - this used to
+             * change the shared "teacher" account's password to
+             * "Brand-new-password1" and never change it back, a real,
+             * permanent write for the rest of that JVM's test run. Spring
+             * caches the application context - and its embedded H2 database -
+             * across every test class carrying the identical
+             * @SpringBootTest/@AutoConfigureMockMvc/@ActiveProfiles("test")
+             * trio, which every test class in this suite does, so the mutation
+             * was never confined to this file. InputValidationApiTest logging
+             * in as "teacher"/"password123" failed on GitHub's CI runner with
+             * exactly that state left behind by whichever test class happened
+             * to run first - the identical class of bug already fixed twice
+             * the same day in AdminApiTest (see its own comments on
+             * adminCanRename), just with a credential instead of a class name
+             * as the shared mutable state.
+             */
+            AppUser account = users.save(new AppUser(
+                    "self-service-probe", encoder.encode("password123"),
+                    com.example.tracker.model.Role.TEACHER, false));
+            String oldHash = account.getPasswordHash();
 
             String response = mvc.perform(put("/api/auth/password")
                             .contentType("application/json")
                             .content(changeBody("password123", "Brand-new-password1"))
-                            .with(as("teacher")).with(csrf()))
+                            .with(as("self-service-probe")).with(csrf()))
                     .andExpect(status().isOk())
                     .andReturn().getResponse().getContentAsString();
 
@@ -117,7 +136,7 @@ class AccountSelfServiceTest {
             assertThat(response).doesNotContain("Brand-new-password1");
             assertThat(response).doesNotContain("$2a$");
 
-            AppUser after = users.findByUsername("teacher").orElseThrow();
+            AppUser after = users.findByUsername("self-service-probe").orElseThrow();
             assertThat(after.getPasswordHash()).isNotEqualTo(oldHash);
             // Stored hashed, never as typed - the whole reason BCrypt is here.
             assertThat(after.getPasswordHash()).isNotEqualTo("Brand-new-password1");
