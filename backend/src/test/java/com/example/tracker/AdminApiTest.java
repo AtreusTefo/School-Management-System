@@ -1,8 +1,10 @@
 package com.example.tracker;
 
 import com.example.tracker.model.AppUser;
+import com.example.tracker.model.PersonProfile;
 import com.example.tracker.model.Role;
 import com.example.tracker.repository.AppUserRepository;
+import com.example.tracker.repository.PersonProfileRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.DisplayName;
@@ -11,15 +13,19 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.hamcrest.Matchers.*;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
@@ -58,6 +64,7 @@ class AdminApiTest {
     @Autowired private MockMvc mvc;
     @Autowired private AppUserRepository users;
     @Autowired private PasswordEncoder encoder;
+    @Autowired private PersonProfileRepository profiles;
 
     private static RequestPostProcessor as(String username, Role role) {
         return user(username).roles(role.name());
@@ -702,6 +709,74 @@ class AdminApiTest {
     }
 
     // =============================================================================
+    // PERSON PROFILE - DATABASE-LEVEL CONSTRAINTS
+    //
+    // The service-layer guards below are the message; ck_person_profile_
+    // enrolled_after_birth and ck_person_profile_phone_format (mirrored onto
+    // PersonProfile.java from V10 and V9) are the guarantee. Each rule gets
+    // two tests: one through the API proving the service refuses it cleanly
+    // with a 400, and one saving directly through the repository - bypassing
+    // AdminService entirely - proving the database refuses it independently.
+    // =============================================================================
+
+    @Nested
+    @DisplayName("person profile constraints")
+    class PersonProfileConstraints {
+
+        @Test
+        @DisplayName("a student cannot be enrolled before their own date of birth")
+        void enrolledBeforeBirthIsRefused() throws Exception {
+            mvc.perform(post("/api/students")
+                            .contentType("application/json")
+                            .content("{\"firstName\":\"Kagiso\",\"lastName\":\"Molefe\","
+                                    + "\"nationalId\":\"700000001\",\"dateOfBirth\":\"2010-01-01\","
+                                    + "\"dateEnrolled\":\"2005-01-01\","
+                                    + "\"phone\":\"+26771234567\","
+                                    + "\"temporaryPassword\":\"Temp-Password-1\"}")
+                            .with(asAdmin()).with(csrf()))
+               .andExpect(status().isBadRequest())
+               .andExpect(jsonPath("$.message", containsString("Date enrolled")));
+        }
+
+        /*
+         * @Transactional so the AppUser save and the PersonProfile save share
+         * one persistence context - PersonProfile's @MapsId derives its own
+         * id from appUser, and needs appUser to still be MANAGED, not
+         * detached, when the insert happens. Every save in production runs
+         * inside AdminService's own single @Transactional method for exactly
+         * this reason; two separate top-level repository calls here would
+         * detach the account in between them.
+         */
+        @Test
+        @Transactional
+        @DisplayName("the database itself refuses a profile enrolled before its own date of birth")
+        void databaseRefusesEnrolledBeforeBirth() {
+            AppUser account = users.save(new AppUser(
+                    "profile-probe-1", encoder.encode("password123"), Role.STUDENT, true));
+
+            assertThatThrownBy(() -> profiles.saveAndFlush(new PersonProfile(
+                    account, "Kagiso", null, "Molefe", "700000002",
+                    LocalDate.of(2010, 1, 1), null, null, LocalDate.of(2005, 1, 1))))
+                    .isInstanceOf(DataIntegrityViolationException.class);
+        }
+
+        @Test
+        @Transactional
+        @DisplayName("the database itself refuses a malformed phone number")
+        void databaseRefusesMalformedPhone() {
+            AppUser account = users.save(new AppUser(
+                    "profile-probe-2", encoder.encode("password123"), Role.STUDENT, true));
+
+            // 5 digits, not 8 - the shape ck_person_profile_phone_format exists
+            // to catch regardless of which layer produced it.
+            assertThatThrownBy(() -> profiles.saveAndFlush(new PersonProfile(
+                    account, "Kagiso", null, "Molefe", "700000003",
+                    LocalDate.of(2000, 1, 1), null, "+26712345", LocalDate.now())))
+                    .isInstanceOf(DataIntegrityViolationException.class);
+        }
+    }
+
+    // =============================================================================
     // ADMIN ACCOUNTS - ADMIN ONLY
     // =============================================================================
 
@@ -949,6 +1024,39 @@ class AdminApiTest {
                .andExpect(status().isOk())
                .andExpect(jsonPath("$.content", hasSize(1)))
                .andExpect(jsonPath("$.page.size", is(1)));
+        }
+
+        /**
+         * importOneStudent used to enrol a bulk-imported row without writing
+         * the "Enrolled" entry the single-record path (createStudent) writes
+         * for the identical action - a CSV with a className column produced
+         * only an AppUser/CREATE entry, never an Enrolment/CREATE one.
+         */
+        @Test
+        @DisplayName("a bulk-imported row that names a class is audited the same as a single enrolment")
+        void bulkImportedEnrolmentIsAudited() throws Exception {
+            String csv = "firstName,lastName,nationalId,dateOfBirth,className\n"
+                    + "Kelebogile,Ntsima,900000007,2011-03-03,Grade 10A\n";
+            MockMultipartFile file = new MockMultipartFile(
+                    "file", "students.csv", "text/csv", csv.getBytes(StandardCharsets.UTF_8));
+
+            String importBody = mvc.perform(
+                            multipart("/api/students/import").file(file).with(asAdmin()).with(csrf()))
+               .andExpect(status().isOk())
+               .andExpect(jsonPath("$.succeeded", is(1)))
+               .andReturn().getResponse().getContentAsString();
+            String externalId = new ObjectMapper().readTree(importBody)
+                    .get("rows").get(0).get("externalId").asText();
+
+            // The summary names the id and the class, the same shape
+            // "Enrolled '<externalId>' in Grade 10A." createStudent already writes.
+            mvc.perform(get("/api/audit-logs")
+                            .queryParam("entityName", "Enrolment")
+                            .queryParam("action", "CREATE")
+                            .with(asAdmin()))
+               .andExpect(status().isOk())
+               .andExpect(jsonPath("$.content[*].summary",
+                       hasItem(allOf(containsString(externalId), containsString("Grade 10A")))));
         }
     }
 

@@ -191,6 +191,9 @@ public class SubmissionFile {
         if (content == null) {
             throw new IllegalArgumentException("A stored file needs its content.");
         }
+        if (sha256 == null) {
+            throw new IllegalArgumentException("A stored file needs a checksum.");
+        }
         this.submission = submission;
         this.filename = filename;
         this.contentType = contentType;

@@ -2,6 +2,7 @@ package com.example.tracker;
 
 import com.example.tracker.model.AppUser;
 import com.example.tracker.repository.AppUserRepository;
+import com.example.tracker.repository.AuditLogRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -40,6 +41,7 @@ class AccountSelfServiceTest {
     @Autowired private MockMvc mvc;
     @Autowired private AppUserRepository users;
     @Autowired private PasswordEncoder encoder;
+    @Autowired private AuditLogRepository auditLog;
 
     private static org.springframework.test.web.servlet.request.RequestPostProcessor as(String name) {
         return org.springframework.security.test.web.servlet.request
@@ -141,6 +143,33 @@ class AccountSelfServiceTest {
             // Stored hashed, never as typed - the whole reason BCrypt is here.
             assertThat(after.getPasswordHash()).isNotEqualTo("Brand-new-password1");
             assertThat(encoder.matches("Brand-new-password1", after.getPasswordHash())).isTrue();
+        }
+
+        @Test
+        @DisplayName("a successful change is written to the audit log")
+        void successIsAudited() throws Exception {
+            /*
+             * Every admin-initiated password action (reset) is logged; a
+             * self-service change - including the mandatory first-login one
+             * every admin-created account must perform - was not. This is
+             * the gap, not a duplicate of the test above: that one proves the
+             * hash changed, this one proves there is a record of who changed
+             * it and when.
+             */
+            users.save(new AppUser("audit-probe", encoder.encode("password123"),
+                    com.example.tracker.model.Role.TEACHER, false));
+
+            mvc.perform(put("/api/auth/password")
+                            .contentType("application/json")
+                            .content(changeBody("password123", "Another-new-password2"))
+                            .with(as("audit-probe")).with(csrf()))
+               .andExpect(status().isOk());
+
+            boolean logged = auditLog.findAll().stream().anyMatch(entry ->
+                    "AppUser".equals(entry.getEntityName())
+                            && "audit-probe".equals(entry.getPerformedByUsername())
+                            && entry.getSummary().contains("changed their own password"));
+            assertThat(logged).isTrue();
         }
     }
 

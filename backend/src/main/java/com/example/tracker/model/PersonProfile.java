@@ -54,7 +54,22 @@ import java.time.LocalDate;
         @Check(name = "ck_person_profile_first_name_not_blank",
                 constraints = "LTRIM(RTRIM(first_name)) <> ''"),
         @Check(name = "ck_person_profile_last_name_not_blank",
-                constraints = "LTRIM(RTRIM(last_name)) <> ''")
+                constraints = "LTRIM(RTRIM(last_name)) <> ''"),
+
+        /*
+         * Mirrors ck_person_profile_phone_format from V9 - not a literal copy
+         * of it. SQL Server's LIKE '[0-9]' bracket character classes are a
+         * T-SQL extension H2's ANSI-only LIKE does not understand, and
+         * ddl-auto=validate means Hibernate never sends this annotation's SQL
+         * to SQL Server anyway - only to H2, under create-drop, for tests.
+         * REGEXP is what lets H2 enforce the identical rule the migration
+         * enforces on the real database.
+         */
+        @Check(name = "ck_person_profile_phone_format",
+                constraints = "phone IS NULL OR phone REGEXP '^\\+267[0-9]{8}$'"),
+
+        @Check(name = "ck_person_profile_enrolled_after_birth",
+                constraints = "date_enrolled >= date_of_birth")
 })
 public class PersonProfile {
 

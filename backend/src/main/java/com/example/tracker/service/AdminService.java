@@ -383,7 +383,9 @@ public class AdminService {
             SchoolClass schoolClass = classes.findByNameIgnoreCase(className)
                     .orElseThrow(() -> new IllegalArgumentException(
                             "No class named '" + className + "'."));
-            enrolments.save(new Enrolment(created, schoolClass));
+            Enrolment enrolment = enrolments.save(new Enrolment(created, schoolClass));
+            audit.record("Enrolment", enrolment.getId(), AuditAction.CREATE, me,
+                    "Enrolled '" + externalId + "' in " + schoolClass.getName() + ".");
         }
 
         audit.record("AppUser", created.getId(), AuditAction.CREATE, me,
@@ -675,6 +677,9 @@ public class AdminService {
         LocalDate enrolled = dateEnrolled == null
                 ? (existing == null ? LocalDate.now() : existing.getDateEnrolled())
                 : dateEnrolled;
+        if (enrolled.isBefore(dateOfBirth)) {
+            throw new IllegalArgumentException("Date enrolled cannot be before date of birth.");
+        }
         String cleanMiddle = (middleName == null || middleName.isBlank())
                 ? null : middleName.trim();
 
@@ -738,6 +743,9 @@ public class AdminService {
         }
 
         LocalDate enrolled = dateEnrolled == null ? LocalDate.now() : dateEnrolled;
+        if (enrolled.isBefore(dateOfBirth)) {
+            throw new IllegalArgumentException("Date enrolled cannot be before date of birth.");
+        }
 
         return profiles.save(new PersonProfile(account, cleanFirst,
                 (middleName == null || middleName.isBlank()) ? null : middleName.trim(),

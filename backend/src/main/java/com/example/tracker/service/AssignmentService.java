@@ -17,6 +17,7 @@ import com.example.tracker.repository.EnrolmentRepository;
 import com.example.tracker.repository.SubmissionRepository;
 import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
@@ -215,8 +216,21 @@ public class AssignmentService {
      * ON DELETE CASCADE in the schema. That is the same decision taken for
      * accounts in V2 and for the same reason: a cascade would make this method's
      * refusal above bypassable by anyone who deleted the parent another way.
+     *
+     * SERIALIZABLE, NOT THE CLASS DEFAULT
+     * The check below and the delete that follows it are two statements, not
+     * one: under READ_COMMITTED a student can submit in the gap between them,
+     * and the delete would then remove that submission - PDF included - with
+     * no refusal and no trace that the check should have fired. SERIALIZABLE
+     * makes SQL Server hold a range lock on the predicate this method reads,
+     * so a concurrent submit either commits before this transaction starts or
+     * waits behind it; either way the check and the delete see the same world.
+     * This is the same class of race @Version already closed for concurrent
+     * submissions - a different tool because the shape is different: that one
+     * is two writers racing each other, this one is a reader whose answer must
+     * still be true by the time it acts on it.
      */
-    @Transactional
+    @Transactional(isolation = Isolation.SERIALIZABLE)
     public void deleteAssignment(Long id) {
         AppUser me = users.currentActiveUser();
         Assignment assignment = requireOwnCourse(id, "delete");

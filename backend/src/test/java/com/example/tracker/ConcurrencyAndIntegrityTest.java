@@ -11,6 +11,7 @@ import com.example.tracker.model.Subject;
 import com.example.tracker.model.Submission;
 import com.example.tracker.model.SubmissionFile;
 import com.example.tracker.repository.*;
+import com.example.tracker.service.AssignmentService;
 import com.example.tracker.service.SubmissionService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -65,6 +66,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class ConcurrencyAndIntegrityTest {
 
     @Autowired private SubmissionService submissionService;
+    @Autowired private AssignmentService assignmentService;
     @Autowired private AssignmentRepository assignments;
     @Autowired private SubmissionRepository submissions;
     @Autowired private AppUserRepository users;
@@ -134,6 +136,82 @@ class ConcurrencyAndIntegrityTest {
         Submission stored = submissions.findById(target.getId()).orElseThrow();
         assertThat(stored.getStatus()).isEqualTo(AssignmentStatus.SUBMITTED);
         assertThat(stored.getSubmittedAt()).isNotNull();
+    }
+
+    /**
+     * AssignmentService.deleteAssignment checks for SUBMITTED work, then
+     * deletes - two statements, not one. Under the class's own default
+     * isolation a student could submit in the gap between them, and the
+     * delete would remove that submission - PDF included - with no refusal
+     * and no trace the check should have fired. deleteAssignment now runs
+     * SERIALIZABLE specifically to close that gap.
+     *
+     * What must NEVER happen, whichever side wins the race: both a submit
+     * AND a delete succeeding for the same assignment. Either the submit
+     * commits first and the delete then sees SUBMITTED work and refuses, or
+     * the delete commits first and the submit then finds nothing to submit
+     * to - never both "accepted" at once, which is exactly a submitted PDF
+     * silently destroyed.
+     */
+    @Test
+    @DisplayName("a delete racing a hand-in never both succeeds - the submission is never silently lost")
+    void deleteCannotRaceAHandIn() throws Exception {
+        AppUser student = users.findByUsername("student").orElseThrow();
+        Submission submission = freshSubmissionFor(student);
+        Assignment assignment = submission.getAssignment();
+        String teacherUsername = assignment.getCourse().getTeacher().getUsername();
+
+        actAs("student", Role.STUDENT);
+        submissionService.uploadFile(submission.getId(), "work.pdf", "application/pdf", TINY_PDF);
+
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        CountDownLatch startTogether = new CountDownLatch(1);
+        AtomicInteger submitAccepted = new AtomicInteger();
+        AtomicInteger deleteAccepted = new AtomicInteger();
+
+        pool.submit(() -> {
+            actAs("student", Role.STUDENT);
+            try {
+                startTogether.await();
+                submissionService.submit(submission.getId());
+                submitAccepted.incrementAndGet();
+            } catch (Exception ignored) {
+                // Refused - either the assignment was already gone, or a
+                // serialization failure. Both are a correct refusal here.
+            }
+            return null;
+        });
+        pool.submit(() -> {
+            actAs(teacherUsername, Role.TEACHER);
+            try {
+                startTogether.await();
+                assignmentService.deleteAssignment(assignment.getId());
+                deleteAccepted.incrementAndGet();
+            } catch (Exception ignored) {
+                // Refused - either work had already been handed in, or a
+                // serialization failure. Both are a correct refusal here.
+            }
+            return null;
+        });
+
+        startTogether.countDown();
+        pool.shutdown();
+        assertThat(pool.awaitTermination(60, TimeUnit.SECONDS)).isTrue();
+
+        assertThat(submitAccepted.get() == 1 && deleteAccepted.get() == 1)
+                .as("a submit and a delete must never both succeed for the same assignment")
+                .isFalse();
+
+        // The stored state must agree with whichever side actually won.
+        if (submitAccepted.get() == 1) {
+            assertThat(assignments.findById(assignment.getId())).isPresent();
+            assertThat(submissions.findById(submission.getId()).orElseThrow().getStatus())
+                    .isEqualTo(AssignmentStatus.SUBMITTED);
+        }
+        if (deleteAccepted.get() == 1) {
+            assertThat(assignments.findById(assignment.getId())).isEmpty();
+            assertThat(submissions.findById(submission.getId())).isEmpty();
+        }
     }
 
     @Test

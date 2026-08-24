@@ -2,6 +2,7 @@ package com.example.tracker.service;
 
 import com.example.tracker.exception.AccessDeniedException;
 import com.example.tracker.model.AppUser;
+import com.example.tracker.model.AuditAction;
 import com.example.tracker.model.Role;
 import com.example.tracker.repository.AppUserRepository;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -41,9 +42,17 @@ public class AppUserService {
      */
     private final PasswordEncoder encoder;
 
-    public AppUserService(AppUserRepository users, PasswordEncoder encoder) {
+    /**
+     * Safe to depend on: AuditLogService depends on AppUserRepository rather
+     * than on this class, precisely so this direction is not a cycle - see
+     * AuditLogService's own header.
+     */
+    private final AuditLogService audit;
+
+    public AppUserService(AppUserRepository users, PasswordEncoder encoder, AuditLogService audit) {
         this.users = users;
         this.encoder = encoder;
+        this.audit = audit;
     }
 
     /**
@@ -186,6 +195,10 @@ public class AppUserService {
         // Whatever the account was pending, it is not pending now: the password
         // is one only its owner has typed.
         user.setMustChangePassword(false);
+
+        audit.record("AppUser", user.getId(), AuditAction.UPDATE, user,
+                "'" + user.getUsername() + "' changed their own password.");
+
         return user;
     }
 }
