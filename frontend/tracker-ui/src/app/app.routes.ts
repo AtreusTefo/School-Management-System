@@ -33,10 +33,88 @@ import { adminAuthGuard } from './admin-auth.guard';
  * DashboardComponent into and never constructs it - no wasted requests, no
  * exposed data, just the login form the shell renders instead.
  */
+/**
+ * THE PUBLIC PAGES - readable signed in, signed out, or with no account at all.
+ *
+ * The shell consults this list to decide what to draw for a SIGNED-OUT
+ * visitor: on a public path it renders <router-outlet> so the page below can
+ * appear, and on anything else it renders the landing page and the sign-in
+ * card instead. See AppComponent.isPublicPage.
+ *
+ * A PLAIN LIST OF PATHS, CHECKED SYNCHRONOUSLY, rather than route `data` read
+ * back from an ActivatedRoute subscription. Both would work, and the second
+ * is the more fashionable - but this app has already been bitten twice by
+ * routing decisions that depended on an asynchronous value having arrived
+ * (see the guards' own comments on racing SessionService.init()). The URL is
+ * known synchronously from the first render, so deriving this from the URL
+ * has no race to lose.
+ */
+export const PUBLIC_PATHS = [
+  '/home', '/about', '/privacy', '/terms',
+  // Forgetting a password is by definition done while signed out, so both
+  // halves of that flow have to render for a visitor with no session.
+  '/forgot-password', '/reset-password'
+] as const;
+
+/** True when `url` is one of PUBLIC_PATHS, ignoring any query or fragment. */
+export function isPublicPath(url: string): boolean {
+  const path = url.split('?')[0].split('#')[0];
+  return (PUBLIC_PATHS as readonly string[]).includes(path);
+}
+
 export const routes: Routes = [
   {
     path: '',
     loadComponent: () => import('./dashboard.component').then(m => m.DashboardComponent)
+  },
+
+  /*
+   * PUBLIC - no guard, by design.
+   *
+   * These carry no authGuard for the same reason the root route carries none:
+   * every guard's failure path redirects to '/', so guarding a page that a
+   * signed-out visitor is explicitly meant to read would either bounce them
+   * or, if '/' were guarded too, loop. They are also the only routes whose
+   * component renders while signed out, which is what makes a landing page,
+   * an about page and the two legal pages reachable without an account.
+   */
+  {
+    path: 'home',
+    data: { public: true },
+    loadComponent: () => import('./home.component').then(m => m.HomeComponent)
+  },
+  {
+    path: 'about',
+    data: { public: true },
+    loadComponent: () => import('./about.component').then(m => m.AboutComponent)
+  },
+  {
+    path: 'privacy',
+    data: { public: true },
+    loadComponent: () => import('./privacy.component').then(m => m.PrivacyComponent)
+  },
+  {
+    path: 'terms',
+    data: { public: true },
+    loadComponent: () => import('./terms.component').then(m => m.TermsComponent)
+  },
+  {
+    path: 'forgot-password',
+    data: { public: true },
+    loadComponent: () => import('./forgot-password.component')
+      .then(m => m.ForgotPasswordComponent)
+  },
+  {
+    /*
+     * Carries the token as a query parameter, so it is public by necessity -
+     * the whole point is that somebody with no session can use it. The token
+     * itself is what authorises the change, and the server refuses an expired,
+     * spent or unknown one.
+     */
+    path: 'reset-password',
+    data: { public: true },
+    loadComponent: () => import('./reset-password.component')
+      .then(m => m.ResetPasswordComponent)
   },
   {
     path: 'assignments',
@@ -54,6 +132,27 @@ export const routes: Routes = [
   {
     path: 'marking-queue',
     loadComponent: () => import('./marking-queue-page.component').then(m => m.MarkingQueuePageComponent),
+    canActivate: [authGuard]
+  },
+  {
+    /*
+     * Taking a register, or reading your own attendance - which of the two you
+     * get is decided by AttendanceService from the session, not by this route.
+     * authGuard alone for the same reason /timetable carries it alone.
+     */
+    path: 'attendance',
+    loadComponent: () => import('./attendance-page.component').then(m => m.AttendancePageComponent),
+    canActivate: [authGuard]
+  },
+  {
+    /*
+     * The caller's OWN week - every signed-in role, including students, which
+     * is why this carries authGuard alone and not teacherGuard. What each role
+     * sees differs entirely, and that difference is decided by
+     * TimetableService from the session rather than by this route.
+     */
+    path: 'timetable',
+    loadComponent: () => import('./my-timetable-page.component').then(m => m.MyTimetablePageComponent),
     canActivate: [authGuard]
   },
   {
@@ -97,6 +196,14 @@ export const routes: Routes = [
     canActivate: [adminAuthGuard]
   },
   {
+    // Terms, the shape of the school day, and WHEN each course is taught -
+    // separate from /admin/timetable, which is who teaches what to whom.
+    path: 'admin/schedule',
+    loadComponent: () => import('./admin-schedule-page.component')
+      .then(m => m.AdminSchedulePageComponent),
+    canActivate: [adminAuthGuard]
+  },
+  {
     path: 'admin/teachers',
     loadComponent: () => import('./admin-teachers-page.component').then(m => m.AdminTeachersPageComponent),
     canActivate: [adminAuthGuard]
@@ -125,5 +232,23 @@ export const routes: Routes = [
     canActivate: [adminAuthGuard]
   },
 
-  { path: '**', redirectTo: '' }
+  /*
+   * 404 - A REAL PAGE, NOT A REDIRECT.
+   *
+   * This was `redirectTo: ''`, which sent every unknown URL to the dashboard
+   * and rewrote the address bar on the way, so a mistyped or stale link was
+   * indistinguishable from being signed out and sent home - with the evidence
+   * (the URL itself) destroyed by the redirect. A component keeps the bad URL
+   * on screen and says what happened.
+   *
+   * public: true because a signed-out visitor following a dead link must see
+   * the 404 rather than the landing page - the shell decides what to render
+   * from this flag. It stays LAST: '**' matches everything, so any route
+   * declared after it would be unreachable.
+   */
+  {
+    path: '**',
+    data: { public: true },
+    loadComponent: () => import('./not-found.component').then(m => m.NotFoundComponent)
+  }
 ];

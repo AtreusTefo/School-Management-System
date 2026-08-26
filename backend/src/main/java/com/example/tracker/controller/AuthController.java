@@ -33,10 +33,13 @@ public class AuthController {
 
     private final AuthenticationManager authenticationManager;
     private final AppUserService users;
+    private final com.example.tracker.service.PasswordResetService passwordReset;
 
-    public AuthController(AuthenticationManager authenticationManager, AppUserService users) {
+    public AuthController(AuthenticationManager authenticationManager, AppUserService users,
+                          com.example.tracker.service.PasswordResetService passwordReset) {
         this.authenticationManager = authenticationManager;
         this.users = users;
+        this.passwordReset = passwordReset;
     }
 
     /**
@@ -211,5 +214,79 @@ public class AuthController {
         public void setNewPassword(String newPassword) {
             this.newPassword = newPassword;
         }
+    }
+
+    // ===== FORGOTTEN PASSWORD ===============================================
+
+    /**
+     * Ask for a reset link.
+     *
+     * ALWAYS 200, ALWAYS THE SAME BODY - whether the identifier matched an
+     * account, matched one with no email on file, or matched nothing at all.
+     * This endpoint is reachable without signing in, so an answer that varied
+     * would be a free tool for discovering which student IDs exist. See
+     * PasswordResetService for why that requirement shapes the whole flow.
+     */
+    @PostMapping("/forgot-password")
+    public java.util.Map<String, String> forgotPassword(
+            @Valid @RequestBody ForgotPasswordRequest request) {
+        passwordReset.requestReset(request.getIdentifier());
+        return java.util.Map.of("message",
+                "If that account exists, a reset link has been sent to the email on record.");
+    }
+
+    /**
+     * Spend a reset link and set a new password.
+     *
+     * This one DOES report failure, unlike the endpoint above. A token is not
+     * a guessable identifier, so saying "this link has expired" reveals
+     * nothing about who holds an account - and silently doing nothing would
+     * leave somebody staring at a form that appears broken.
+     */
+    @PostMapping("/reset-password")
+    public java.util.Map<String, String> resetPassword(
+            @Valid @RequestBody ResetPasswordRequest request) {
+        passwordReset.resetPassword(request.getToken(), request.getNewPassword());
+        return java.util.Map.of("message",
+                "Your password has been changed. You can now sign in with it.");
+    }
+
+    static class ForgotPasswordRequest {
+
+        @NotBlank(message = "Enter your sign-in ID or the email address on your account.")
+        @Size(max = 100, message = "That is too long to be an ID or an email address.")
+        private String identifier;
+
+        public String getIdentifier() { return identifier; }
+        public void setIdentifier(String identifier) { this.identifier = identifier; }
+    }
+
+    static class ResetPasswordRequest {
+
+        @NotBlank(message = "A reset link is required.")
+        private String token;
+
+        /*
+         * The SAME password rules as every other place one is set - see
+         * PersonPatterns, and CLAUDE.md on why the four checks are separate
+         * patterns rather than one combined regex. A reset that accepted a
+         * weaker password than the change-password form would be a way around
+         * the rule rather than an exception to it.
+         */
+        @NotBlank(message = "A new password is required.")
+        @Size(min = 8, message = "The new password must be at least 8 characters.")
+        @Pattern(regexp = com.example.tracker.validation.PersonPatterns.PASSWORD_HAS_UPPERCASE,
+                message = "The new password needs an uppercase letter.")
+        @Pattern(regexp = com.example.tracker.validation.PersonPatterns.PASSWORD_HAS_DIGIT,
+                message = "The new password needs a digit.")
+        @Pattern(regexp = com.example.tracker.validation.PersonPatterns.PASSWORD_HAS_SYMBOL,
+                message = "The new password needs a symbol.")
+        private String newPassword;
+
+        public String getToken() { return token; }
+        public void setToken(String token) { this.token = token; }
+
+        public String getNewPassword() { return newPassword; }
+        public void setNewPassword(String newPassword) { this.newPassword = newPassword; }
     }
 }

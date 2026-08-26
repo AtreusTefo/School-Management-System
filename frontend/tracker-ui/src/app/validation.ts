@@ -61,7 +61,8 @@ export const ASSESSMENT_NAME_MAX_LENGTH = 100;        // assessment.name
 // person_profile - the admin panel's student/teacher onboarding forms.
 export const PERSON_NAME_MIN_LENGTH = 2;              // first_name / last_name
 export const PERSON_NAME_MAX_LENGTH = 50;             // first_name / middle_name / last_name
-export const NATIONAL_ID_MAX_LENGTH = 20;             // person_profile.national_id
+export const NATIONAL_ID_LENGTH = 9;                  // person_profile.national_id - an Omang
+export const NATIONAL_ID_MAX_LENGTH = 9;              // kept as a name existing forms bind to
 export const CONTACT_EMAIL_MAX_LENGTH = 100;          // person_profile.contact_email
 
 /**
@@ -75,8 +76,39 @@ export const CONTACT_EMAIL_MAX_LENGTH = 100;          // person_profile.contact_
  */
 export const NAME_PATTERN = /^[\p{L} '-]+$/u;
 
-/** Digits only - mirrors PersonPatterns.NATIONAL_ID. */
-export const NATIONAL_ID_PATTERN = /^[0-9]{4,20}$/;
+/**
+ * A Botswana Omang - mirrors PersonPatterns.NATIONAL_ID exactly.
+ *
+ * Nine digits, whose FIFTH is the gender marker: 1 for male, 2 for female.
+ * Read as four digits, the marker, four more.
+ *
+ * That middle digit is the only self-describing position in the number, which
+ * is what makes it worth checking at all: nine arbitrary digits have no
+ * internal structure, so a transposition just produces another plausible
+ * number. Constraining position 5 catches a mistake there at the form instead
+ * of leaving a profile quietly attached to the wrong person.
+ *
+ * (An older convention marked gender with the seventh digit, 0-4 female and
+ * 5-9 male. This is the modern rule, and matches ck_person_profile_omang at
+ * the database - see V13.)
+ */
+export const NATIONAL_ID_PATTERN = /^[0-9]{4}[12][0-9]{4}$/;
+
+/**
+ * Male or female, read out of a valid Omang, or null when the number cannot
+ * say. Mirrors Gender.fromOmang on the server.
+ *
+ * Used to show the derived gender beside the field as it is typed, which is
+ * also the clearest way to explain WHY a number was refused - "the 5th digit
+ * must be 1 or 2" means much more next to a field that has been showing
+ * "Male" for every other entry.
+ */
+export function genderFromOmang(nationalId: string | null | undefined): 'Male' | 'Female' | null {
+  if (!nationalId || !NATIONAL_ID_PATTERN.test(nationalId)) {
+    return null;
+  }
+  return nationalId.charAt(4) === '1' ? 'Male' : 'Female';
+}
 
 /**
  * A Botswana mobile number stored as +267 followed by eight digits - mirrors

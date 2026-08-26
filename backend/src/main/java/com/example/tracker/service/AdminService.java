@@ -15,6 +15,8 @@ import com.example.tracker.model.Role;
 import com.example.tracker.model.SchoolClass;
 import com.example.tracker.model.Subject;
 import com.example.tracker.repository.AppUserRepository;
+import com.example.tracker.repository.AttendanceRepository;
+import com.example.tracker.repository.PasswordResetTokenRepository;
 import com.example.tracker.repository.AssignmentRepository;
 import com.example.tracker.repository.AssessmentRepository;
 import com.example.tracker.repository.CourseRepository;
@@ -81,6 +83,19 @@ public class AdminService {
      */
     private static final Pattern PHONE_PATTERN = Pattern.compile(PersonPatterns.PHONE);
 
+    /**
+     * The Omang's shape, checked HERE as well as on the request DTO.
+     *
+     * Not redundant: bulk import never builds a PersonRequest, so the
+     * @Pattern on that class does not run for a CSV row. Without this check a
+     * spreadsheet could carry any string into saveProfile, and the first thing
+     * to object would be ck_person_profile_omang at the database - which
+     * arrives as a constraint violation rather than as "row 14: ...", losing
+     * the one piece of information the importer needs.
+     */
+    private static final Pattern NATIONAL_ID_PATTERN =
+            Pattern.compile(PersonPatterns.NATIONAL_ID);
+
     private final AppUserRepository users;
     private final PersonProfileRepository profiles;
     private final CourseRepository courses;
@@ -90,6 +105,8 @@ public class AdminService {
     private final EnrolmentRepository enrolments;
     private final SubmissionRepository submissions;
     private final AssessmentRepository assessments;
+    private final AttendanceRepository attendance;
+    private final PasswordResetTokenRepository resetTokens;
     private final PasswordEncoder encoder;
     private final AppUserService currentUser;
     private final AuditLogService audit;
@@ -103,10 +120,14 @@ public class AdminService {
                         EnrolmentRepository enrolments,
                         SubmissionRepository submissions,
                         AssessmentRepository assessments,
+                        AttendanceRepository attendance,
+                        PasswordResetTokenRepository resetTokens,
                         PasswordEncoder encoder,
                         AppUserService currentUser, AuditLogService audit,
                         IdGeneratorService ids, ImportRowReader importRowReader,
                         @NonNull PlatformTransactionManager transactionManager) {
+        this.attendance = attendance;
+        this.resetTokens = resetTokens;
         this.users = users;
         this.profiles = profiles;
         this.courses = courses;
@@ -464,6 +485,14 @@ public class AdminService {
                             + "remove those first.");
         }
 
+        /*
+         * Any outstanding reset link dies with the account. Unlike an audit
+         * entry - which must outlive the account it names, and so stores a
+         * snapshot rather than a reference - a reset token is meaningless
+         * without its account, and fk_password_reset_token_user does not
+         * cascade, so leaving one behind would simply make the delete fail.
+         */
+        resetTokens.deleteByAppUser(teacher);
         profiles.findByAppUser(teacher).ifPresent(profiles::delete);
 
         String name = teacher.getUsername();
@@ -571,6 +600,21 @@ public class AdminService {
                     "'" + student.getUsername() + "' has at least one submission and cannot be "
                             + "deleted. Handed-in work is evidence that it was handed in.");
         }
+        /*
+         * Attendance is the same kind of fact as a mark or a submission -
+         * a record of SOMETHING THAT HAPPENED, not of a current arrangement -
+         * so it blocks the delete for the identical reason, and unlike
+         * enrolment it is not tidied away alongside the account.
+         *
+         * The database would refuse this anyway (fk_attendance_student does
+         * not cascade); the check is what turns that refusal into a sentence
+         * naming the reason instead of a 500.
+         */
+        if (attendance.existsByStudent(student)) {
+            throw new IllegalStateException(
+                    "'" + student.getUsername() + "' has attendance on record and cannot be "
+                            + "deleted. A register is a record of who was actually there.");
+        }
 
         /*
          * Enrolments go, explicitly, in this same transaction. They are the one
@@ -580,6 +624,14 @@ public class AdminService {
          * cascade either.
          */
         enrolments.findByStudentOrderByIdAsc(student).forEach(enrolments::delete);
+        /*
+         * Any outstanding reset link dies with the account. Unlike an audit
+         * entry - which must outlive the account it names, and so stores a
+         * snapshot rather than a reference - a reset token is meaningless
+         * without its account, and fk_password_reset_token_user does not
+         * cascade, so leaving one behind would simply make the delete fail.
+         */
+        resetTokens.deleteByAppUser(student);
         profiles.findByAppUser(student).ifPresent(profiles::delete);
 
         String name = student.getUsername();
@@ -663,6 +715,11 @@ public class AdminService {
             throw new IllegalArgumentException(
                     "'" + cleanPhone + "' is not a valid phone number - use +267 followed by 8 digits.");
         }
+        if (!NATIONAL_ID_PATTERN.matcher(cleanNationalId).matches()) {
+            throw new IllegalArgumentException(
+                    "'" + cleanNationalId + "' is not a valid Omang - it must be 9 digits, "
+                            + "and the 5th digit must be 1 (male) or 2 (female).");
+        }
 
         PersonProfile existing = profiles.findByAppUser(account).orElse(null);
 
@@ -731,6 +788,11 @@ public class AdminService {
         if (cleanPhone != null && !PHONE_PATTERN.matcher(cleanPhone).matches()) {
             throw new IllegalArgumentException(
                     "'" + cleanPhone + "' is not a valid phone number - use +267 followed by 8 digits.");
+        }
+        if (!NATIONAL_ID_PATTERN.matcher(cleanNationalId).matches()) {
+            throw new IllegalArgumentException(
+                    "'" + cleanNationalId + "' is not a valid Omang - it must be 9 digits, "
+                            + "and the 5th digit must be 1 (male) or 2 (female).");
         }
 
         /*

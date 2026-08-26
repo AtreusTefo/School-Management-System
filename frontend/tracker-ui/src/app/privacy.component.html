@@ -1,0 +1,223 @@
+<!-- PRIVACY POLICY - describes the data this system actually holds. -->
+
+<div class="legal">
+
+  <header class="legal__head">
+    <span class="eyebrow">Legal</span>
+    <h2 class="legal__title">Privacy Policy</h2>
+    <p class="legal__meta">Last updated {{ lastUpdated }}</p>
+  </header>
+
+  <!-- A visible, honest notice. See the component's own comment on why this
+       should not simply be deleted to make the page look finished. -->
+  <div class="legal__notice" role="note">
+    <strong>Before this is published.</strong>
+    This policy accurately describes what the software does with personal
+    data. It is not legal advice. The school operating this system must
+    confirm the retention periods, the lawful basis for processing, and the
+    contact route below against its own obligations, and replace the
+    placeholders marked in square brackets.
+  </div>
+
+  <div class="prose">
+
+    <h3>1. Who this applies to</h3>
+    <p>
+      This policy covers everyone with an account on Assignment Tracker as
+      operated by <strong>[School name]</strong> ("the school", "we"):
+      students, teachers, and administrators. The school is the data
+      controller and decides how the information described here is used.
+    </p>
+
+    <h3>2. What we collect, and why</h3>
+    <p>
+      The system holds only what it needs to identify a person, decide what
+      they may do, and record the work they hand in or mark.
+    </p>
+
+    <h4>Account and identity</h4>
+    <ul>
+      <li>
+        <strong>Sign-in ID and role.</strong> Every account is issued an ID
+        (for example a student ID beginning STU) and holds one role -
+        teacher, student, or administrator. This is what determines what the
+        account is allowed to see and do.
+      </li>
+      <li>
+        <strong>Password.</strong> Stored only as a one-way BCrypt hash. The
+        password itself is never stored, never written to a log, and never
+        returned by the system - including to administrators, who can reset a
+        password but cannot read one.
+      </li>
+    </ul>
+
+    <h4>Personal details</h4>
+    <ul>
+      <li>
+        <strong>Name</strong> - first, middle where given, and last.
+      </li>
+      <li>
+        <strong>National identity number</strong> - recorded so that one
+        person entered twice is recognised as the same person rather than
+        becoming two accounts.
+      </li>
+      <li>
+        <strong>Date of birth</strong> and <strong>date enrolled</strong>.
+      </li>
+      <li>
+        <strong>Contact email address and phone number</strong>, where
+        provided. These are contact details only. They are never used as a
+        sign-in credential.
+      </li>
+    </ul>
+    <p class="prose__aside">
+      Administrator accounts do not have a personal detail record at all -
+      only an ID, a role and a credential.
+    </p>
+
+    <h4>Academic records</h4>
+    <ul>
+      <li>
+        <strong>Enrolment</strong> - which class a student belongs to, and
+        which teacher teaches which subject to that class.
+      </li>
+      <li>
+        <strong>Assignments and submissions</strong> - the work set, its due
+        date, and each student's submission state and the time it changed.
+      </li>
+      <li>
+        <strong>Uploaded files</strong> - the PDF a student hands in, along
+        with its original filename, size, and a checksum used to detect
+        corruption.
+      </li>
+      <li>
+        <strong>Marks</strong> - the score awarded out of a maximum, who
+        recorded it, and when.
+      </li>
+    </ul>
+
+    <h4>Activity record</h4>
+    <ul>
+      <li>
+        <strong>Audit log.</strong> Every creation, change and deletion made
+        through the system is recorded, together with a description of what
+        changed and the username and role of the person who made it, captured
+        at that moment.
+      </li>
+    </ul>
+
+    <h3>3. Who can see what</h3>
+    <p>
+      Access is decided by role and enforced on the server, not merely hidden
+      in the interface.
+    </p>
+    <ul>
+      <li>
+        <strong>Students</strong> see their own submissions, their own
+        uploaded files, and their own marks. A student cannot see another
+        student's work, marks, or class register.
+      </li>
+      <li>
+        <strong>Teachers</strong> see the students in the classes they teach,
+        the submissions for the work they set, and the marks they and other
+        teachers of that course have recorded.
+      </li>
+      <li>
+        <strong>Administrators</strong> can see account records and the audit
+        log, and maintain the subjects, classes and courses.
+      </li>
+    </ul>
+
+    <h3>4. How the information is protected</h3>
+    <ul>
+      <li>Passwords are stored only as one-way hashes.</li>
+      <li>
+        Access requires an authenticated session, and every request that
+        changes data must carry a token that prevents another website from
+        making that request on your behalf.
+      </li>
+      <li>
+        Uploaded files are stored inside the database as part of the same
+        transaction as the submission itself, so a file can never be left
+        without the record it belongs to, or the reverse.
+      </li>
+      <li>
+        Uploads are accepted only as PDF documents, and are checked by
+        content rather than by trusting the name they arrive with.
+      </li>
+      <li>
+        Error messages returned to the browser never include database or
+        internal system detail.
+      </li>
+    </ul>
+
+    <h3>5. How long it is kept</h3>
+    <p>
+      Academic records - submissions, uploaded files and marks - are retained
+      for as long as the school requires them, in line with its own records
+      retention policy: <strong>[state the retention period]</strong>.
+    </p>
+    <p>
+      Two behaviours are worth stating plainly, because they are deliberate:
+    </p>
+    <ul>
+      <li>
+        <strong>An account cannot be deleted while work depends on it.</strong>
+        A student with a recorded mark or a submission on file cannot be
+        removed, because doing so would destroy the record of work that was
+        genuinely done. Removing it must be a separate, deliberate act.
+      </li>
+      <li>
+        <strong>The audit log is append-only.</strong> Entries are never
+        edited or deleted, and they record the username and role as they were
+        at the time. An entry therefore remains readable after the account it
+        names has been removed.
+      </li>
+    </ul>
+
+    <h3>6. Sharing</h3>
+    <p>
+      Information in this system is not sold, and is not shared with
+      advertisers or any third party for their own purposes. It is available
+      to school staff in the roles described above, and may be disclosed
+      where the school is legally required to do so.
+    </p>
+
+    <h3>7. Cookies</h3>
+    <p>
+      The system sets a session cookie so that you stay signed in as you move
+      between pages, and a token used to protect against cross-site request
+      forgery. There are no advertising or analytics cookies, and no
+      third-party tracking.
+    </p>
+
+    <h3>8. Your rights</h3>
+    <p>
+      Depending on where you live, you may have the right to ask for a copy of
+      the personal information held about you, to have inaccurate information
+      corrected, or to object to how it is used. Corrections to a name, a
+      national identity number, a date of birth or contact details can usually
+      be made directly by a school administrator.
+    </p>
+
+    <h3>9. Contact</h3>
+    <p>
+      For any question about this policy, or to make a request about your
+      information, contact <strong>[contact name or office]</strong> at
+      <strong>[contact email address]</strong>.
+    </p>
+
+    <h3>10. Changes to this policy</h3>
+    <p>
+      If this policy changes, the date at the top of this page will change
+      with it. This version was last updated on {{ lastUpdated }}.
+    </p>
+
+  </div>
+
+  <nav class="legal__footer-nav" aria-label="Related pages">
+    <a routerLink="/terms" class="link-btn">Terms and Conditions</a>
+    <a routerLink="/home" class="link-btn">About the system</a>
+  </nav>
+
+</div>

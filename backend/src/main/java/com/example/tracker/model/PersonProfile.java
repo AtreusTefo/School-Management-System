@@ -69,7 +69,27 @@ import java.time.LocalDate;
                 constraints = "phone IS NULL OR phone REGEXP '^\\+267[0-9]{8}$'"),
 
         @Check(name = "ck_person_profile_enrolled_after_birth",
-                constraints = "date_enrolled >= date_of_birth")
+                constraints = "date_enrolled >= date_of_birth"),
+
+        /*
+         * The Omang's shape - see V13 and PersonPatterns.NATIONAL_ID.
+         *
+         * REGEXP rather than the migration's LEN + NOT LIKE '%[^0-9]%' +
+         * SUBSTRING, for the same dialect reason the phone check above uses
+         * it: bracket character classes inside LIKE are a T-SQL extension H2
+         * cannot parse, and this annotation only ever reaches H2 (ddl-auto is
+         * validate against SQL Server, create-drop against H2). Different SQL,
+         * identical rule - four digits, the 1-or-2 gender marker, four digits.
+         *
+         * NOTE THE ASYMMETRY WITH THE MIGRATION, WHICH IS DELIBERATE. V13 adds
+         * its constraint WITH NOCHECK because six real rows predate the rule.
+         * H2 has no such history - every row in a test database is created by
+         * the test that needs it - so here the check is applied in full, and
+         * the suite therefore proves the rule against a stricter database than
+         * production currently is.
+         */
+        @Check(name = "ck_person_profile_omang",
+                constraints = "national_id REGEXP '^[0-9]{4}[12][0-9]{4}$'")
 })
 public class PersonProfile {
 
@@ -242,6 +262,23 @@ public class PersonProfile {
 
     public Long getVersion() {
         return version;
+    }
+
+    /**
+     * Male or female, read out of the Omang's fifth digit.
+     *
+     * COMPUTED, NEVER STORED - there is no gender column and there should not
+     * be, because the national id already carries the fact and two copies of
+     * one fact eventually disagree. Same rule as every percentage and
+     * performance level in this system.
+     *
+     * Returns null for the profiles whose national_id predates the 9-digit
+     * rule; see Gender.fromOmang for why "unknown" is the honest answer there
+     * rather than a guess.
+     */
+    @Transient
+    public Gender getGender() {
+        return Gender.fromOmang(nationalId);
     }
 
     /** "First Middle Last", or "First Last" when there is no middle name. */

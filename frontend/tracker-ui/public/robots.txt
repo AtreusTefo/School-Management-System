@@ -1,0 +1,31 @@
+# robots.txt for Assignment Tracker
+#
+# THIS IS NOT A SECURITY CONTROL. It asks well-behaved crawlers not to index
+# the application's pages; it does not stop anyone reaching them. Every path
+# below is already protected by an authenticated session and a server-side
+# role check, which is what actually keeps them private - see SecurityConfig
+# and the requireAdmin/requireTeacher guards in the service layer.
+#
+# Only the four public pages are worth indexing. Everything else either needs
+# an account or returns data belonging to one specific person.
+
+User-agent: *
+
+# The public pages.
+Allow: /$
+Allow: /home
+Allow: /about
+Allow: /privacy
+Allow: /terms
+
+# The application itself. Nothing here renders without a session, so a crawler
+# would only ever record an empty shell - and indexing an admin URL invites
+# attention it does not need.
+Disallow: /assignments
+Disallow: /my-students
+Disallow: /marking-queue
+Disallow: /reports
+Disallow: /admin
+
+# The REST API. Not HTML, and every endpoint requires authentication.
+Disallow: /api/

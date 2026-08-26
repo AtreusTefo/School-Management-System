@@ -1,0 +1,303 @@
+<!-- '/admin/schedule' - terms, periods, and the weekly grid. -->
+
+<div class="card--stacked">
+
+  <div class="page-head">
+    <div>
+      <h2>Schedule</h2>
+      <p class="muted">
+        Terms, the shape of the school day, and when each course is taught.
+      </p>
+    </div>
+    <a routerLink="/admin/timetable" class="btn btn--ghost">Subjects, classes and courses</a>
+  </div>
+
+  <div *ngIf="notice" class="notice" role="status">
+    <span>{{ notice }}</span>
+    <button type="button" class="btn btn--sm btn--ghost" (click)="notice = null">Dismiss</button>
+  </div>
+
+  <!-- ===== TERMS ===== -->
+  <section class="card">
+    <div class="card__header">
+      <h3 class="card__title">Terms</h3>
+      <span class="card__note">
+        Terms may not overlap. A timetable belongs to one term, so last term's
+        stays readable when this term's changes.
+      </span>
+    </div>
+    <div class="card__body">
+
+      <form #termForm="ngForm" (ngSubmit)="createTerm()" class="create-form">
+        <div class="field">
+          <label class="field__label" for="newTermName">Name</label>
+          <input id="newTermName" class="input" type="text" name="newTermName"
+                 #newTermNameModel="ngModel" [(ngModel)]="newTermName"
+                 required [maxlength]="60" placeholder="e.g. Term 1" />
+          <app-field-error [control]="newTermNameModel" label="Name" />
+        </div>
+        <div class="field">
+          <label class="field__label" for="newTermStart">Starts</label>
+          <input id="newTermStart" class="input" type="date" name="newTermStart"
+                 #newTermStartModel="ngModel" [(ngModel)]="newTermStart" required />
+          <app-field-error [control]="newTermStartModel" label="Start date" />
+        </div>
+        <div class="field">
+          <label class="field__label" for="newTermEnd">Ends</label>
+          <input id="newTermEnd" class="input" type="date" name="newTermEnd"
+                 #newTermEndModel="ngModel" [(ngModel)]="newTermEnd" required />
+          <app-field-error [control]="newTermEndModel" label="End date" />
+        </div>
+        <button type="submit" class="btn btn--primary" [disabled]="termForm.invalid">
+          Add term
+        </button>
+      </form>
+
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Name</th><th>Starts</th><th>Ends</th><th class="col-actions">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let term of terms">
+              <ng-container *ngIf="editingTermId !== term.id">
+                <td>
+                  {{ term.name }}
+                  <span *ngIf="term.current" class="badge badge--done">Current</span>
+                </td>
+                <td class="cell-muted">{{ term.startDate }}</td>
+                <td class="cell-muted">{{ term.endDate }}</td>
+                <td class="col-actions">
+                  <button type="button" class="btn btn--sm" (click)="startEditTerm(term)">Edit</button>
+                  <button type="button" class="btn btn--sm btn--danger"
+                          (click)="deleteTerm(term)">Delete</button>
+                </td>
+              </ng-container>
+              <ng-container *ngIf="editingTermId === term.id">
+                <td><input class="input" type="text" [(ngModel)]="editTermName"
+                           name="editTermName" [maxlength]="60" /></td>
+                <td><input class="input" type="date" [(ngModel)]="editTermStart"
+                           name="editTermStart" /></td>
+                <td><input class="input" type="date" [(ngModel)]="editTermEnd"
+                           name="editTermEnd" /></td>
+                <td class="col-actions">
+                  <button type="button" class="btn btn--sm btn--primary"
+                          (click)="saveTerm(term)">Save</button>
+                  <button type="button" class="btn btn--sm btn--ghost"
+                          (click)="cancelEditTerm()">Cancel</button>
+                </td>
+              </ng-container>
+            </tr>
+            <tr *ngIf="terms.length === 0">
+              <td colspan="4" class="cell-muted">
+                No terms yet. Add one above before timetabling anything.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ===== PERIODS ===== -->
+  <section class="card">
+    <div class="card__header">
+      <h3 class="card__title">The school day</h3>
+      <span class="card__note">
+        Each period is a slot in the day. Position decides the order they run
+        in, which is not always the same as sorting by clock time.
+      </span>
+    </div>
+    <div class="card__body">
+
+      <form #periodForm="ngForm" (ngSubmit)="createPeriod()" class="create-form">
+        <div class="field">
+          <label class="field__label" for="newPeriodName">Name</label>
+          <input id="newPeriodName" class="input" type="text" name="newPeriodName"
+                 #newPeriodNameModel="ngModel" [(ngModel)]="newPeriodName"
+                 required [maxlength]="40" placeholder="e.g. Period 1" />
+          <app-field-error [control]="newPeriodNameModel" label="Name" />
+        </div>
+        <div class="field field--narrow">
+          <label class="field__label" for="newPeriodSequence">Position</label>
+          <input id="newPeriodSequence" class="input" type="number" name="newPeriodSequence"
+                 #newPeriodSequenceModel="ngModel" [(ngModel)]="newPeriodSequence"
+                 required min="1" placeholder="1" />
+          <app-field-error [control]="newPeriodSequenceModel" label="Position" />
+        </div>
+        <div class="field">
+          <label class="field__label" for="newPeriodStart">Starts</label>
+          <input id="newPeriodStart" class="input" type="time" name="newPeriodStart"
+                 #newPeriodStartModel="ngModel" [(ngModel)]="newPeriodStart" required />
+          <app-field-error [control]="newPeriodStartModel" label="Start time" />
+        </div>
+        <div class="field">
+          <label class="field__label" for="newPeriodEnd">Ends</label>
+          <input id="newPeriodEnd" class="input" type="time" name="newPeriodEnd"
+                 #newPeriodEndModel="ngModel" [(ngModel)]="newPeriodEnd" required />
+          <app-field-error [control]="newPeriodEndModel" label="End time" />
+        </div>
+        <button type="submit" class="btn btn--primary" [disabled]="periodForm.invalid">
+          Add period
+        </button>
+      </form>
+
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Position</th><th>Name</th><th>Starts</th><th>Ends</th>
+              <th class="col-actions">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let period of periods">
+              <ng-container *ngIf="editingPeriodId !== period.id">
+                <td class="cell-muted">{{ period.sequenceNo }}</td>
+                <td>{{ period.name }}</td>
+                <td class="cell-muted">{{ shortTime(period.startTime) }}</td>
+                <td class="cell-muted">{{ shortTime(period.endTime) }}</td>
+                <td class="col-actions">
+                  <button type="button" class="btn btn--sm"
+                          (click)="startEditPeriod(period)">Edit</button>
+                  <button type="button" class="btn btn--sm btn--danger"
+                          (click)="deletePeriod(period)">Delete</button>
+                </td>
+              </ng-container>
+              <ng-container *ngIf="editingPeriodId === period.id">
+                <td><input class="input" type="number" min="1"
+                           [(ngModel)]="editPeriodSequence" name="editPeriodSequence" /></td>
+                <td><input class="input" type="text" [(ngModel)]="editPeriodName"
+                           name="editPeriodName" [maxlength]="40" /></td>
+                <td><input class="input" type="time" [(ngModel)]="editPeriodStart"
+                           name="editPeriodStart" /></td>
+                <td><input class="input" type="time" [(ngModel)]="editPeriodEnd"
+                           name="editPeriodEnd" /></td>
+                <td class="col-actions">
+                  <button type="button" class="btn btn--sm btn--primary"
+                          (click)="savePeriod(period)">Save</button>
+                  <button type="button" class="btn btn--sm btn--ghost"
+                          (click)="cancelEditPeriod()">Cancel</button>
+                </td>
+              </ng-container>
+            </tr>
+            <tr *ngIf="periods.length === 0">
+              <td colspan="5" class="cell-muted">
+                No periods yet. The school day has to have a shape before
+                lessons can be placed in it.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ===== THE WEEK ===== -->
+  <section class="card">
+    <div class="card__header">
+      <h3 class="card__title">The week</h3>
+      <span class="card__note">
+        A class cannot be in two lessons at once, and a teacher cannot be in two
+        places at once. Both are refused by the database, not just by this page.
+      </span>
+    </div>
+    <div class="card__body">
+
+      <div class="field field--inline">
+        <label class="field__label" for="gridTerm">Term</label>
+        <select id="gridTerm" class="input" name="gridTerm"
+                [(ngModel)]="selectedTermId" (ngModelChange)="onTermChange()">
+          <option [ngValue]="null" disabled>Choose a term</option>
+          <option *ngFor="let term of terms" [ngValue]="term.id">
+            {{ term.name }}{{ term.current ? ' (current)' : '' }}
+          </option>
+        </select>
+      </div>
+
+      <!-- Placing a lesson -->
+      <form #slotForm="ngForm" (ngSubmit)="schedule()" class="create-form">
+        <div class="field">
+          <label class="field__label" for="slotCourse">Course</label>
+          <select id="slotCourse" class="input" name="slotCourse"
+                  [(ngModel)]="slotCourseId" required>
+            <option [ngValue]="null" disabled>Choose a course</option>
+            <option *ngFor="let course of courses" [ngValue]="course.id">
+              {{ course.subjectName }} - {{ course.className }} ({{ course.teacherUsername }})
+            </option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="field__label" for="slotPeriod">Period</label>
+          <select id="slotPeriod" class="input" name="slotPeriod"
+                  [(ngModel)]="slotPeriodId" required>
+            <option [ngValue]="null" disabled>Choose a period</option>
+            <option *ngFor="let period of periods" [ngValue]="period.id">
+              {{ period.name }} ({{ shortTime(period.startTime) }})
+            </option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="field__label" for="slotDay">Day</label>
+          <select id="slotDay" class="input" name="slotDay" [(ngModel)]="slotDay" required>
+            <option value="" disabled>Choose a day</option>
+            <option *ngFor="let day of days" [value]="day">{{ dayLabel(day) }}</option>
+          </select>
+        </div>
+        <button type="submit" class="btn btn--primary" [disabled]="!canSchedule">
+          Timetable it
+        </button>
+      </form>
+
+      <!-- The grid itself. Scrolls inside its own container so a wide week
+           never gives the whole page a horizontal scrollbar. -->
+      <div class="table-wrap" *ngIf="periods.length > 0 && selectedTermId !== null">
+        <table class="grid-table">
+          <thead>
+            <tr>
+              <th class="grid-table__period">Period</th>
+              <th *ngFor="let day of days">{{ dayLabel(day) }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let period of periods">
+              <th class="grid-table__period" scope="row">
+                <span class="grid-table__name">{{ period.name }}</span>
+                <span class="grid-table__time">
+                  {{ shortTime(period.startTime) }}-{{ shortTime(period.endTime) }}
+                </span>
+              </th>
+              <td *ngFor="let day of days">
+                <ng-container *ngIf="slotAt(day, period.id) as slot">
+                  <div class="lesson">
+                    <span class="lesson__subject">{{ slot.subjectCode }}</span>
+                    <span class="lesson__class">{{ slot.className }}</span>
+                    <span class="lesson__teacher">{{ slot.teacherUsername }}</span>
+                    <button type="button" class="lesson__remove"
+                            (click)="unschedule(slot)"
+                            [attr.aria-label]="'Remove ' + slot.subjectName + ' for ' + slot.className">
+                      Remove
+                    </button>
+                  </div>
+                </ng-container>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p *ngIf="periods.length === 0" class="muted">
+        Add at least one period before a week can be drawn.
+      </p>
+      <p *ngIf="periods.length > 0 && selectedTermId === null" class="muted">
+        Choose a term to see its week.
+      </p>
+
+    </div>
+  </section>
+
+</div>

@@ -1,0 +1,35 @@
+-- V16: an index on person_profile.contact_email.
+--
+-- THIS CORRECTS SOMETHING V12 SAYS
+-- --------------------------------
+-- V12 lists contact_email under "what is deliberately NOT indexed", with the
+-- reason: "Nothing queries by it; an index exists to serve a query, and there
+-- is no query." That was true when V12 was written and stopped being true in
+-- V15, which added "I have forgotten my password" - and that flow looks an
+-- account up by the address somebody typed in.
+--
+-- V12 itself is not edited. An applied migration never is: Flyway stores a
+-- checksum of every one precisely so it cannot change underneath a database
+-- that has run it, and this project's rules say a correction gets its own
+-- version even when the mistake is minutes old. So the correction lives here,
+-- and V12's note stays as an accurate record of what was true at the time.
+--
+-- WHY IT IS WORTH INDEXING, at row counts where most things are not:
+-- the query sits behind POST /api/auth/forgot-password, which is deliberately
+-- reachable without signing in. An unindexed lookup there is a table scan that
+-- anybody on the internet can trigger as often as they like - the one place in
+-- this schema where "it is only a few hundred rows" is the wrong way to think
+-- about it, because the cost is paid per anonymous request rather than per
+-- signed-in user.
+--
+-- NOT UNIQUE, DELIBERATELY - and this is the important part.
+-- contact_email is shared by more than one account in this database already
+-- (a parent's inbox used for two children, which V11 explicitly decided to
+-- allow). A unique index here would refuse the second sibling outright.
+-- PasswordResetService handles the ambiguity instead: an address matching more
+-- than one account matches NOTHING for reset purposes, because sending a link
+-- that resets an unpredictable one of several accounts is worse than sending
+-- none. See findByIdOrEmail.
+
+CREATE INDEX ix_person_profile_contact_email ON person_profile (contact_email);
+GO

@@ -105,6 +105,16 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> {
                     // Signing in and checking who you are must work before you are known.
                     auth.requestMatchers("/api/auth/login", "/api/auth/csrf").permitAll();
+                    /*
+                     * Forgetting a password is by definition something you do
+                     * while signed out, so both halves of the flow are open.
+                     * Neither leaks: forgot-password answers identically
+                     * whether or not the account exists (see
+                     * PasswordResetService), and reset-password requires a
+                     * 256-bit single-use token nobody can guess.
+                     */
+                    auth.requestMatchers("/api/auth/forgot-password",
+                                         "/api/auth/reset-password").permitAll();
                     // Preflight is a browser mechanic, not a protected action.
                     auth.requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll();
                     // The documentation UI, only when explicitly switched on. The

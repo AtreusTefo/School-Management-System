@@ -36,11 +36,31 @@ public final class PersonPatterns {
     public static final String NAME = "^[\\p{L} '\\-]+$";
 
     /**
-     * Digits only, 4 to 20 of them. Real profiles in this database carry a
-     * 12-13 digit Omang number; the test suite's fixtures run as short as 6.
-     * Not "exactly 9" - a length that fits neither.
+     * A Botswana Omang: exactly 9 digits, whose FIFTH is 1 (male) or 2
+     * (female).
+     *
+     * Read as four digits, the gender marker, four more - which is the whole
+     * rule in one expression, and why this is not written as a length check
+     * plus a separate SUBSTRING test.
+     *
+     * WHY THE MIDDLE DIGIT IS WORTH CHECKING. It is the only self-describing
+     * position in the number. Nine arbitrary digits have no internal structure
+     * to test against, so a transposition or a mistyped digit produces another
+     * number that looks equally plausible; constraining position 5 means a
+     * mistake there is caught at the form rather than surviving as a profile
+     * quietly attached to the wrong person.
+     *
+     * An older registration convention marked gender with the SEVENTH digit
+     * (0-4 female, 5-9 male). This implements the modern rule, matching what
+     * ck_person_profile_omang enforces at the database - see V13's header,
+     * including why that constraint had to be added WITH NOCHECK.
+     *
+     * This replaced "^[0-9]{4,20}$", which was chosen to accommodate the
+     * 12-13 digit values already in this database. Those rows still exist and
+     * are still readable; they are grandfathered at the database and refused
+     * here, so nothing NEW can be written in that shape.
      */
-    public static final String NATIONAL_ID = "^[0-9]{4,20}$";
+    public static final String NATIONAL_ID = "^[0-9]{4}[12][0-9]{4}$";
 
     /**
      * A Botswana mobile number in E.164 form: +267 followed by exactly eight

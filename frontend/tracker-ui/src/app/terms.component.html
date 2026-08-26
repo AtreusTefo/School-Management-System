@@ -1,0 +1,178 @@
+<!-- TERMS AND CONDITIONS - the rules the system actually enforces. -->
+
+<div class="legal">
+
+  <header class="legal__head">
+    <span class="eyebrow">Legal</span>
+    <h2 class="legal__title">Terms and Conditions</h2>
+    <p class="legal__meta">Last updated {{ lastUpdated }}</p>
+  </header>
+
+  <div class="legal__notice" role="note">
+    <strong>Before this is published.</strong>
+    These terms describe how the software behaves and the conduct expected of
+    its users. They are not legal advice. The school operating this system
+    should have them reviewed, and replace the placeholders marked in square
+    brackets.
+  </div>
+
+  <div class="prose">
+
+    <h3>1. Who may use this system</h3>
+    <p>
+      Assignment Tracker is provided by <strong>[School name]</strong> ("the
+      school") for the use of its enrolled students, its teaching staff, and
+      the administrators it appoints. Accounts are created by a school
+      administrator. There is no public registration, and accounts may not be
+      created, transferred or shared by anyone else.
+    </p>
+    <p>
+      By signing in, you agree to these terms.
+    </p>
+
+    <h3>2. Your account</h3>
+    <ul>
+      <li>
+        You are issued a sign-in ID by the school. It identifies you in every
+        record you create, including the audit log, and it cannot be changed.
+      </li>
+      <li>
+        An account created for you begins with a temporary password chosen by
+        somebody else. You must set your own before the account can be used
+        for anything else.
+      </li>
+      <li>
+        You are responsible for keeping your password confidential and for
+        activity carried out under your account. Do not share your
+        credentials or let another person use your session.
+      </li>
+      <li>
+        Changing your password requires your current one, even while you are
+        already signed in. An administrator can reset a password, but cannot
+        read an existing one.
+      </li>
+      <li>
+        Tell the school immediately if you believe someone else has used your
+        account.
+      </li>
+    </ul>
+
+    <h3>3. Submitting work</h3>
+    <ul>
+      <li>
+        Work is handed in as a <strong>PDF document only</strong>, up to
+        <strong>{{ maxUploadMb }} megabytes</strong>. Files are checked by
+        their actual content, so renaming another kind of file will not make
+        it acceptable.
+      </li>
+      <li>
+        Uploading a new file <strong>replaces</strong> the previous one for
+        that submission. Only the most recent file is kept, and it is the one
+        that will be marked.
+      </li>
+      <li>
+        Once you have handed work in, you cannot withdraw it yourself. A
+        teacher can reopen a submission if there is a genuine reason to.
+      </li>
+      <li>
+        A due date is recorded against each assignment, and work handed in
+        after it is visible as such. How lateness affects a mark is the
+        school's academic decision, not the software's.
+      </li>
+    </ul>
+
+    <h3>4. Academic honesty</h3>
+    <p>
+      Work you submit must be your own, produced in line with the school's
+      academic integrity policy. Submitting someone else's work, or allowing
+      another student to submit yours, is a matter for the school's
+      disciplinary process. Because every submission and mark is recorded
+      against the account that made it, the system's records may be used as
+      evidence in such a process.
+    </p>
+
+    <h3>5. Acceptable use</h3>
+    <p>You must not:</p>
+    <ul>
+      <li>
+        Attempt to access another person's account, submissions, files or
+        marks.
+      </li>
+      <li>
+        Attempt to bypass, probe or interfere with the system's access
+        controls, or with the checks that protect the integrity of its
+        records.
+      </li>
+      <li>
+        Upload anything unlawful, malicious, or intended to disrupt the
+        system or the people using it.
+      </li>
+      <li>
+        Use automated means to extract data beyond what the interface offers
+        you.
+      </li>
+    </ul>
+    <p>
+      The school may suspend or remove access for a breach of these rules.
+    </p>
+
+    <h3>6. Marks and records</h3>
+    <p>
+      Marks recorded in this system are entered by teaching staff. Totals,
+      percentages and performance levels shown to you are calculated from
+      those marks each time they are displayed, so a correction to a mark is
+      reflected everywhere immediately.
+    </p>
+    <p>
+      The system is a record of submission and assessment. It does not itself
+      determine progression, awards, or any other academic outcome - those
+      remain the school's decisions, made under its own policies. If you
+      believe a mark is wrong, raise it with the teacher concerned.
+    </p>
+
+    <h3>7. Availability</h3>
+    <p>
+      The school aims to keep the system available but does not guarantee
+      uninterrupted access. It may be unavailable during maintenance, or
+      because of failures outside the school's control. Do not leave a
+      submission until the last moment on the assumption that the system will
+      be reachable.
+    </p>
+
+    <h3>8. Your information</h3>
+    <p>
+      Information held about you is described in the
+      <a routerLink="/privacy">Privacy Policy</a>, which forms part of these
+      terms.
+    </p>
+
+    <h3>9. Ownership</h3>
+    <p>
+      You keep whatever rights you already hold in work you submit. By
+      submitting it, you allow the school to store, display and assess it for
+      educational and administrative purposes.
+    </p>
+
+    <h3>10. Changes to these terms</h3>
+    <p>
+      These terms may be updated. The date at the top of this page will change
+      when they are, and continuing to use the system after that means you
+      accept the revised version. This version was last updated on
+      {{ lastUpdated }}.
+    </p>
+
+    <h3>11. Contact</h3>
+    <p>
+      Questions about these terms should go to
+      <strong>[contact name or office]</strong> at
+      <strong>[contact email address]</strong>.
+    </p>
+
+  </div>
+
+  <nav class="legal__footer-nav" aria-label="Related pages">
+    <a routerLink="/privacy" class="link-btn">Privacy Policy</a>
+    <a routerLink="/home" class="link-btn">About the system</a>
+  </nav>
+
+</div>

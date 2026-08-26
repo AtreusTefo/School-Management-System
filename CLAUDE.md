@@ -10,7 +10,22 @@
 ### Scope Guard - Read Before Adding Features
 The repository is named *School Management System*, but the delivered system is one slice of that idea: **assignment tracking with PDF hand-in**. Twelve entities (`AppUser`, `PersonProfile`, `Subject`, `SchoolClass`, `Enrolment`, `Course`, `Assignment`, `Submission`, `SubmissionFile`, `Assessment`, `AuditLog`, plus the `Role`/`AssignmentStatus`/`PerformanceLevel`/`AuditAction` enums), three roles (`TEACHER`, `STUDENT`, `ADMIN`).
 
-There are **no** notifications, terms or timetable periods. Documentation describing such features was inherited from an unrelated ASP.NET project; do not reintroduce it, and do not assume a feature exists because a document once mentioned it. Verify against the code.
+**Password reset by email DOES exist now** (added 26 August 2026, `PasswordResetToken`, migration V15). Two things about it are load-bearing rather than incidental: the request endpoint answers IDENTICALLY whether the identifier matched an account, matched one with no email, or matched nothing - it is reachable while signed out, so any variation would be an account-enumeration oracle - and the token is stored only as a SHA-256 hash, never in readable form. That hash is deliberately NOT BCrypt: a per-row salt would make lookup by token impossible, and a 256-bit random value has nothing to guess. The application runs with no mail server - `ResetLinkMailer` logs the link at WARN instead of sending, which is a development convenience that announces itself on every send.
+
+There are **no** notifications and no messaging. Documentation describing such features was inherited from an unrelated ASP.NET project; do not assume a feature exists because a document once mentioned it. Verify against the code.
+
+**An attendance register DOES exist now** (added 26 August 2026, `Attendance`/`AttendanceStatus`, migration V14). It is recorded PER LESSON, not per day - a row is (timetable_slot, student, date), which is only expressible because V11 gave lessons an identity. Three of its rules are enforced in Java alone, in `AttendanceService`, because each needs to read a second table and a `CHECK` cannot: the date's weekday must match the lesson's day, the date must fall inside the lesson's term, and the student must be enrolled in the class. Taking a register twice is a CORRECTION, not a second register - `uq_attendance_slot_student_date` makes that structural rather than conventional.
+
+**The national id is a Botswana Omang, and its shape is enforced** (added 26 August 2026, migration V13): exactly 9 digits, whose 5th is 1 (male) or 2 (female). That middle digit is the only self-describing position in the number, which is what makes it worth checking - nine arbitrary digits have no structure a transposition would break. `Gender` is DERIVED from it on read and never stored, the same rule percentages and performance levels follow.
+
+**V13 is the one constraint in this schema added `WITH NOCHECK`, and that is deliberate.** Six real profiles predate the rule (12-13 digits). Applying it normally would have failed the migration and stopped the application; rewriting those six would have meant inventing a government identity number for a named person. Instead they are grandfathered and still editable, while every write from here on is checked - verified empirically, not assumed. The constraint reports `is_not_trusted = 1`, which is accurate and should stay so until somebody who knows the real numbers corrects them.
+
+**Terms and timetable periods DO exist now** (added 26 August 2026, `Term`/`TimetablePeriod`/`TimetableSlot`, migration V11). Earlier revisions of this file said they did not and that reintroducing them was forbidden, and that was true when written - the limit was lifted deliberately, on request, rather than by drift. "Timetable" now means both things: `Course` still says which teacher teaches which subject to which class, and `TimetableSlot` says *when*, as a (term, weekday, period, course) row.
+
+Two rules about the timetable matter more than the rest:
+
+- **A class cannot be in two lessons at once, and a teacher cannot be in two places at once.** Both are `UNIQUE` constraints, not Java checks - `uq_timetable_slot_class` and `uq_timetable_slot_teacher`. They work because `class_id` and `teacher_id` are stored on the slot AND pinned to the referenced course by composite foreign keys, exactly the technique V4 already used to pin a role. Expressed against `course_id` alone neither rule would be checkable by the database at all.
+- **"No two terms may overlap" is the one rule in this schema enforced in Java alone.** SQL Server has no exclusion constraint and a `CHECK` cannot see other rows, so `TimetableService.requireNoOverlap` is genuinely the only thing holding it. That is called out in the code and here because every *other* rule in this system is enforced at the database, and a reader is entitled to assume that until told otherwise.
 
 **Admin management, a third role, and audit logging DO exist now** (added 6-10 August 2026). Earlier revisions of this file said there were two roles and no audit log, and that was true when written. What changed, and why, in one place:
 
@@ -105,7 +120,12 @@ School Management System/
 │       │                       #   ownership, V3 must-change-password, V4 subjects/classes/
 │       │                       #   courses/submissions, V5 timestamp column types,
 │       │                       #   V6 assessment and marks, V7 admin role + audit log,
-│       │                       #   V8 person profiles + external ids (STU/TCH/ADM sequences)
+│       │                       #   V8 person profiles + external ids (STU/TCH/ADM sequences),
+│       │                       #   V9 phone number, V10 enrolled-after-birth,
+│       │                       #   V11 terms + periods + timetable slots,
+│       │                       #   V12 performance indexes, V13 Omang format,
+│       │                       #   V14 attendance register,
+│       │                       #   V15 password reset tokens
 │       └── test/
 │           ├── java/com/example/tracker/
 │           │   ├── AssignmentApiTest.java            # MockMvc, real security
@@ -191,7 +211,7 @@ School Management System/
 - **Build backend:** `.\mvnw.cmd clean package -DskipTests` produces `backend/target/tracker-0.0.1-SNAPSHOT.jar`.
 - **Build frontend:** `npm run build` in `frontend/tracker-ui`.
 - **Type-check frontend:** `npx tsc --noEmit -p tsconfig.app.json`.
-- **Run tests:** `.\mvnw.cmd test` - 142 tests, run against H2, no SQL Server needed.
+- **Run tests:** `.\mvnw.cmd test` - 251 tests, run against H2, no SQL Server needed.
 - **Database:** SQL Server, database `School Management System`, login `tracker_app`. The connection string in `application.properties` uses port 14333; confirm your instance actually listens there before assuming a failure is the application's fault. Query it with:
   `sqlcmd -S "tcp:localhost,14333" -U tracker_app -P 'Tracker!2026Dev' -d "School Management System"`
 - **Development accounts:** `admin`, `teacher` and `student`, all password `password123`, reset at every startup. These keep their literal usernames as a documented exception - every account created through the admin panel from here on signs in with a generated id instead (`STU20260001`, `TCH20260001`, `ADM20260001`); see the Scope Guard section above.
@@ -358,7 +378,7 @@ What used to be one long page behind boolean flags is now four routed pages - Da
 - **A database SEQUENCE, not `SELECT MAX(id) + 1`, generates every admin-issued login id.** `IdGeneratorService` calls `NEXT VALUE FOR seq_student_id` (and `_teacher_id`, `_admin_id`) rather than reading the highest number issued so far - the latter is a genuine race under two admins onboarding at the same moment, caught only as a 409 the second one has to retry past. A sequence is atomic by construction, so there is nothing to retry. H2 has no annotation that creates a free-standing sequence as a side effect of `ddl-auto`, so the test schema gets its own copy in `src/test/resources/schema.sql`, which Spring Boot runs automatically against any embedded database.
 
 ### Testing Requirements
-There is an automated suite: `.\mvnw.cmd test` runs 142 tests, and `package` fails the build if any fail. Add to it rather than reverting to manual checks.
+There is an automated suite: `.\mvnw.cmd test` runs 251 tests, and `package` fails the build if any fail. Add to it rather than reverting to manual checks.
 
 - **Unit tests** (`AssignmentServiceTest`) - business rules with the repository mocked.
 - **Full-stack tests** (`AssignmentApiTest`, `InputValidationApiTest`) - MockMvc with real security; every status code in the error contract, and every DTO's Jakarta Bean Validation.

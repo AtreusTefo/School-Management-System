@@ -123,8 +123,19 @@
           <label class="field__label" for="nationalId">OMANG / national id</label>
           <input id="nationalId" class="input" type="text" name="nationalId"
                  #nationalIdModel="ngModel"
-                 [(ngModel)]="nationalId" required [maxlength]="nationalIdMaxLength" />
-          <app-field-error [control]="nationalIdModel" label="National id" />
+                 [(ngModel)]="nationalId" required
+                 [minlength]="nationalIdLength" [maxlength]="nationalIdLength"
+                 [pattern]="nationalIdPattern"
+                 inputmode="numeric" placeholder="9 digits, e.g. 432119876" />
+          <!-- The derived gender, shown as it is typed. This is also the
+               clearest explanation of the rule: a field that has been reading
+               "Male" for every other entry makes "the 5th digit must be 1 or 2"
+               mean something. Never sent - the server derives it too. -->
+          <span class="field__hint" *ngIf="nationalIdGender as g">
+            5th digit reads as: <strong>{{ g }}</strong>
+          </span>
+          <app-field-error [control]="nationalIdModel" label="National id"
+                           patternHint="An Omang is 9 digits, and its 5th digit must be 1 (male) or 2 (female)" />
         </div>
         <div class="field">
           <label class="field__label" for="dateOfBirth">Date of birth</label>
@@ -285,7 +296,9 @@
                 <div class="field">
                   <label class="field__label" [attr.for]="'editNid' + t.id">National id</label>
                   <input [id]="'editNid' + t.id" class="input" type="text" name="editNationalId"
-                         [(ngModel)]="editNationalId" [maxlength]="nationalIdMaxLength" required />
+                         [(ngModel)]="editNationalId" required
+                         [minlength]="nationalIdLength" [maxlength]="nationalIdLength"
+                         [pattern]="nationalIdPattern" inputmode="numeric" />
                 </div>
                 <div class="field">
                   <label class="field__label" [attr.for]="'editDob' + t.id">Date of birth</label>

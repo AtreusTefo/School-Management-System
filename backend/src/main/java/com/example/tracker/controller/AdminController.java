@@ -293,9 +293,9 @@ public class AdminController {
         private String lastName;
 
         @NotBlank(message = "National id must not be blank")
-        @Size(max = 20, message = "National id must be at most 20 characters")
+        @Size(min = 9, max = 9, message = "An Omang is exactly 9 digits")
         @Pattern(regexp = PersonPatterns.NATIONAL_ID,
-                message = "National id must contain only digits")
+                message = "An Omang is 9 digits, and its 5th digit must be 1 (male) or 2 (female)")
         private String nationalId;
 
         @NotNull(message = "Date of birth is required")
@@ -434,9 +434,9 @@ public class AdminController {
         private String lastName;
 
         @NotBlank(message = "National id must not be blank")
-        @Size(max = 20, message = "National id must be at most 20 characters")
+        @Size(min = 9, max = 9, message = "An Omang is exactly 9 digits")
         @Pattern(regexp = PersonPatterns.NATIONAL_ID,
-                message = "National id must contain only digits")
+                message = "An Omang is 9 digits, and its 5th digit must be 1 (male) or 2 (female)")
         private String nationalId;
 
         @NotNull(message = "Date of birth is required")

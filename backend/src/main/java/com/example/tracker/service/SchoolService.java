@@ -737,26 +737,23 @@ public class SchoolService {
                 () -> new ResourceNotFoundException("subject", subjectId));
     }
 
-    /**
-     * Establish that the caller is a teacher, and return them.
+    /*
+     * THERE IS NO requireTeacher(String) HERE ANY MORE.
      *
-     * Returning the user rather than just checking saves every caller a second
-     * lookup, and means there is exactly one place that decides what "the
-     * current teacher" means.
+     * It guarded the timetable writes - createSubject, createClass,
+     * createCourse, enrolStudent, withdrawStudent - until 11 August 2026, when
+     * those moved to requireAdmin because scheduling decides who receives every
+     * future assignment. Nothing in this class has called it since, so it was
+     * dead code that still read like a live rule, which is the kind of thing
+     * somebody reinstates by accident. AssessmentService and AssignmentService
+     * keep their own, still used, copies.
      */
-    private AppUser requireTeacher(String action) {
-        AppUser me = users.currentActiveUser();
-        if (me.getRole() != Role.TEACHER) {
-            throw new AccessDeniedException("Only a teacher can " + action + ".");
-        }
-        return me;
-    }
 
     /**
      * Allow either a teacher or an admin.
      *
      * This exists because writing the timetable became admin-only while READING
-     * it stayed with teachers. Neither single guard fits: requireTeacher would
+     * it stayed with teachers. Neither single guard fits: a teacher-only guard would
      * lock the admin out of the very registers they now maintain - able to enrol
      * a student but not to see who is already enrolled, which is how a class
      * quietly ends up with somebody added twice - and requireAdmin would take a

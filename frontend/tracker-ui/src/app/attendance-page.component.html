@@ -1,0 +1,259 @@
+<!-- '/attendance' - take a register (teacher/admin), or read your own (student).
+     See the component for why one route serves both. -->
+
+<div class="card--stacked">
+
+  <div class="page-head">
+    <div>
+      <h2>Attendance</h2>
+      <p class="muted">
+        {{ takesRegisters
+           ? 'Take the register for a lesson you teach.'
+           : 'What has been recorded about your attendance.' }}
+      </p>
+    </div>
+    <a routerLink="/timetable" class="btn btn--ghost">My timetable</a>
+  </div>
+
+  <div *ngIf="notice" class="notice" role="status">
+    <span>{{ notice }}</span>
+    <button type="button" class="btn btn--sm btn--ghost" (click)="notice = null">Dismiss</button>
+  </div>
+
+  <div *ngIf="loading" class="loading">
+    <span class="spinner" aria-hidden="true"></span>
+    <span>Loading...</span>
+  </div>
+
+  <!-- ==================================================== TEACHER / ADMIN ==== -->
+  <ng-container *ngIf="takesRegisters && !loading">
+
+    <!-- Pick a date. The lesson list below follows from it. -->
+    <section class="card">
+      <div class="card__body">
+        <div class="field field--inline">
+          <label class="field__label" for="attDate">Date</label>
+          <input id="attDate" class="input" type="date" name="attDate"
+                 [(ngModel)]="date" (ngModelChange)="onDateChange()" />
+          <span class="muted" *ngIf="termForDate as t">
+            {{ dayLabel(weekdayForDate) }} &middot; {{ t.name }}
+          </span>
+        </div>
+
+        <!-- A date outside every term is a holiday, not a fault. Saying so
+             beats an empty list that looks like something failed. -->
+        <p class="muted" *ngIf="!termForDate" style="margin-top:12px">
+          {{ date }} does not fall inside any term, so no lessons run that day.
+        </p>
+      </div>
+    </section>
+
+    <!-- The lessons that actually run on that weekday. -->
+    <section class="card" *ngIf="termForDate && selectedSlotId === null">
+      <div class="card__header">
+        <h3 class="card__title">Lessons on {{ dayLabel(weekdayForDate) }}</h3>
+        <span class="card__note">Choose one to take its register.</span>
+      </div>
+      <div class="card__body">
+        <div class="table-wrap" *ngIf="slots.length > 0">
+          <table class="table">
+            <thead>
+              <tr><th>Period</th><th>Subject</th><th>Class</th><th class="col-actions"></th></tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let slot of slots">
+                <td class="cell-muted person-cell">
+                  {{ slot.periodName }}
+                  <span class="grid-table__time">
+                    {{ shortTime(slot.startTime) }}-{{ shortTime(slot.endTime) }}
+                  </span>
+                </td>
+                <td class="cell-title">{{ slot.subjectName }}</td>
+                <td>{{ slot.className }}</td>
+                <td class="col-actions">
+                  <button type="button" class="btn btn--sm btn--primary"
+                          (click)="openLesson(slot)">Take register</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="empty" *ngIf="slots.length === 0">
+          <div class="empty__title">Nothing timetabled for you that day</div>
+          <div class="empty__text">
+            No lesson you teach runs on {{ dayLabel(weekdayForDate) }} this term.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== THE REGISTER ITSELF ===== -->
+    <section class="card" *ngIf="selectedSlotId !== null">
+      <div class="card__header">
+        <h3 class="card__title" *ngIf="selectedSlot as slot">
+          {{ slot.subjectName }} &middot; {{ slot.className }}
+        </h3>
+        <span class="card__note">
+          {{ dayLabel(weekdayForDate) }} {{ date }}
+          <ng-container *ngIf="selectedSlot as slot"> &middot; {{ slot.periodName }}</ng-container>
+        </span>
+      </div>
+      <div class="card__body">
+
+        <!-- Everyone starts PRESENT, so a register is taken by exception -
+             which is how it is taken on paper too. -->
+        <div class="register-actions">
+          <span class="muted">
+            {{ register.length }} students &middot;
+            <strong>{{ notPresentCount }}</strong> not present
+          </span>
+          <span class="register-actions__spacer"></span>
+          <button type="button" class="btn btn--sm" (click)="markAll('PRESENT')">
+            Mark all present
+          </button>
+          <button type="button" class="btn btn--sm" (click)="markAll('ABSENT')">
+            Mark all absent
+          </button>
+        </div>
+
+        <div class="table-wrap">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Student</th>
+                <th>Status</th>
+                <th>Note</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let row of register">
+                <td class="person-cell">
+                  <span class="cell-title">{{ row.studentName || row.studentUsername }}</span>
+                  <!-- Only when it adds something. A student with no profile
+                       falls back to their username for the name, and printing
+                       both then reads as "studentstudent". -->
+                  <span class="cell-muted"
+                        *ngIf="row.studentName && row.studentName !== row.studentUsername">
+                    {{ row.studentUsername }}
+                  </span>
+                </td>
+                <td>
+                  <!-- Radio-style segmented control: four states, one visible
+                       choice, no dropdown to open per student. -->
+                  <div class="segmented">
+                    <button *ngFor="let s of statuses" type="button"
+                            class="segmented__btn"
+                            [attr.aria-pressed]="statusOf(row.studentId) === s"
+                            (click)="setStatus(row.studentId, s)">
+                      {{ statusLabel(s) }}
+                    </button>
+                  </div>
+                </td>
+                <td>
+                  <!-- A PLAIN ATTRIBUTE, not [maxlength]. The property binding
+                       targets Angular's MaxLengthValidator, which only exists on
+                       an input bound to a form - this one is [value]/(input) with
+                       no ngModel, so there is no validator to bind to and the
+                       compiler rejects it. The attribute is what native
+                       truncation reads, which is the whole behaviour wanted
+                       here. See CLAUDE.md on why the two are not
+                       interchangeable. -->
+                  <input class="input" type="text" maxlength="200"
+                         [value]="noteOf(row.studentId)"
+                         (input)="setNote(row.studentId, $any($event.target).value)"
+                         [attr.aria-label]="'Note for ' + (row.studentName || row.studentUsername)"
+                         placeholder="Optional" />
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="register-footer">
+          <button type="button" class="btn btn--ghost" (click)="closeLesson()">Back</button>
+          <button type="button" class="btn btn--primary" (click)="save()" [disabled]="saving">
+            <span *ngIf="saving" class="spinner" aria-hidden="true"></span>
+            {{ saving ? 'Saving...' : 'Save register' }}
+          </button>
+        </div>
+
+      </div>
+    </section>
+
+  </ng-container>
+
+  <!-- ============================================================ STUDENT ==== -->
+  <ng-container *ngIf="!takesRegisters && !loading">
+
+    <section class="card" *ngIf="mySummary as s">
+      <div class="card__header">
+        <h3 class="card__title">Your attendance</h3>
+        <span class="card__note">
+          Worked out from the register every time this page is opened - nothing
+          here is stored.
+        </span>
+      </div>
+      <div class="card__body">
+        <div class="stat-row">
+          <div class="stat">
+            <span class="stat__value">
+              {{ s.attendanceRate !== null ? (s.attendanceRate + '%') : '-' }}
+            </span>
+            <span class="stat__label">Attended</span>
+          </div>
+          <div class="stat"><span class="stat__value">{{ s.present }}</span><span class="stat__label">Present</span></div>
+          <div class="stat"><span class="stat__value">{{ s.late }}</span><span class="stat__label">Late</span></div>
+          <div class="stat"><span class="stat__value">{{ s.absent }}</span><span class="stat__label">Absent</span></div>
+          <div class="stat"><span class="stat__value">{{ s.excused }}</span><span class="stat__label">Excused</span></div>
+        </div>
+        <!-- A rate of null is not 0% - the question has no answer yet. -->
+        <p class="muted" *ngIf="s.attendanceRate === null" style="margin-top:12px">
+          Nothing has been recorded for you yet, so there is no rate to show.
+        </p>
+        <p class="muted" *ngIf="s.attendanceRate !== null" style="margin-top:12px">
+          Late counts as attended; excused does not.
+        </p>
+      </div>
+    </section>
+
+    <section class="card" *ngIf="myRecord.length > 0">
+      <div class="card__header">
+        <h3 class="card__title">Every lesson on record</h3>
+      </div>
+      <div class="card__body">
+        <div class="table-wrap">
+          <table class="table">
+            <thead>
+              <tr><th>Date</th><th>Lesson</th><th>Status</th><th>Note</th></tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let row of myRecord">
+                <td class="cell-muted">{{ row.lessonDate }}</td>
+                <td class="person-cell">
+                  <span class="cell-title">{{ row.subjectName }}</span>
+                  <span class="cell-muted">{{ row.periodName }}</span>
+                </td>
+                <td>
+                  <span class="badge" [ngClass]="statusClass(row.status)">
+                    {{ row.status ? statusLabel(row.status) : '-' }}
+                  </span>
+                </td>
+                <td class="cell-muted">{{ row.note }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <div class="empty" *ngIf="myRecord.length === 0">
+      <div class="empty__title">No attendance recorded yet</div>
+      <div class="empty__text">
+        Once your teachers start taking the register, every lesson will be
+        listed here.
+      </div>
+    </div>
+
+  </ng-container>
+
+</div>

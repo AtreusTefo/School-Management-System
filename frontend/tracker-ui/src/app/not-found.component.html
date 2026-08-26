@@ -1,0 +1,28 @@
+<!-- 404 - shown for any URL that matches no route, signed in or out. -->
+
+<section class="notfound" aria-labelledby="notFoundTitle">
+
+  <span class="notfound__code" aria-hidden="true">404</span>
+
+  <h2 id="notFoundTitle" class="notfound__title">This page does not exist</h2>
+
+  <p class="notfound__body">
+    The address you asked for could not be matched to any page. It may have
+    been mistyped, or it may be a link to something that has since been
+    renamed or removed.
+  </p>
+
+  <!-- The URL is shown rather than swallowed: it is usually the fastest way
+       for somebody to spot their own typo. Wrapped so a very long address
+       cannot push the page sideways. -->
+  <p class="notfound__url">
+    <span class="muted">You asked for</span>
+    <code>{{ attemptedUrl }}</code>
+  </p>
+
+  <div class="notfound__actions">
+    <a [routerLink]="homeLink" class="btn btn--primary">{{ homeLabel }}</a>
+    <a routerLink="/home" class="btn btn--ghost" *ngIf="!signedIn">What this system is</a>
+  </div>
+
+</section>

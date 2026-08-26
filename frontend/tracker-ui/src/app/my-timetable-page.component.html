@@ -1,0 +1,90 @@
+<!-- '/timetable' - the caller's own week. One page, three roles, scoped on the
+     server. See the component for why the request cannot name anyone. -->
+
+<div class="card--stacked">
+
+  <div class="page-head">
+    <div>
+      <h2>My timetable</h2>
+      <p class="muted">
+        {{ session.isTeacher ? 'The lessons you teach.'
+           : session.isAdmin ? 'Every lesson this term.'
+           : 'The lessons your class is taught.' }}
+      </p>
+    </div>
+
+    <div class="field field--inline" *ngIf="terms.length > 0">
+      <label class="field__label" for="myTerm">Term</label>
+      <select id="myTerm" class="input" name="myTerm"
+              [(ngModel)]="selectedTermId" (ngModelChange)="onTermChange()">
+        <option *ngFor="let term of terms" [ngValue]="term.id">
+          {{ term.name }}{{ term.current ? ' (current)' : '' }}
+        </option>
+      </select>
+    </div>
+  </div>
+
+  <div *ngIf="loading" class="loading">
+    <span class="spinner" aria-hidden="true"></span>
+    <span>Loading your timetable...</span>
+  </div>
+
+  <!-- No terms at all: an admin has not set the year up yet. Says so, rather
+       than showing an empty grid that looks like a fault. -->
+  <div *ngIf="!loading && terms.length === 0" class="empty">
+    <div class="empty__title">No terms have been set up yet</div>
+    <div class="empty__text">
+      An administrator needs to add a term and the school day before a
+      timetable can exist.
+    </div>
+  </div>
+
+  <div *ngIf="!loading && terms.length > 0 && slots.length === 0" class="empty">
+    <div class="empty__title">Nothing timetabled for you this term</div>
+    <div class="empty__text">
+      {{ session.isTeacher
+         ? 'None of the courses you teach have been placed in the timetable yet.'
+         : 'No lessons have been timetabled for your class yet.' }}
+    </div>
+  </div>
+
+  <!-- The week. Rows and columns are limited to periods and days that actually
+       carry a lesson, so somebody taught on two mornings sees a small table
+       rather than a mostly-empty seven-by-ten grid. -->
+  <section class="card" *ngIf="!loading && slots.length > 0">
+    <div class="card__body">
+      <div class="table-wrap">
+        <table class="grid-table">
+          <thead>
+            <tr>
+              <th class="grid-table__period">Period</th>
+              <th *ngFor="let day of activeDays">{{ dayLabel(day) }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let period of activePeriods">
+              <th class="grid-table__period" scope="row">
+                <span class="grid-table__name">{{ period.name }}</span>
+                <span class="grid-table__time">
+                  {{ shortTime(period.startTime) }}-{{ shortTime(period.endTime) }}
+                </span>
+              </th>
+              <td *ngFor="let day of activeDays">
+                <ng-container *ngIf="slotAt(day, period.id) as slot">
+                  <div class="lesson lesson--read">
+                    <span class="lesson__subject">{{ slot.subjectName }}</span>
+                    <span class="lesson__class" *ngIf="showsClass">{{ slot.className }}</span>
+                    <span class="lesson__teacher" *ngIf="!showsClass">
+                      {{ slot.teacherUsername }}
+                    </span>
+                  </div>
+                </ng-container>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+</div>

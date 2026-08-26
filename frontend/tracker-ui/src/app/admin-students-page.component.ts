@@ -9,7 +9,8 @@ import { ConfirmService } from './confirm.service';
 import { FieldErrorComponent } from './field-error.component';
 import { PasswordStrengthValidatorDirective } from './password-strength-validator.directive';
 import {
-  CONTACT_EMAIL_MAX_LENGTH, NATIONAL_ID_MAX_LENGTH,
+  CONTACT_EMAIL_MAX_LENGTH, NATIONAL_ID_LENGTH, NATIONAL_ID_MAX_LENGTH,
+  NATIONAL_ID_PATTERN, genderFromOmang,
   PASSWORD_MIN_LENGTH, PERSON_NAME_MAX_LENGTH,
   PHONE_COUNTRY_CODE, PHONE_LOCAL_PATTERN
 } from './validation';
@@ -32,6 +33,20 @@ export class AdminStudentsPageComponent implements OnInit {
 
   readonly personNameMaxLength = PERSON_NAME_MAX_LENGTH;
   readonly nationalIdMaxLength = NATIONAL_ID_MAX_LENGTH;
+  readonly nationalIdLength = NATIONAL_ID_LENGTH;
+
+  /*
+   * The pattern as a STRING, because Angular's `pattern` directive takes
+   * either a string or a RegExp and the string form is what a template binding
+   * can carry. `.source` hands over the body without the delimiters, so this
+   * and the TypeScript regex can never drift apart into two different rules.
+   */
+  readonly nationalIdPattern = NATIONAL_ID_PATTERN.source;
+
+  /** Male/Female read off the 5th digit as it is typed, or null. */
+  get nationalIdGender(): string | null {
+    return genderFromOmang(this.nationalId);
+  }
   readonly contactEmailMaxLength = CONTACT_EMAIL_MAX_LENGTH;
   readonly passwordMinLength = PASSWORD_MIN_LENGTH;
   /** The HTML `pattern` attribute takes a string source, not a RegExp. */

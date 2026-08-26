@@ -48,6 +48,17 @@
             <artifactId>spring-boot-starter-security</artifactId>
         </dependency>
 
+        <!-- Mail, for the password-reset link.
+             The application does NOT require a mail server to run: with no
+             spring.mail.host configured, ResetLinkMailer writes the link to the
+             log instead of sending it. That keeps development and the test
+             suite working with no SMTP at all, while the production path is
+             real rather than stubbed out. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-mail</artifactId>
+        </dependency>
+
         <!-- SQL SERVER DRIVER: how Java talks to MSSQLSERVER01 over TCP.
              Note this is JDBC, not Entity Framework - EF is a .NET technology and
              cannot be used from Java. JPA/Hibernate fills the same role here, and

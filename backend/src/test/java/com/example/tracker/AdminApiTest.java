@@ -238,7 +238,7 @@ class AdminApiTest {
             mvc.perform(post("/api/teachers")
                             .contentType("application/json")
                             .content("{\"firstName\":\"\",\"lastName\":\"Molefe\","
-                                    + "\"nationalId\":\"333333333\",\"dateOfBirth\":\"2000-01-01\","
+                                    + "\"nationalId\":\"333313333\",\"dateOfBirth\":\"2000-01-01\","
                                     + "\"phone\":\"+26771234567\","
                                     + "\"temporaryPassword\":\"Temp-Password-1\"}")
                             .with(asAdmin()).with(csrf()))
@@ -272,7 +272,7 @@ class AdminApiTest {
         @Test
         @DisplayName("an admin can reset a teacher's password, marking the account pending again")
         void adminCanResetTeacherPassword() throws Exception {
-            Long id = givenAFreshTeacher("444444444");
+            Long id = givenAFreshTeacher("444414444");
 
             mvc.perform(put("/api/teachers/" + id + "/password")
                             .contentType("application/json")
@@ -298,7 +298,7 @@ class AdminApiTest {
         @Test
         @DisplayName("deleting a teacher with no courses or assignments succeeds")
         void deletingATeacherWithNothingAttachedSucceeds() throws Exception {
-            Long id = givenAFreshTeacher("555555555");
+            Long id = givenAFreshTeacher("555515555");
 
             mvc.perform(delete("/api/teachers/" + id)
                             .with(asAdmin()).with(csrf()))
@@ -316,7 +316,7 @@ class AdminApiTest {
             mvc.perform(post("/api/teachers")
                             .contentType("application/json")
                             .content("{\"firstName\":\"Boitumelo\",\"lastName\":\"Kgosi\","
-                                    + "\"nationalId\":\"666666666\",\"dateOfBirth\":\"1985-05-05\","
+                                    + "\"nationalId\":\"666616666\",\"dateOfBirth\":\"1985-05-05\","
                                     + "\"phone\":\"+26771234567\","
                                     + "\"temporaryPassword\":\"Temp-Password-1\","
                                     + "\"initialCourses\":[{\"subjectId\":" + subjectId
@@ -362,7 +362,7 @@ class AdminApiTest {
             mvc.perform(post("/api/teachers")
                             .contentType("application/json")
                             .content("{\"firstName\":\"Kagiso\",\"lastName\":\"Molefe\","
-                                    + "\"nationalId\":\"400000001\",\"dateOfBirth\":\"2000-01-01\","
+                                    + "\"nationalId\":\"400010001\",\"dateOfBirth\":\"2000-01-01\","
                                     + "\"temporaryPassword\":\"Temp-Password-1\"}")
                             .with(asAdmin()).with(csrf()))
                .andExpect(status().isBadRequest())
@@ -374,7 +374,7 @@ class AdminApiTest {
         void phoneWithoutCountryCodeIsRefused() throws Exception {
             mvc.perform(post("/api/teachers")
                             .contentType("application/json")
-                            .content(personJsonWithout("400000002", "phone", "\"71234567\""))
+                            .content(personJsonWithout("400010002", "phone", "\"71234567\""))
                             .with(asAdmin()).with(csrf()))
                .andExpect(status().isBadRequest())
                .andExpect(jsonPath("$.message", containsStringIgnoringCase("phone")));
@@ -385,7 +385,7 @@ class AdminApiTest {
         void phoneWithWrongDigitCountIsRefused() throws Exception {
             mvc.perform(post("/api/teachers")
                             .contentType("application/json")
-                            .content(personJsonWithout("400000003", "phone", "\"+2677123456\""))
+                            .content(personJsonWithout("400010003", "phone", "\"+2677123456\""))
                             .with(asAdmin()).with(csrf()))
                .andExpect(status().isBadRequest())
                .andExpect(jsonPath("$.message", containsStringIgnoringCase("phone")));
@@ -396,7 +396,7 @@ class AdminApiTest {
         void validPhoneIsAccepted() throws Exception {
             mvc.perform(post("/api/teachers")
                             .contentType("application/json")
-                            .content(personJsonWithout("400000004", "phone", "\"+26772345678\""))
+                            .content(personJsonWithout("400010004", "phone", "\"+26772345678\""))
                             .with(asAdmin()).with(csrf()))
                .andExpect(status().isCreated())
                .andExpect(jsonPath("$.phone", is("+26772345678")));
@@ -408,7 +408,7 @@ class AdminApiTest {
             mvc.perform(post("/api/teachers")
                             .contentType("application/json")
                             .content("{\"firstName\":\"Kag1so\",\"lastName\":\"Molefe\","
-                                    + "\"nationalId\":\"400000005\",\"dateOfBirth\":\"2000-01-01\","
+                                    + "\"nationalId\":\"400010005\",\"dateOfBirth\":\"2000-01-01\","
                                     + "\"phone\":\"+26771234567\","
                                     + "\"temporaryPassword\":\"Temp-Password-1\"}")
                             .with(asAdmin()).with(csrf()))
@@ -428,7 +428,7 @@ class AdminApiTest {
             mvc.perform(post("/api/teachers")
                             .contentType("application/json")
                             .content("{\"firstName\":\"Kagiso\",\"lastName\":\"Van der Merwe\","
-                                    + "\"nationalId\":\"400000006\",\"dateOfBirth\":\"2000-01-01\","
+                                    + "\"nationalId\":\"400010006\",\"dateOfBirth\":\"2000-01-01\","
                                     + "\"phone\":\"+26771234567\","
                                     + "\"temporaryPassword\":\"Temp-Password-1\"}")
                             .with(asAdmin()).with(csrf()))
@@ -447,7 +447,7 @@ class AdminApiTest {
                                     + "\"temporaryPassword\":\"Temp-Password-1\"}")
                             .with(asAdmin()).with(csrf()))
                .andExpect(status().isBadRequest())
-               .andExpect(jsonPath("$.message", containsStringIgnoringCase("national id")));
+               .andExpect(jsonPath("$.message", containsStringIgnoringCase("Omang")));
         }
 
         @Test
@@ -456,7 +456,7 @@ class AdminApiTest {
             mvc.perform(post("/api/teachers")
                             .contentType("application/json")
                             .content("{\"firstName\":\"Kagiso\",\"lastName\":\"Molefe\","
-                                    + "\"nationalId\":\"400000008\",\"dateOfBirth\":\"2000-01-01\","
+                                    + "\"nationalId\":\"400010008\",\"dateOfBirth\":\"2000-01-01\","
                                     + "\"phone\":\"+26771234567\","
                                     + "\"temporaryPassword\":\"lowercase-1\"}")
                             .with(asAdmin()).with(csrf()))
@@ -470,7 +470,7 @@ class AdminApiTest {
             mvc.perform(post("/api/teachers")
                             .contentType("application/json")
                             .content("{\"firstName\":\"Kagiso\",\"lastName\":\"Molefe\","
-                                    + "\"nationalId\":\"400000009\",\"dateOfBirth\":\"2000-01-01\","
+                                    + "\"nationalId\":\"400010009\",\"dateOfBirth\":\"2000-01-01\","
                                     + "\"phone\":\"+26771234567\","
                                     + "\"temporaryPassword\":\"NoDigitsHere\"}")
                             .with(asAdmin()).with(csrf()))
@@ -484,7 +484,7 @@ class AdminApiTest {
             mvc.perform(post("/api/teachers")
                             .contentType("application/json")
                             .content("{\"firstName\":\"Kagiso\",\"lastName\":\"Molefe\","
-                                    + "\"nationalId\":\"400000010\",\"dateOfBirth\":\"2000-01-01\","
+                                    + "\"nationalId\":\"400010010\",\"dateOfBirth\":\"2000-01-01\","
                                     + "\"phone\":\"+26771234567\","
                                     + "\"temporaryPassword\":\"NoSymbol123\"}")
                             .with(asAdmin()).with(csrf()))
@@ -498,7 +498,7 @@ class AdminApiTest {
             mvc.perform(post("/api/teachers")
                             .contentType("application/json")
                             .content("{\"firstName\":\"Kagiso\",\"lastName\":\"Molefe\","
-                                    + "\"nationalId\":\"400000011\",\"dateOfBirth\":\"2000-01-01\","
+                                    + "\"nationalId\":\"400010011\",\"dateOfBirth\":\"2000-01-01\","
                                     + "\"phone\":\"+26771234567\","
                                     + "\"temporaryPassword\":\"Valid-Pass-1\"}")
                             .with(asAdmin()).with(csrf()))
@@ -511,7 +511,7 @@ class AdminApiTest {
             String body = mvc.perform(post("/api/students")
                             .contentType("application/json")
                             .content("{\"firstName\":\"Kagiso\",\"lastName\":\"Molefe\","
-                                    + "\"nationalId\":\"400000012\",\"dateOfBirth\":\"2000-01-01\","
+                                    + "\"nationalId\":\"400010012\",\"dateOfBirth\":\"2000-01-01\","
                                     + "\"phone\":\"+26771234567\","
                                     + "\"temporaryPassword\":\"Temp-Password-1\"}")
                             .with(asAdmin()).with(csrf()))
@@ -521,7 +521,7 @@ class AdminApiTest {
             mvc.perform(put("/api/students/" + id)
                             .contentType("application/json")
                             .content("{\"firstName\":\"Kagiso\",\"lastName\":\"Molefe\","
-                                    + "\"nationalId\":\"400000012\",\"dateOfBirth\":\"2000-01-01\"}")
+                                    + "\"nationalId\":\"400010012\",\"dateOfBirth\":\"2000-01-01\"}")
                             .with(asAdmin()).with(csrf()))
                .andExpect(status().isBadRequest())
                .andExpect(jsonPath("$.message", containsStringIgnoringCase("phone")));
@@ -531,7 +531,7 @@ class AdminApiTest {
         @DisplayName("bulk import does not require a phone column - a school's existing spreadsheet still works")
         void bulkImportWithoutPhoneColumnStillSucceeds() throws Exception {
             String csv = "firstName,lastName,nationalId,dateOfBirth\n"
-                    + "NoPhone,Person,400000013,2000-01-01\n";
+                    + "NoPhone,Person,400010013,2000-01-01\n";
             MockMultipartFile file = new MockMultipartFile(
                     "file", "students.csv", "text/csv", csv.getBytes(StandardCharsets.UTF_8));
 
@@ -594,7 +594,7 @@ class AdminApiTest {
         void adminCanCreateStudent() throws Exception {
             mvc.perform(post("/api/students")
                             .contentType("application/json")
-                            .content(personJson("777777777"))
+                            .content(personJson("777717777"))
                             .with(asAdmin()).with(csrf()))
                .andExpect(status().isCreated())
                .andExpect(jsonPath("$.externalId", startsWith("STU")))
@@ -606,7 +606,7 @@ class AdminApiTest {
         void teacherCannotCreateStudent() throws Exception {
             mvc.perform(post("/api/students")
                             .contentType("application/json")
-                            .content(personJson("777777778"))
+                            .content(personJson("777717778"))
                             .with(asTeacher()).with(csrf()))
                .andExpect(status().isForbidden());
         }
@@ -619,7 +619,7 @@ class AdminApiTest {
             String body = mvc.perform(post("/api/students")
                             .contentType("application/json")
                             .content("{\"firstName\":\"Naledi\",\"lastName\":\"Pule\","
-                                    + "\"nationalId\":\"888888888\",\"dateOfBirth\":\"2010-03-03\","
+                                    + "\"nationalId\":\"888818888\",\"dateOfBirth\":\"2010-03-03\","
                                     + "\"phone\":\"+26771234567\","
                                     + "\"temporaryPassword\":\"Temp-Password-1\",\"classId\":" + classId + "}")
                             .with(asAdmin()).with(csrf()))
@@ -642,8 +642,8 @@ class AdminApiTest {
         @DisplayName("importing students from CSV reports one success per valid row")
         void importStudentsFromCsv() throws Exception {
             String csv = "firstName,lastName,nationalId,dateOfBirth\n"
-                    + "Thabo,Seretse,900000001,2011-02-02\n"
-                    + "Lesego,Mogae,900000002,2011-04-04\n";
+                    + "Thabo,Seretse,900010001,2011-02-02\n"
+                    + "Lesego,Mogae,900010002,2011-04-04\n";
             MockMultipartFile file = new MockMultipartFile(
                     "file", "students.csv", "text/csv", csv.getBytes(StandardCharsets.UTF_8));
 
@@ -660,8 +660,8 @@ class AdminApiTest {
         @DisplayName("a bad row fails on its own without losing the good rows in the same file")
         void oneBadRowDoesNotSinkTheWholeImport() throws Exception {
             String csv = "firstName,lastName,nationalId,dateOfBirth\n"
-                    + "Goodwill,Tau,900000003,2011-02-02\n"
-                    + ",MissingFirstName,900000004,2011-04-04\n";
+                    + "Goodwill,Tau,900010003,2011-02-02\n"
+                    + ",MissingFirstName,900010004,2011-04-04\n";
             MockMultipartFile file = new MockMultipartFile(
                     "file", "students.csv", "text/csv", csv.getBytes(StandardCharsets.UTF_8));
 
@@ -678,14 +678,14 @@ class AdminApiTest {
             // profile, had one been left behind) did not slip through either.
             String students = mvc.perform(get("/api/students").with(asAdmin()))
                     .andReturn().getResponse().getContentAsString();
-            assertThat(students).contains("900000003");
-            assertThat(students).doesNotContain("900000004");
+            assertThat(students).contains("900010003");
+            assertThat(students).doesNotContain("900010004");
         }
 
         @Test
         @DisplayName("a teacher cannot bulk-import students")
         void teacherCannotImportStudents() throws Exception {
-            String csv = "firstName,lastName,nationalId,dateOfBirth\nA,B,900000005,2011-01-01\n";
+            String csv = "firstName,lastName,nationalId,dateOfBirth\nA,B,900010005,2011-01-01\n";
             MockMultipartFile file = new MockMultipartFile(
                     "file", "students.csv", "text/csv", csv.getBytes(StandardCharsets.UTF_8));
 
@@ -697,7 +697,7 @@ class AdminApiTest {
         @DisplayName("importing teachers from CSV reports one success per valid row")
         void importTeachersFromCsv() throws Exception {
             String csv = "firstName,lastName,nationalId,dateOfBirth\n"
-                    + "Onalenna,Phiri,900000006,1988-06-06\n";
+                    + "Onalenna,Phiri,900010006,1988-06-06\n";
             MockMultipartFile file = new MockMultipartFile(
                     "file", "teachers.csv", "text/csv", csv.getBytes(StandardCharsets.UTF_8));
 
@@ -729,7 +729,7 @@ class AdminApiTest {
             mvc.perform(post("/api/students")
                             .contentType("application/json")
                             .content("{\"firstName\":\"Kagiso\",\"lastName\":\"Molefe\","
-                                    + "\"nationalId\":\"700000001\",\"dateOfBirth\":\"2010-01-01\","
+                                    + "\"nationalId\":\"700010001\",\"dateOfBirth\":\"2010-01-01\","
                                     + "\"dateEnrolled\":\"2005-01-01\","
                                     + "\"phone\":\"+26771234567\","
                                     + "\"temporaryPassword\":\"Temp-Password-1\"}")
@@ -755,14 +755,113 @@ class AdminApiTest {
                     "profile-probe-1", encoder.encode("password123"), Role.STUDENT, true));
 
             assertThatThrownBy(() -> profiles.saveAndFlush(new PersonProfile(
-                    account, "Kagiso", null, "Molefe", "700000002",
+                    account, "Kagiso", null, "Molefe", "700010002",
                     LocalDate.of(2010, 1, 1), null, null, LocalDate.of(2005, 1, 1))))
+                    .isInstanceOf(DataIntegrityViolationException.class);
+        }
+
+        /*
+         * THE OMANG'S SHAPE - 9 digits, 5th is 1 (male) or 2 (female).
+         *
+         * The 5th digit is the only self-describing position in the number, so
+         * it is the only one a checksum-free validator can test. These cover
+         * both halves: the length, and that marker.
+         */
+        @Test
+        @DisplayName("an Omang that is not exactly 9 digits is refused")
+        void wrongLengthOmangIsRefused() throws Exception {
+            for (String bad : new String[]{"4001000", "40010002123", "400100"}) {
+                mvc.perform(post("/api/students")
+                                .contentType("application/json")
+                                .content("{\"firstName\":\"Kagiso\",\"lastName\":\"Molefe\","
+                                        + "\"nationalId\":\"" + bad + "\",\"dateOfBirth\":\"2010-01-01\","
+                                        + "\"phone\":\"+26771234567\","
+                                        + "\"temporaryPassword\":\"Temp-Password-1\"}")
+                                .with(asAdmin()).with(csrf()))
+                   .andExpect(status().isBadRequest());
+            }
+        }
+
+        @Test
+        @DisplayName("an Omang whose 5th digit is not 1 or 2 is refused")
+        void wrongGenderMarkerIsRefused() throws Exception {
+            // Nine digits, right shape, but the gender marker is a 0 / 7 / 9.
+            for (String bad : new String[]{"400000002", "777777777", "123495678"}) {
+                mvc.perform(post("/api/students")
+                                .contentType("application/json")
+                                .content("{\"firstName\":\"Kagiso\",\"lastName\":\"Molefe\","
+                                        + "\"nationalId\":\"" + bad + "\",\"dateOfBirth\":\"2010-01-01\","
+                                        + "\"phone\":\"+26771234567\","
+                                        + "\"temporaryPassword\":\"Temp-Password-1\"}")
+                                .with(asAdmin()).with(csrf()))
+                   .andExpect(status().isBadRequest());
+            }
+        }
+
+        @Test
+        @DisplayName("both gender markers are accepted, and the gender is derived from them")
+        void bothGenderMarkersAreAccepted() throws Exception {
+            // 1 = male
+            mvc.perform(post("/api/students")
+                            .contentType("application/json")
+                            .content("{\"firstName\":\"Kagiso\",\"lastName\":\"Molefe\","
+                                    + "\"nationalId\":\"432119876\",\"dateOfBirth\":\"2010-01-01\","
+                                    + "\"phone\":\"+26771234567\","
+                                    + "\"temporaryPassword\":\"Temp-Password-1\"}")
+                            .with(asAdmin()).with(csrf()))
+               .andExpect(status().isCreated())
+               .andExpect(jsonPath("$.gender", is("MALE")));
+
+            // 2 = female
+            mvc.perform(post("/api/students")
+                            .contentType("application/json")
+                            .content("{\"firstName\":\"Neo\",\"lastName\":\"Basimane\","
+                                    + "\"nationalId\":\"432229876\",\"dateOfBirth\":\"2010-01-01\","
+                                    + "\"phone\":\"+26771234567\","
+                                    + "\"temporaryPassword\":\"Temp-Password-1\"}")
+                            .with(asAdmin()).with(csrf()))
+               .andExpect(status().isCreated())
+               .andExpect(jsonPath("$.gender", is("FEMALE")));
+        }
+
+        /**
+         * Bulk import never builds a PersonRequest, so the @Pattern on that
+         * class does not run for a CSV row - only AdminService's own check
+         * does. Without it the first objection would come from the database,
+         * losing the row number the importer needs to report.
+         */
+        @Test
+        @DisplayName("bulk import refuses a bad Omang per row, keeping the good rows")
+        void bulkImportChecksTheOmang() throws Exception {
+            String csv = "firstName,lastName,nationalId,dateOfBirth\n"
+                    + "Good,Row,445129876,2011-02-02\n"
+                    + "Bad,Row,999999999,2011-04-04\n";
+            MockMultipartFile file = new MockMultipartFile(
+                    "file", "students.csv", "text/csv", csv.getBytes(StandardCharsets.UTF_8));
+
+            mvc.perform(multipart("/api/students/import").file(file).with(asAdmin()).with(csrf()))
+               .andExpect(status().isOk())
+               .andExpect(jsonPath("$.succeeded", is(1)))
+               .andExpect(jsonPath("$.failed", is(1)))
+               .andExpect(jsonPath("$.rows[1].message", containsString("Omang")));
+        }
+
+        @Test
+        @Transactional
+        @DisplayName("the database itself refuses an Omang with a bad gender marker")
+        void databaseRefusesBadOmang() {
+            AppUser account = users.save(new AppUser(
+                    "omang-probe", encoder.encode("password123"), Role.STUDENT, true));
+
+            assertThatThrownBy(() -> profiles.saveAndFlush(new PersonProfile(
+                    account, "Kagiso", null, "Molefe", "400000002",
+                    LocalDate.of(2010, 1, 1), null, null, LocalDate.now())))
                     .isInstanceOf(DataIntegrityViolationException.class);
         }
 
         @Test
         @Transactional
-        @DisplayName("the database itself refuses a malformed phone number")
+        @DisplayName("the database itself refuses malformed phone numbers")
         void databaseRefusesMalformedPhone() {
             AppUser account = users.save(new AppUser(
                     "profile-probe-2", encoder.encode("password123"), Role.STUDENT, true));
@@ -770,7 +869,7 @@ class AdminApiTest {
             // 5 digits, not 8 - the shape ck_person_profile_phone_format exists
             // to catch regardless of which layer produced it.
             assertThatThrownBy(() -> profiles.saveAndFlush(new PersonProfile(
-                    account, "Kagiso", null, "Molefe", "700000003",
+                    account, "Kagiso", null, "Molefe", "700010003",
                     LocalDate.of(2000, 1, 1), null, "+26712345", LocalDate.now())))
                     .isInstanceOf(DataIntegrityViolationException.class);
         }
@@ -968,7 +1067,7 @@ class AdminApiTest {
         void creatingATeacherIsAudited() throws Exception {
             mvc.perform(post("/api/teachers")
                             .contentType("application/json")
-                            .content(personJson("999999991"))
+                            .content(personJson("999919991"))
                             .with(asAdmin()).with(csrf()))
                .andExpect(status().isCreated());
 
@@ -1016,7 +1115,7 @@ class AdminApiTest {
         void theLogIsPaginated() throws Exception {
             mvc.perform(post("/api/teachers")
                             .contentType("application/json")
-                            .content(personJson("999999992"))
+                            .content(personJson("999919992"))
                             .with(asAdmin()).with(csrf()))
                .andExpect(status().isCreated());
 
@@ -1036,7 +1135,7 @@ class AdminApiTest {
         @DisplayName("a bulk-imported row that names a class is audited the same as a single enrolment")
         void bulkImportedEnrolmentIsAudited() throws Exception {
             String csv = "firstName,lastName,nationalId,dateOfBirth,className\n"
-                    + "Kelebogile,Ntsima,900000007,2011-03-03,Grade 10A\n";
+                    + "Kelebogile,Ntsima,900010007,2011-03-03,Grade 10A\n";
             MockMultipartFile file = new MockMultipartFile(
                     "file", "students.csv", "text/csv", csv.getBytes(StandardCharsets.UTF_8));
 
@@ -1193,7 +1292,7 @@ class AdminApiTest {
         void adminCanResetAStudentPassword() throws Exception {
             String body = mvc.perform(post("/api/students")
                             .contentType("application/json")
-                            .content(personJson("777000111"))
+                            .content(personJson("777010111"))
                             .with(asAdmin()).with(csrf()))
                     .andExpect(status().isCreated())
                     .andReturn().getResponse().getContentAsString();
@@ -1229,7 +1328,7 @@ class AdminApiTest {
         void adminCanEditAStudent() throws Exception {
             String body = mvc.perform(post("/api/students")
                             .contentType("application/json")
-                            .content(personJson("777000222"))
+                            .content(personJson("777010222"))
                             .with(asAdmin()).with(csrf()))
                     .andReturn().getResponse().getContentAsString();
             Long id = new ObjectMapper().readTree(body).get("id").asLong();
@@ -1237,7 +1336,7 @@ class AdminApiTest {
             mvc.perform(put("/api/students/" + id)
                             .contentType("application/json")
                             .content("{\"firstName\":\"Corrected\",\"lastName\":\"Name\","
-                                    + "\"nationalId\":\"777000222\",\"dateOfBirth\":\"2001-02-03\","
+                                    + "\"nationalId\":\"777010222\",\"dateOfBirth\":\"2001-02-03\","
                                     + "\"phone\":\"+26771234567\"}")
                             .with(asAdmin()).with(csrf()))
                .andExpect(status().isOk())
@@ -1255,7 +1354,7 @@ class AdminApiTest {
         void editingWithoutChangingNationalIdIsAllowed() throws Exception {
             String body = mvc.perform(post("/api/students")
                             .contentType("application/json")
-                            .content(personJson("777000333"))
+                            .content(personJson("777010333"))
                             .with(asAdmin()).with(csrf()))
                     .andReturn().getResponse().getContentAsString();
             Long id = new ObjectMapper().readTree(body).get("id").asLong();
@@ -1263,7 +1362,7 @@ class AdminApiTest {
             mvc.perform(put("/api/students/" + id)
                             .contentType("application/json")
                             .content("{\"firstName\":\"Same\",\"lastName\":\"Id\","
-                                    + "\"nationalId\":\"777000333\",\"dateOfBirth\":\"2001-02-03\","
+                                    + "\"nationalId\":\"777010333\",\"dateOfBirth\":\"2001-02-03\","
                                     + "\"phone\":\"+26771234567\"}")
                             .with(asAdmin()).with(csrf()))
                .andExpect(status().isOk());
@@ -1273,12 +1372,12 @@ class AdminApiTest {
         @DisplayName("taking another person's national id is refused with 409")
         void cannotTakeSomebodyElsesNationalId() throws Exception {
             mvc.perform(post("/api/students").contentType("application/json")
-                            .content(personJson("777000444")).with(asAdmin()).with(csrf()))
+                            .content(personJson("777010444")).with(asAdmin()).with(csrf()))
                .andExpect(status().isCreated());
 
             String body = mvc.perform(post("/api/students")
                             .contentType("application/json")
-                            .content(personJson("777000555"))
+                            .content(personJson("777010555"))
                             .with(asAdmin()).with(csrf()))
                     .andReturn().getResponse().getContentAsString();
             Long id = new ObjectMapper().readTree(body).get("id").asLong();
@@ -1286,7 +1385,7 @@ class AdminApiTest {
             mvc.perform(put("/api/students/" + id)
                             .contentType("application/json")
                             .content("{\"firstName\":\"Thief\",\"lastName\":\"Of Ids\","
-                                    + "\"nationalId\":\"777000444\",\"dateOfBirth\":\"2001-02-03\","
+                                    + "\"nationalId\":\"777010444\",\"dateOfBirth\":\"2001-02-03\","
                                     + "\"phone\":\"+26771234567\"}")
                             .with(asAdmin()).with(csrf()))
                .andExpect(status().isConflict());
@@ -1298,7 +1397,7 @@ class AdminApiTest {
             String body = mvc.perform(post("/api/students")
                             .contentType("application/json")
                             .content("{\"firstName\":\"Temp\",\"lastName\":\"Student\","
-                                    + "\"nationalId\":\"777000666\",\"dateOfBirth\":\"2001-02-03\","
+                                    + "\"nationalId\":\"777010666\",\"dateOfBirth\":\"2001-02-03\","
                                     + "\"phone\":\"+26771234567\","
                                     + "\"temporaryPassword\":\"Temp-Password-1\","
                                     + "\"classId\":" + requireClassId("Grade 10A") + "}")

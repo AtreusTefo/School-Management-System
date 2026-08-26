@@ -1,6 +1,7 @@
 package com.example.tracker.dto;
 
 import com.example.tracker.model.AppUser;
+import com.example.tracker.model.Gender;
 import com.example.tracker.model.PersonProfile;
 
 import java.time.LocalDate;
@@ -35,7 +36,15 @@ public record TeacherView(
         LocalDate dateOfBirth,
         String contactEmail,
         String phone,
-        LocalDate dateEnrolled) {
+        LocalDate dateEnrolled,
+        /*
+         * DERIVED FROM THE OMANG'S 5TH DIGIT, never stored - see Gender and
+         * PersonProfile.getGender. Null where the number predates the 9-digit
+         * rule and therefore cannot say, which is a real answer rather than a
+         * gap: guessing a person's gender from a data-entry error would be
+         * manufacturing a fact about them.
+         */
+        Gender gender) {
 
     public static TeacherView of(AppUser teacher, PersonProfile profile) {
         return new TeacherView(
@@ -51,6 +60,7 @@ public record TeacherView(
                 profile == null ? null : profile.getDateOfBirth(),
                 profile == null ? null : profile.getContactEmail(),
                 profile == null ? null : profile.getPhone(),
-                profile == null ? null : profile.getDateEnrolled());
+                profile == null ? null : profile.getDateEnrolled(),
+                profile == null ? null : profile.getGender());
     }
 }
