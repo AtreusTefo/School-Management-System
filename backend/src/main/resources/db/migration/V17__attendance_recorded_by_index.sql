@@ -1,0 +1,37 @@
+-- V17: an index on attendance.recorded_by_id.
+--
+-- THE CASE V14 MISSED
+-- -------------------
+-- V14 created the attendance register with three indexes, chosen for the three
+-- ways a register is read: by lesson and date, by student, and by date. It did
+-- not index recorded_by_id, and that column has exactly the same problem V12
+-- called out for assessment.recorded_by_id:
+--
+--   "recorded_by_id has no finder method of its own, which is exactly why it
+--    is easy to miss: the scan it causes is not in any repository, it is
+--    inside the DELETE of an app_user, where the database checks the foreign
+--    key before permitting the row to go."
+--
+-- The reasoning transfers unchanged, and the stakes are higher here. An
+-- assessment is written once per mark; an attendance row is written once per
+-- student per lesson per day, so this is the fastest-growing table in the
+-- schema by a wide margin. A teacher who has taken registers for a year is
+-- precisely the account whose deletion would scan the most rows, and nothing
+-- in the application code hints that the scan is happening.
+--
+-- WHAT IS STILL DELIBERATELY NOT INDEXED HERE
+-- attendance.class_id. It is a foreign key, and a query listing unindexed
+-- foreign keys reports it - but the only repository method that filtered by it
+-- (findBySchoolClassAndLessonDate) was never called by anything, and has been
+-- removed rather than indexed for. An index exists to serve a query; there is
+-- no query. The composite foreign key to timetable_slot (id, class_id) is what
+-- that column is actually for, and the reference is validated through the
+-- slot's own primary key.
+--
+-- The *_role columns are not indexed either, for the reason V12 gives in full:
+-- each holds one value by CHECK constraint, so an index on it has almost no
+-- selectivity, and every lookup that uses one is already seeking on the id
+-- column beside it.
+
+CREATE INDEX ix_attendance_recorded_by ON attendance (recorded_by_id);
+GO

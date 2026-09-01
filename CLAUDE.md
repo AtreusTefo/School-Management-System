@@ -92,7 +92,8 @@ School Management System/
 │       │   │                            #   assignments, then marks (@Order matters)
 │       │   ├── controller/     # AssignmentController, SubmissionController,
 │       │   │                   #   SchoolController, AssessmentController,
-│       │   │                   #   AuthController, AdminController
+│       │   │                   #   AuthController, AdminController,
+│       │   │                   #   TimetableController, AttendanceController
 │       │   ├── service/        # AssignmentService (fan-out), SubmissionService (PDF),
 │       │   │                   #   SchoolService (timetable + admin course/enrolment
 │       │   │                   #   endpoints), AssessmentService (marks),
@@ -102,12 +103,21 @@ School Management System/
 │       │   │                   #   bulk import - see its own header for why it is NOT
 │       │   │                   #   part of AppUserService), AuditLogService,
 │       │   │                   #   IdGeneratorService (STU/TCH/ADM ids), ImportRowReader
-│       │   │                   #   (CSV/Excel parsing, shared by both import paths)
+│       │   │                   #   (CSV/Excel parsing, shared by both import paths),
+│       │   │                   #   TimetableService (terms, periods, slots - and the
+│       │   │                   #   one rule enforced in Java alone, see below),
+│       │   │                   #   AttendanceService (the per-lesson register),
+│       │   │                   #   PasswordResetService (+ ResetLinkMailer),
+│       │   │                   #   PersonPatterns (Omang + phone, shared by the
+│       │   │                   #   entity @Check and the service guard)
 │       │   ├── repository/     # One per entity (Spring Data JPA)
 │       │   ├── model/          # AppUser, PersonProfile, Role, Subject, SchoolClass,
 │       │   │                   #   Enrolment, Course, Assignment, Submission,
 │       │   │                   #   SubmissionFile, AssignmentStatus, Assessment,
-│       │   │                   #   PerformanceLevel, AuditLog, AuditAction
+│       │   │                   #   PerformanceLevel, AuditLog, AuditAction,
+│       │   │                   #   Term, TimetablePeriod, TimetableSlot, Attendance,
+│       │   │                   #   AttendanceStatus, PasswordResetToken, Gender
+│       │   │                   #   (DERIVED from the Omang, never stored)
 │       │   ├── dto/            # Records the API publishes - see SubjectView for why;
 │       │   │                   #   ImportSummary is the bulk-import per-row report
 │       │   ├── config/         # SecurityConfig (auth, CSRF), CorsConfig (allowed origins)
@@ -125,7 +135,9 @@ School Management System/
 │       │                       #   V11 terms + periods + timetable slots,
 │       │                       #   V12 performance indexes, V13 Omang format,
 │       │                       #   V14 attendance register,
-│       │                       #   V15 password reset tokens
+│       │                       #   V15 password reset tokens,
+│       │                       #   V16 contact_email index (corrects a V12 claim),
+│       │                       #   V17 attendance.recorded_by_id index
 │       └── test/
 │           ├── java/com/example/tracker/
 │           │   ├── AssignmentApiTest.java            # MockMvc, real security
@@ -139,6 +151,12 @@ School Management System/
 │           │   │                                     #   import, teacher-to-student
 │           │   │                                     #   assignment, the audit log
 │           │   ├── InputValidationApiTest.java       # every DTO's Jakarta Bean Validation
+│           │   ├── TimetableApiTest.java             # terms, periods, slots, the no-overlap
+│           │   │                                     #   rule, and the delete refusals
+│           │   ├── AttendanceApiTest.java            # the register: weekday/term/enrolment
+│           │   │                                     #   rules, correction not duplication
+│           │   ├── PasswordResetApiTest.java         # the identical answer whatever the
+│           │   │                                     #   identifier matched; hashed tokens
 │           │   └── service/AssignmentServiceTest.java # business rules, repository mocked
 │           └── resources/
 │               ├── application-test.properties # H2, Flyway off, ddl-auto=create-drop
@@ -164,6 +182,11 @@ School Management System/
                 ├── session.service.ts       # WHO is signed in - a signal, read by guards
                 │                            #   and every page outside any one component
                 ├── notification.service.ts  # THE error banner - shared across navigations
+                ├── timetable.service.ts     # terms, periods, slots, and "my week"
+                ├── attendance.service.ts    # taking a register / reading your own
+                ├── password-reset.service.ts # the two signed-out endpoints
+                ├── theme.service.ts         # dark/light, persisted; toggle lives in the shell
+                ├── confirm.service.ts       # THE confirm dialog - replaces window.confirm
                 ├── auth.guard.ts            # signed-in + not mustChangePassword, else -> '/'
                 ├── teacher.guard.ts         # teacher-only routes, else -> /marking-queue
                 ├── admin-auth.guard.ts      # admin-only routes, else -> '/' - there is no
@@ -175,11 +198,26 @@ School Management System/
                 │                            #   forced password change, error banner,
                 │                            #   <router-outlet>
                 ├── app.component.html
+                ├── home.component.ts/.html               # '/home' - the landing page,
+                │                                         #   readable with no account
+                ├── about.component.ts/.html              # '/about'   - public
+                ├── privacy.component.ts/.html            # '/privacy' - public
+                ├── terms.component.ts/.html              # '/terms'   - public
+                ├── forgot-password.component.ts/.html    # '/forgot-password' - public
+                ├── reset-password.component.ts/.html     # '/reset-password?token=' - public
+                ├── not-found.component.ts/.html          # '**' - a real 404 page, NOT a
+                │                                         #   redirect; see app.routes.ts
                 ├── dashboard.component.ts/.html          # '/' - timetable, quick links
                 │                                         #   (account creation moved to
                 │                                         #   the admin panel entirely)
                 ├── assignments-page.component.ts/.html   # '/assignments' - "Work I have set"
                 ├── marking-queue-page.component.ts/.html # '/marking-queue' - submissions
+                ├── my-students-page.component.ts/.html   # '/my-students' - a teacher's own
+                │                                         #   roll, scoped server-side
+                ├── my-timetable-page.component.ts/.html  # '/timetable' - the caller's week,
+                │                                         #   every role, shaped by session
+                ├── attendance-page.component.ts/.html    # '/attendance' - take a register,
+                │                                         #   or read your own attendance
                 ├── reports-page.component.ts/.html       # '/reports' - performance summary
                 │                                         #   + mark book + Export Excel
                 ├── admin-dashboard.component.ts/.html    # '/admin' - quick links
@@ -188,8 +226,22 @@ School Management System/
                 │                                            #   Excel), reset password, delete
                 ├── admin-students-page.component.ts/.html   # '/admin/students' - onboard,
                 │                                            #   browse, link to detail
-                ├── admin-student-detail.component.ts/.html  # '/admin/students/:id' - assign/
-                │                                            #   unassign a teacher, by subject
+                ├── admin-teacher-detail.component.ts/.html  # '/admin/teachers/:id' - what
+                │                                            #   one teacher teaches and whom;
+                │                                            #   DERIVED from Course +
+                │                                            #   Enrolment, nothing stored
+                ├── admin-student-detail.component.ts/.html  # '/admin/students/:id' - the
+                │                                            #   mirror: class, subjects and
+                │                                            #   which teachers reach them;
+                │                                            #   assign/unassign by subject
+                ├── admin-accounts-page.component.ts/.html   # '/admin/accounts' - every
+                │                                            #   account, read-only
+                ├── admin-accounts-table.component.ts        # DataTables, that table
+                ├── admin-timetable-page.component.ts/.html  # '/admin/timetable' - subjects,
+                │                                            #   classes, courses, enrolment
+                │                                            #   (WHO teaches what to whom)
+                ├── admin-schedule-page.component.ts/.html   # '/admin/schedule' - terms,
+                │                                            #   periods, slots (WHEN)
                 ├── admin-audit-log-page.component.ts/.html  # '/admin/audit-log' - server-
                 │                                            #   paginated, filterable
                 ├── performance-table.component.ts   # DataTables, performance-by-student
@@ -200,6 +252,7 @@ School Management System/
                 ├── validation.ts            # every length/format constant + checkDecimal()
                 │                            #   + fieldErrorMessage()
                 ├── decimal-validator.directive.ts # appDecimal / appDecimalPositive
+                ├── password-strength-validator.directive.ts # appPasswordStrength
                 └── field-error.component.ts # the ONE place an inline error is drawn
 ```
 
@@ -211,7 +264,7 @@ School Management System/
 - **Build backend:** `.\mvnw.cmd clean package -DskipTests` produces `backend/target/tracker-0.0.1-SNAPSHOT.jar`.
 - **Build frontend:** `npm run build` in `frontend/tracker-ui`.
 - **Type-check frontend:** `npx tsc --noEmit -p tsconfig.app.json`.
-- **Run tests:** `.\mvnw.cmd test` - 251 tests, run against H2, no SQL Server needed.
+- **Run tests:** `.\mvnw.cmd test` - 262 tests, run against H2, no SQL Server needed.
 - **Database:** SQL Server, database `School Management System`, login `tracker_app`. The connection string in `application.properties` uses port 14333; confirm your instance actually listens there before assuming a failure is the application's fault. Query it with:
   `sqlcmd -S "tcp:localhost,14333" -U tracker_app -P 'Tracker!2026Dev' -d "School Management System"`
 - **Development accounts:** `admin`, `teacher` and `student`, all password `password123`, reset at every startup. These keep their literal usernames as a documented exception - every account created through the admin panel from here on signs in with a generated id instead (`STU20260001`, `TCH20260001`, `ADM20260001`); see the Scope Guard section above.
@@ -378,7 +431,7 @@ What used to be one long page behind boolean flags is now four routed pages - Da
 - **A database SEQUENCE, not `SELECT MAX(id) + 1`, generates every admin-issued login id.** `IdGeneratorService` calls `NEXT VALUE FOR seq_student_id` (and `_teacher_id`, `_admin_id`) rather than reading the highest number issued so far - the latter is a genuine race under two admins onboarding at the same moment, caught only as a 409 the second one has to retry past. A sequence is atomic by construction, so there is nothing to retry. H2 has no annotation that creates a free-standing sequence as a side effect of `ddl-auto`, so the test schema gets its own copy in `src/test/resources/schema.sql`, which Spring Boot runs automatically against any embedded database.
 
 ### Testing Requirements
-There is an automated suite: `.\mvnw.cmd test` runs 251 tests, and `package` fails the build if any fail. Add to it rather than reverting to manual checks.
+There is an automated suite: `.\mvnw.cmd test` runs 262 tests, and `package` fails the build if any fail. Add to it rather than reverting to manual checks.
 
 - **Unit tests** (`AssignmentServiceTest`) - business rules with the repository mocked.
 - **Full-stack tests** (`AssignmentApiTest`, `InputValidationApiTest`) - MockMvc with real security; every status code in the error contract, and every DTO's Jakarta Bean Validation.

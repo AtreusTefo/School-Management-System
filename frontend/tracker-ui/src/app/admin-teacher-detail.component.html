@@ -1,0 +1,116 @@
+<!-- '/admin/teachers/:id' - what one teacher teaches, and whom.
+     Everything here is derived from Course and Enrolment - see the component. -->
+
+<div class="card--stacked">
+
+  <div class="page-head">
+    <div>
+      <h2>{{ displayName(teacher) }}</h2>
+      <p class="muted">
+        <span *ngIf="teacher?.externalId">{{ teacher?.externalId }} &middot; </span>
+        What this teacher teaches, and the students it reaches.
+      </p>
+    </div>
+    <a routerLink="/admin/teachers" class="btn btn--ghost">All teachers</a>
+  </div>
+
+  <div *ngIf="loading" class="loading">
+    <span class="spinner" aria-hidden="true"></span>
+    <span>Loading...</span>
+  </div>
+
+  <ng-container *ngIf="!loading">
+
+    <!-- ===== AT A GLANCE ===== -->
+    <div class="stat-row">
+      <div class="stat">
+        <span class="stat__value">{{ subjects.length }}</span>
+        <span class="stat__label">{{ subjects.length === 1 ? 'Subject' : 'Subjects' }}</span>
+      </div>
+      <div class="stat">
+        <span class="stat__value">{{ classes.length }}</span>
+        <span class="stat__label">{{ classes.length === 1 ? 'Class' : 'Classes' }}</span>
+      </div>
+      <div class="stat">
+        <span class="stat__value">{{ students.length }}</span>
+        <span class="stat__label">{{ students.length === 1 ? 'Student' : 'Students' }}</span>
+      </div>
+    </div>
+
+    <!-- ===== SUBJECTS AND CLASSES ===== -->
+    <section class="card">
+      <div class="card__header">
+        <h3 class="card__title">Subjects taught</h3>
+        <span class="card__note">
+          Grouped by class, the way a timetable is read aloud. These are the
+          course rows themselves, not a separate list that could disagree.
+        </span>
+      </div>
+      <div class="card__body">
+        <div class="table-wrap" *ngIf="byClass.length > 0">
+          <table class="table">
+            <thead>
+              <tr><th>Class</th><th>Subjects</th></tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let row of byClass">
+                <td class="cell-title">{{ row.className }}</td>
+                <td>
+                  <span class="badge badge--neutral subject-chip"
+                        *ngFor="let s of row.subjects">{{ s }}</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="empty" *ngIf="byClass.length === 0">
+          <div class="empty__title">This teacher is not assigned to anything yet</div>
+          <div class="empty__text">
+            Add a course on the Timetable page to give them a subject and a class.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== THE STUDENTS ===== -->
+    <section class="card">
+      <div class="card__header">
+        <h3 class="card__title">Students taught</h3>
+        <span class="card__note">
+          Everybody enrolled in the classes above. A student taught two subjects
+          by this teacher appears once.
+        </span>
+      </div>
+      <div class="card__body">
+        <div class="table-wrap" *ngIf="students.length > 0">
+          <table class="table">
+            <thead>
+              <tr><th>Name</th><th>Sign-in ID</th><th>Class</th><th class="col-actions"></th></tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let s of students">
+                <td class="cell-title">{{ s.fullName || s.username }}</td>
+                <td class="cell-muted">{{ s.externalId || s.username }}</td>
+                <td><span class="badge badge--neutral">{{ s.className || 'No class' }}</span></td>
+                <td class="col-actions">
+                  <!-- Straight to the other end of the same relationship. -->
+                  <a [routerLink]="['/admin/students', s.id]" class="btn btn--sm">Open</a>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="empty" *ngIf="students.length === 0">
+          <div class="empty__title">No students yet</div>
+          <div class="empty__text">
+            Nobody is enrolled in the classes this teacher is assigned to.
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </ng-container>
+
+</div>

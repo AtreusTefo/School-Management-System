@@ -17,6 +17,15 @@ public record CourseView(
         String subjectName,
         Long classId,
         String className,
+        /*
+         * The teacher's ID as well as their username.
+         *
+         * subjectId and classId are both published beside their labels; the
+         * teacher was the one relationship given a name and no id, which meant
+         * a page showing "who teaches this" could not link to them without
+         * looking the id up from a second list. Same row, no extra query.
+         */
+        Long teacherId,
         String teacherUsername,
         String label) {
 
@@ -28,6 +37,7 @@ public record CourseView(
                 course.getSubject().getName(),
                 course.getSchoolClass().getId(),
                 course.getSchoolClass().getName(),
+                course.getTeacher().getId(),
                 course.getTeacher().getUsername(),
                 course.getLabel());
     }

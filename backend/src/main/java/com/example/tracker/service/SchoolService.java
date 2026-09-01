@@ -15,6 +15,7 @@ import com.example.tracker.model.Role;
 import com.example.tracker.model.SchoolClass;
 import com.example.tracker.model.Subject;
 import com.example.tracker.repository.AssignmentRepository;
+import com.example.tracker.repository.TimetableSlotRepository;
 import com.example.tracker.repository.CourseRepository;
 import com.example.tracker.repository.EnrolmentRepository;
 import com.example.tracker.repository.PersonProfileRepository;
@@ -60,6 +61,7 @@ public class SchoolService {
     private final EnrolmentRepository enrolments;
     private final CourseRepository courses;
     private final AssignmentRepository assignments;
+    private final TimetableSlotRepository timetableSlots;
     private final PersonProfileRepository profiles;
     private final AppUserService users;
     private final AuditLogService audit;
@@ -69,6 +71,7 @@ public class SchoolService {
                          EnrolmentRepository enrolments,
                          CourseRepository courses,
                          AssignmentRepository assignments,
+                         TimetableSlotRepository timetableSlots,
                          PersonProfileRepository profiles,
                          AppUserService users,
                          AuditLogService audit) {
@@ -77,6 +80,7 @@ public class SchoolService {
         this.enrolments = enrolments;
         this.courses = courses;
         this.assignments = assignments;
+        this.timetableSlots = timetableSlots;
         this.profiles = profiles;
         this.users = users;
         this.audit = audit;
@@ -309,6 +313,21 @@ public class SchoolService {
 
         String label = labelOf(course);
         Long courseId = course.getId();
+        /*
+         * A course that is ON THE TIMETABLE cannot go either. Added after a
+         * probe showed this delete coming back as a bare 400 saying "the record
+         * could not be saved because it violates a data constraint" - for a
+         * DELETE, in which nothing was being saved, about a request that was
+         * perfectly well formed. fk_timetable_slot_course_class was doing the
+         * refusing; nothing was turning it into a sentence.
+         */
+        if (timetableSlots.existsByCourse(course)) {
+            throw new IllegalStateException(
+                    course.getSubject().getName() + " is timetabled for "
+                            + course.getSchoolClass().getName() + " and cannot be removed. "
+                            + "Take it off the timetable first.");
+        }
+
         courses.delete(course);
 
         audit.record("Course", courseId, AuditAction.DELETE, me,
@@ -516,19 +535,52 @@ public class SchoolService {
      */
     public List<StudentView> listMyStudents() {
         AppUser me = requireTeacherOrAdmin("view the students you teach");
+        return studentsTaughtBy(me);
+    }
 
-        // Deduplicated by CLASS ID explicitly, not by relying on two Course
-        // rows resolving to the same SchoolClass Java object - that happens
-        // to be true within one Hibernate session, but a reader should not
-        // have to know that to trust this is correct.
-        Map<Long, SchoolClass> myClasses = new LinkedHashMap<>();
-        for (Course course : courses.findByTeacherOrderByIdAsc(me)) {
+    /**
+     * The students a NAMED teacher teaches - the admin's view of the same
+     * question listMyStudents answers about the caller.
+     *
+     * TWO ENTRY POINTS, ONE DERIVATION. The rule "a teacher's students are
+     * everybody enrolled in the classes their courses are taught to" is
+     * written once, in studentsTaughtBy below. A second copy here would be a
+     * second answer to one question, and the two would eventually disagree -
+     * which is exactly what this system refuses to do with a student's class
+     * or a teacher's subjects, and there is no reason to do it here either.
+     *
+     * ADMIN ONLY, and deliberately not widened to teachers. A teacher asking
+     * about their own students already has listMyStudents, which derives the
+     * teacher from the session and so cannot be pointed at a colleague; an
+     * endpoint that takes a teacher id would hand any teacher the full roll of
+     * every class in the school.
+     */
+    public List<StudentView> listStudentsOfTeacher(Long teacherId) {
+        requireAdmin("view the students a teacher teaches");
+        return studentsTaughtBy(requireTeacherAccount(teacherId));
+    }
+
+    /**
+     * Everybody enrolled in a class this teacher teaches, each appearing once.
+     *
+     * Deduplicated by CLASS ID and then by STUDENT ID explicitly, not by
+     * relying on two Course rows resolving to the same SchoolClass Java object
+     * - that happens to be true within one Hibernate session, but a reader
+     * should not have to know that to trust this is correct.
+     *
+     * A student taught by the same teacher for two subjects appears once, and
+     * the class shown is the first one found - they are enrolled in one class,
+     * so there is no second answer to pick between.
+     */
+    private List<StudentView> studentsTaughtBy(AppUser teacher) {
+        Map<Long, SchoolClass> taughtClasses = new LinkedHashMap<>();
+        for (Course course : courses.findByTeacherOrderByIdAsc(teacher)) {
             SchoolClass schoolClass = course.getSchoolClass();
-            myClasses.putIfAbsent(schoolClass.getId(), schoolClass);
+            taughtClasses.putIfAbsent(schoolClass.getId(), schoolClass);
         }
 
         Map<Long, StudentView> byId = new LinkedHashMap<>();
-        for (SchoolClass schoolClass : myClasses.values()) {
+        for (SchoolClass schoolClass : taughtClasses.values()) {
             for (Enrolment enrolment : enrolments.findBySchoolClassOrderByIdAsc(schoolClass)) {
                 AppUser student = enrolment.getStudent();
                 byId.computeIfAbsent(student.getId(), id -> {
@@ -538,6 +590,20 @@ public class SchoolService {
             }
         }
         return List.copyOf(byId.values());
+    }
+
+    /**
+     * What a NAMED teacher teaches - one row per subject/class pairing.
+     *
+     * The same Course rows listCourses returns for the caller, read for
+     * somebody else. Which subjects and which classes both fall out of this
+     * without a second query, because a course IS the pairing - see Course's
+     * own class comment on the four requirements that collapse into it.
+     */
+    public List<CourseView> listCoursesForTeacher(Long teacherId) {
+        requireAdmin("view what a teacher teaches");
+        AppUser teacher = requireTeacherAccount(teacherId);
+        return courses.findByTeacherOrderByIdAsc(teacher).stream().map(CourseView::of).toList();
     }
 
     /**
@@ -637,6 +703,21 @@ public class SchoolService {
         }
 
         Long courseId = course.getId();
+        /*
+         * A course that is ON THE TIMETABLE cannot go either. Added after a
+         * probe showed this delete coming back as a bare 400 saying "the record
+         * could not be saved because it violates a data constraint" - for a
+         * DELETE, in which nothing was being saved, about a request that was
+         * perfectly well formed. fk_timetable_slot_course_class was doing the
+         * refusing; nothing was turning it into a sentence.
+         */
+        if (timetableSlots.existsByCourse(course)) {
+            throw new IllegalStateException(
+                    course.getSubject().getName() + " is timetabled for "
+                            + course.getSchoolClass().getName() + " and cannot be removed. "
+                            + "Take it off the timetable first.");
+        }
+
         courses.delete(course);
         audit.record("Course", courseId, AuditAction.DELETE, me,
                 "Unassigned '" + teacher.getUsername() + "' from teaching " + subject.getName()

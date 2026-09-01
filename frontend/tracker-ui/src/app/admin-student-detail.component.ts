@@ -55,6 +55,17 @@ export class AdminStudentDetailComponent implements OnInit {
     private confirmDialog: ConfirmService
   ) {}
 
+  /**
+   * How many DIFFERENT teachers reach this student.
+   *
+   * Not currentTeachers.length - that counts course rows, and one teacher
+   * taking them for two subjects is two rows and one person. The distinction
+   * matters on a page whose whole job is answering "who teaches this child".
+   */
+  get distinctTeacherCount(): number {
+    return new Set(this.currentTeachers.map(c => c.teacherId)).size;
+  }
+
   ngOnInit(): void {
     this.notifications.setRetryHandler(() => this.load());
     this.route.paramMap.subscribe((params) => {

@@ -116,6 +116,38 @@ class TimetableApiTest {
         return root.get(0).get("id").asLong();
     }
 
+    /**
+     * A brand new subject, class and course, with no assignments against it.
+     *
+     * anyCourseId() returns a SEEDED course, and the seeded courses already
+     * have work set - so deleteCourse refuses them on the assignment check
+     * before it ever reaches the timetable one, and a test using them proves
+     * nothing about the timetable. Building a course of its own is what
+     * isolates the rule under test.
+     */
+    private long givenFreshCourse(String label) throws Exception {
+        int n = NEXT.getAndIncrement();
+        String subject = mvc.perform(post("/api/subjects").contentType("application/json")
+                        .content("{\"code\":\"" + label + n + "\",\"name\":\"" + label + " Subject " + n + "\"}")
+                        .with(asAdmin()).with(csrf()))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        String klass = mvc.perform(post("/api/classes").contentType("application/json")
+                        .content("{\"name\":\"" + label + " Class " + n + "\"}")
+                        .with(asAdmin()).with(csrf()))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        ObjectMapper m = new ObjectMapper();
+        String course = mvc.perform(post("/api/courses").contentType("application/json")
+                        .content("{\"subjectId\":" + m.readTree(subject).get("id").asLong()
+                                + ",\"classId\":" + m.readTree(klass).get("id").asLong()
+                                + ",\"teacherUsername\":\"teacher\"}")
+                        .with(asAdmin()).with(csrf()))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        return m.readTree(course).get("id").asLong();
+    }
+
     /** A seeded course taught to a DIFFERENT class than anyCourseId(). */
     private JsonNode allCourses() throws Exception {
         String body = mvc.perform(get("/api/courses/all").with(asAdmin()))
@@ -573,6 +605,64 @@ class TimetableApiTest {
             mvc.perform(delete("/api/terms/" + termId).with(asAdmin()).with(csrf()))
                .andExpect(status().isConflict())
                .andExpect(jsonPath("$.message", containsString("still has lessons")));
+        }
+
+        /**
+         * A COURSE THAT IS ON THE TIMETABLE CANNOT BE DELETED.
+         *
+         * Found by probing the running system, not by reading the code: the
+         * delete came back as a bare 400 saying "the record could not be saved
+         * because it violates a data constraint" - for a DELETE, in which
+         * nothing was being saved. fk_timetable_slot_course_class was doing the
+         * refusing and nothing was turning it into a sentence.
+         */
+        @Test
+        @DisplayName("a course that is on the timetable cannot be deleted")
+        void timetabledCourseCannotBeDeleted() throws Exception {
+            long termId = givenTerm("CourseLock");
+            long periodId = givenPeriod("CourseLock");
+            long courseId = givenFreshCourse("CL");
+
+            mvc.perform(post("/api/timetable").contentType("application/json")
+                            .content("{\"termId\":" + termId + ",\"periodId\":" + periodId
+                                    + ",\"courseId\":" + courseId + ",\"dayOfWeek\":\"TUESDAY\"}")
+                            .with(asAdmin()).with(csrf()))
+               .andExpect(status().isCreated());
+
+            mvc.perform(delete("/api/courses/" + courseId).with(asAdmin()).with(csrf()))
+               .andExpect(status().isConflict())
+               .andExpect(jsonPath("$.message", containsString("timetabled")));
+        }
+
+        /**
+         * The SAFETY NET, tested separately from the message above.
+         *
+         * Even with no service-level check, a constraint-blocked DELETE must
+         * answer 409 rather than 400 - a well-formed request about a real
+         * record that the current state refuses is a conflict, not a malformed
+         * request. This asserts the status contract holds for the path that
+         * DOES have a check too, so the two cannot drift apart.
+         */
+        @Test
+        @DisplayName("a blocked delete is a 409, never a 400")
+        void blockedDeleteIsAConflict() throws Exception {
+            long termId = givenTerm("StatusContract");
+            long periodId = givenPeriod("StatusContract");
+            long courseId = givenFreshCourse("SC");
+
+            mvc.perform(post("/api/timetable").contentType("application/json")
+                            .content("{\"termId\":" + termId + ",\"periodId\":" + periodId
+                                    + ",\"courseId\":" + courseId + ",\"dayOfWeek\":\"WEDNESDAY\"}")
+                            .with(asAdmin()).with(csrf()))
+               .andExpect(status().isCreated());
+
+            // Term, period and course are all now blocked - every one a 409.
+            mvc.perform(delete("/api/terms/" + termId).with(asAdmin()).with(csrf()))
+               .andExpect(status().isConflict());
+            mvc.perform(delete("/api/periods/" + periodId).with(asAdmin()).with(csrf()))
+               .andExpect(status().isConflict());
+            mvc.perform(delete("/api/courses/" + courseId).with(asAdmin()).with(csrf()))
+               .andExpect(status().isConflict());
         }
 
         @Test

@@ -285,6 +285,24 @@ export class AdminService {
   }
 
   /** One student's current teachers, by subject. */
+  /**
+   * What a named teacher teaches, and whom.
+   *
+   * TWO CALLS RATHER THAN ONE, mirroring the two endpoints - see
+   * SchoolController for why they are separate. Both are admin-only; the
+   * server enforces that, and a teacher calling either about a colleague gets
+   * 403 rather than a filtered list.
+   */
+  coursesForTeacher(teacherId: number): Observable<Course[]> {
+    return this.http.get<Course[]>(
+      `${this.api}/api/teachers/${teacherId}/courses`, this.opts);
+  }
+
+  studentsOfTeacher(teacherId: number): Observable<Student[]> {
+    return this.http.get<Student[]>(
+      `${this.api}/api/teachers/${teacherId}/students`, this.opts);
+  }
+
   listTeachersForStudent(studentId: number): Observable<Course[]> {
     return this.http.get<Course[]>(
       `${this.api}/api/students/${studentId}/teachers`, this.opts);

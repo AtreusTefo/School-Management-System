@@ -322,6 +322,62 @@ class AttendanceApiTest {
 
     // =========================================================================
 
+    // =========================================================================
+    // A REGISTER IS A RECORD OF SOMETHING THAT HAPPENED
+    // =========================================================================
+
+    @Nested
+    @DisplayName("attendance protects the lesson it belongs to")
+    class Protects {
+
+        /**
+         * Found by probing the running system: removing a lesson that had a
+         * register against it came back as a bare 400 saying "the record could
+         * not be saved because it violates a data constraint" - for a DELETE,
+         * in which nothing was being saved, and about a register it never
+         * mentioned. fk_attendance_slot was refusing it; nothing turned that
+         * into a sentence.
+         *
+         * The rule itself is the same one marks and submissions already follow:
+         * a record of something that HAPPENED does not disappear as a side
+         * effect of tidying an arrangement.
+         */
+        @Test
+        @DisplayName("a lesson with a register cannot be removed from the timetable")
+        void lessonWithAttendanceCannotBeUnscheduled() throws Exception {
+            Object[] lesson = givenALesson();
+            long studentId = seededStudentId();
+
+            mvc.perform(put("/api/attendance/lessons/" + lesson[0])
+                            .param("date", lesson[1].toString())
+                            .contentType("application/json").content(marks(studentId, "PRESENT"))
+                            .with(asTeacher()).with(csrf()))
+               .andExpect(status().isOk());
+
+            mvc.perform(delete("/api/timetable/" + lesson[0]).with(asAdmin()).with(csrf()))
+               .andExpect(status().isConflict())
+               .andExpect(jsonPath("$.message", containsString("register")));
+
+            // And the register is still readable afterwards - a refusal that
+            // half-happened would be worse than either outcome.
+            mvc.perform(get("/api/attendance/lessons/" + lesson[0])
+                            .param("date", lesson[1].toString()).with(asTeacher()))
+               .andExpect(status().isOk())
+               .andExpect(jsonPath("$[?(@.studentId == " + studentId + ")].status",
+                       contains("PRESENT")));
+        }
+
+        /** With no register taken, the lesson comes off the timetable normally. */
+        @Test
+        @DisplayName("a lesson with no register can still be removed")
+        void lessonWithoutAttendanceCanBeUnscheduled() throws Exception {
+            Object[] lesson = givenALesson();
+
+            mvc.perform(delete("/api/timetable/" + lesson[0]).with(asAdmin()).with(csrf()))
+               .andExpect(status().isNoContent());
+        }
+    }
+
     @Nested
     @DisplayName("reading a student's own record")
     class Reading {

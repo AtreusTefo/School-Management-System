@@ -71,6 +71,25 @@ public class SchoolController {
      * SchoolService.listMyStudents for why that method could not simply be
      * widened to admit a teacher.
      */
+    /**
+     * What a named teacher teaches, and whom - the admin's view.
+     *
+     * TWO ENDPOINTS RATHER THAN ONE COMBINED PAYLOAD, because they answer two
+     * questions that are useful separately: a page showing what somebody
+     * teaches does not always want thirty student rows with it, and the
+     * courses list is what the "assign a teacher" flow already needs on its
+     * own. Both are admin-only; SchoolService enforces that, not this class.
+     */
+    @GetMapping("/teachers/{id}/courses")
+    public List<CourseView> coursesForTeacher(@PathVariable Long id) {
+        return school.listCoursesForTeacher(id);
+    }
+
+    @GetMapping("/teachers/{id}/students")
+    public List<StudentView> studentsOfTeacher(@PathVariable Long id) {
+        return school.listStudentsOfTeacher(id);
+    }
+
     @GetMapping("/teachers/me/students")
     public List<StudentView> listMyStudents() {
         return school.listMyStudents();

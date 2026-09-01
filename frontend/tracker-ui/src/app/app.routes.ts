@@ -222,6 +222,13 @@ export const routes: Routes = [
     canActivate: [adminAuthGuard]
   },
   {
+    // The mirror of admin/students/:id - what one teacher teaches, and whom.
+    path: 'admin/teachers/:id',
+    loadComponent: () => import('./admin-teacher-detail.component')
+      .then(m => m.AdminTeacherDetailComponent),
+    canActivate: [adminAuthGuard]
+  },
+  {
     path: 'admin/students/:id',
     loadComponent: () => import('./admin-student-detail.component').then(m => m.AdminStudentDetailComponent),
     canActivate: [adminAuthGuard]

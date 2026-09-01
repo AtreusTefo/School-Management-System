@@ -5,7 +5,7 @@
 <div class="card">
   <div class="card__header">
     <div class="card__title">
-      <h2>{{ student?.username ?? 'Student' }}</h2>
+      <h2>{{ student?.fullName || student?.username || 'Student' }}</h2>
       <span class="badge badge--neutral" *ngIf="student?.className">{{ student?.className }}</span>
     </div>
     <div class="toolbar">
@@ -28,6 +28,30 @@
   <p class="card__note" *ngIf="student && !student.className">
     This student is not enrolled in a class yet, so no teacher can be assigned to them.
   </p>
+
+  <!-- WHICH CLASS, AND HOW MANY TEACHERS REACH THEM - the two facts an admin
+       opens this page to check, stated rather than inferred from the table
+       below. Both are derived from Enrolment and Course; neither is stored. -->
+  <div class="card__body" *ngIf="student">
+    <div class="stat-row">
+      <div class="stat">
+        <span class="stat__value">{{ student.className || '-' }}</span>
+        <span class="stat__label">Enrolled in</span>
+      </div>
+      <div class="stat">
+        <span class="stat__value">{{ currentTeachers.length }}</span>
+        <span class="stat__label">
+          {{ currentTeachers.length === 1 ? 'Subject taught' : 'Subjects taught' }}
+        </span>
+      </div>
+      <div class="stat">
+        <span class="stat__value">{{ distinctTeacherCount }}</span>
+        <span class="stat__label">
+          {{ distinctTeacherCount === 1 ? 'Teacher' : 'Teachers' }}
+        </span>
+      </div>
+    </div>
+  </div>
 
   <!-- ===== ASSIGN ===== -->
   <div *ngIf="showAssign" class="subform">
@@ -86,7 +110,9 @@
       <tbody>
         <tr *ngFor="let c of currentTeachers">
           <td>{{ c.subjectName }}</td>
-          <td>{{ c.teacherUsername }}</td>
+          <td>
+            <a [routerLink]="['/admin/teachers', c.teacherId]">{{ c.teacherUsername }}</a>
+          </td>
           <td class="col-actions">
             <button type="button" class="btn btn--sm btn--danger" (click)="onUnassign(c)"
                     title="Refused while this teacher has already set work for the class">

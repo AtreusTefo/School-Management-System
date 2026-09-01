@@ -127,17 +127,43 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * 400 BAD REQUEST — the database refused the row: a NOT NULL column was
-     * empty, a value was too long, or a CHECK/UNIQUE constraint failed.
+     * The database refused the operation — but WHICH refusal decides the status.
      *
-     * Reaching this handler means something got past the application's own
-     * validation, so the constraint in the schema is what saved the data. We
-     * deliberately do NOT echo the driver's message back to the client, because
-     * it exposes table and column names; the detail belongs in the server log.
+     * 400 ON A WRITE. A NOT NULL column left empty, a value too long, a CHECK
+     * or UNIQUE constraint failed. Reaching here means something got past the
+     * application's own validation and the schema is what saved the data; the
+     * request genuinely was malformed.
+     *
+     * 409 ON A DELETE. Nothing is being written, so none of those can be the
+     * cause: the only way a DELETE violates a constraint in this schema is a
+     * foreign key refusing to orphan a dependent row, because every one of them
+     * is ON DELETE NO_ACTION by design. That is not a malformed request - the
+     * caller asked a well-formed question about a real record - it is a
+     * conflict with the state the record is in, which is exactly what 409 says
+     * and what every deliberate blocked-delete in this system already returns.
+     *
+     * DISCRIMINATING ON THE HTTP METHOD, not on the driver's message. Parsing
+     * the SQLState or the text to spot a foreign key would be dialect-specific
+     * and would quietly change meaning between SQL Server and the H2 the tests
+     * run on. The method is a fact the container already knows.
+     *
+     * THIS IS A SAFETY NET, NOT THE INTENDED PATH. A delete that can be blocked
+     * should be checked in the service first, so the caller gets a sentence
+     * naming what is in the way ("Attendance has been recorded for this
+     * lesson..."). Landing here means such a check is missing - the answer is
+     * at least honest about what happened, but it cannot say what.
+     *
+     * The driver's own message is still never echoed: it carries table and
+     * column names, and that detail belongs in the server log.
      */
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ApiError> handleDataIntegrityViolation(
             DataIntegrityViolationException ex, jakarta.servlet.http.HttpServletRequest request) {
+        if ("DELETE".equalsIgnoreCase(request.getMethod())) {
+            return build(HttpStatus.CONFLICT,
+                    "This cannot be deleted because another record still refers to it.",
+                    request.getRequestURI());
+        }
         return build(HttpStatus.BAD_REQUEST,
                 "The record could not be saved because it violates a data constraint.",
                 request.getRequestURI());

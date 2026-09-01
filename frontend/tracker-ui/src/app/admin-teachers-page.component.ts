@@ -1,5 +1,6 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { AdminService, ImportSummary, PersonFields, Teacher } from './admin.service';
 import { AssignmentService, Course, SchoolClass, Subject } from './assignment.service';
@@ -28,7 +29,7 @@ import {
 @Component({
   selector: 'app-admin-teachers-page',
   standalone: true,
-  imports: [CommonModule, FormsModule, FieldErrorComponent, PasswordStrengthValidatorDirective],
+  imports: [CommonModule, FormsModule, FieldErrorComponent, PasswordStrengthValidatorDirective, RouterLink],
   templateUrl: './admin-teachers-page.component.html'
 })
 export class AdminTeachersPageComponent implements OnInit {

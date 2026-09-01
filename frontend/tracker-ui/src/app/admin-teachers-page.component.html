@@ -257,6 +257,10 @@
             </td>
             <td class="col-actions">
               <div class="row-actions">
+                <!-- What they teach and whom - the read-only view that had no
+                     way in before this link existed. -->
+                <a [routerLink]="['/admin/teachers', t.id]" class="btn btn--sm"
+                   [attr.aria-label]="'Open ' + (t.fullName ?? t.username)">Open</a>
                 <button type="button" class="btn btn--sm" (click)="startEdit(t)"
                         [attr.aria-label]="'Edit ' + (t.fullName ?? t.username)">Edit</button>
                 <button type="button" class="btn btn--sm" (click)="startReset(t)">Reset password</button>

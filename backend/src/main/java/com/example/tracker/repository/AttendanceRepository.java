@@ -32,9 +32,14 @@ public interface AttendanceRepository extends JpaRepository<Attendance, Long> {
     List<Attendance> findByStudentAndLessonDateBetweenOrderByLessonDateDescIdAsc(
             AppUser student, LocalDate from, LocalDate to);
 
-    /** Everything recorded for a class on one date, across all its lessons. */
-    List<Attendance> findBySchoolClassAndLessonDateOrderByIdAsc(
-            SchoolClass schoolClass, LocalDate lessonDate);
+    /*
+     * There is no findBySchoolClassAndLessonDate here any more.
+     *
+     * It was written alongside the others and never called by anything - dead
+     * code that read like a live capability, which is how a column ends up
+     * indexed for a query nobody makes. If a "whole class, one day" view is
+     * ever built, add it back then, with the index it needs.
+     */
 
     /**
      * How many of each status a student has, so a percentage can be computed

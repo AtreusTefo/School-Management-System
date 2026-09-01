@@ -14,6 +14,7 @@ import com.example.tracker.model.Term;
 import com.example.tracker.model.TimetablePeriod;
 import com.example.tracker.model.TimetableSlot;
 import com.example.tracker.repository.CourseRepository;
+import com.example.tracker.repository.AttendanceRepository;
 import com.example.tracker.repository.EnrolmentRepository;
 import com.example.tracker.repository.TermRepository;
 import com.example.tracker.repository.TimetablePeriodRepository;
@@ -66,6 +67,7 @@ public class TimetableService {
     private final TimetableSlotRepository slots;
     private final CourseRepository courses;
     private final EnrolmentRepository enrolments;
+    private final AttendanceRepository attendance;
     private final AppUserService users;
     private final AuditLogService audit;
 
@@ -74,6 +76,7 @@ public class TimetableService {
                             TimetableSlotRepository slots,
                             CourseRepository courses,
                             EnrolmentRepository enrolments,
+                            AttendanceRepository attendance,
                             AppUserService users,
                             AuditLogService audit) {
         this.terms = terms;
@@ -81,6 +84,7 @@ public class TimetableService {
         this.slots = slots;
         this.courses = courses;
         this.enrolments = enrolments;
+        this.attendance = attendance;
         this.users = users;
         this.audit = audit;
     }
@@ -335,6 +339,27 @@ public class TimetableService {
         }
         TimetableSlot slot = Require.orThrow(slots.findById(id),
                 () -> new ResourceNotFoundException("No timetable slot found with id = " + id));
+
+        /*
+         * A LESSON WITH A REGISTER AGAINST IT STAYS.
+         *
+         * Attendance is a record of something that happened - who was actually
+         * in the room - which puts it on the same side of this system's oldest
+         * distinction as a mark or a submission, and it must not disappear as a
+         * side effect of tidying a timetable. fk_attendance_slot already
+         * refused this; without the check it surfaced as a bare 400 that
+         * mentioned neither the register nor what to do about it.
+         *
+         * There is deliberately no force-delete. Removing a register has to be
+         * a separate, deliberate act, the same way reopening submissions is
+         * before an assignment can go.
+         */
+        if (attendance.existsBySlot(slot)) {
+            throw new IllegalStateException(
+                    "Attendance has been recorded for this lesson, so it cannot be removed "
+                            + "from the timetable. A register is a record of who was actually "
+                            + "there.");
+        }
 
         String summary = slot.getCourse().getSubject().getName() + " for "
                 + slot.getSchoolClass().getName() + " in " + slot.getPeriod().getName()

@@ -34,6 +34,8 @@ export interface Course {
   subjectName: string;
   classId: number;
   className: string;
+  /** Mirrors CourseView.teacherId - lets a page link to the teacher. */
+  teacherId: number;
   teacherUsername: string;
   label: string;
 }

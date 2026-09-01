@@ -934,6 +934,95 @@ class AdminApiTest {
     // THE TEACHER-TO-STUDENT RELATIONSHIP (Course, admin-managed)
     // =============================================================================
 
+    // =========================================================================
+    // WHAT A TEACHER TEACHES, AND WHOM - the admin's view
+    // =========================================================================
+
+    @Nested
+    @DisplayName("what a teacher teaches, and whom")
+    class TeacherRelationships {
+
+        @Test
+        @DisplayName("an admin can see the subjects and classes a teacher teaches")
+        void adminSeesWhatATeacherTeaches() throws Exception {
+            Long teacherId = idOf("teacher");
+
+            mvc.perform(get("/api/teachers/" + teacherId + "/courses").with(asAdmin()))
+               .andExpect(status().isOk())
+               .andExpect(jsonPath("$", hasSize(greaterThan(0))))
+               // Every row is one of THIS teacher's - the scoping, asserted in
+               // the direction that would fail if it were dropped.
+               .andExpect(jsonPath("$[*].teacherUsername", everyItem(is("teacher"))))
+               .andExpect(jsonPath("$[0].subjectName", notNullValue()))
+               .andExpect(jsonPath("$[0].className", notNullValue()));
+        }
+
+        @Test
+        @DisplayName("an admin can see the students a teacher teaches, each once")
+        void adminSeesWhoATeacherTeaches() throws Exception {
+            Long teacherId = idOf("teacher");
+
+            String body = mvc.perform(get("/api/teachers/" + teacherId + "/students")
+                            .with(asAdmin()))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$", hasSize(greaterThan(0))))
+                    .andExpect(jsonPath("$[0].className", notNullValue()))
+                    .andReturn().getResponse().getContentAsString();
+
+            // A student taught two subjects by the same teacher must appear
+            // ONCE - the dedup in studentsTaughtBy is the point of that method.
+            JsonNode rows = new ObjectMapper().readTree(body);
+            java.util.Set<Long> ids = new java.util.HashSet<>();
+            for (JsonNode row : rows) {
+                assertThat(ids.add(row.get("id").asLong()))
+                        .as("student %s appears more than once", row.get("username").asText())
+                        .isTrue();
+            }
+        }
+
+        /**
+         * THE SCOPING TEST.
+         *
+         * A teacher has listMyStudents, which derives the teacher from the
+         * session and therefore cannot be pointed at a colleague. These
+         * endpoints take an id, so if they were readable by teachers any
+         * teacher could pull the full roll of every class in the school.
+         */
+        @Test
+        @DisplayName("a teacher cannot use these to read a colleague's roll")
+        void teacherCannotReadAnotherTeachersStudents() throws Exception {
+            Long otherTeacher = idOf("teacher2");
+
+            mvc.perform(get("/api/teachers/" + otherTeacher + "/students").with(asTeacher()))
+               .andExpect(status().isForbidden());
+            mvc.perform(get("/api/teachers/" + otherTeacher + "/courses").with(asTeacher()))
+               .andExpect(status().isForbidden());
+        }
+
+        @Test
+        @DisplayName("a student cannot read them at all")
+        void studentCannotRead() throws Exception {
+            Long teacherId = idOf("teacher");
+            mvc.perform(get("/api/teachers/" + teacherId + "/students").with(asStudent()))
+               .andExpect(status().isForbidden());
+            mvc.perform(get("/api/teachers/" + teacherId + "/courses").with(asStudent()))
+               .andExpect(status().isForbidden());
+        }
+
+        @Test
+        @DisplayName("asking about an account that is not a teacher is refused")
+        void nonTeacherIdIsRefused() throws Exception {
+            mvc.perform(get("/api/teachers/" + idOf("student") + "/courses").with(asAdmin()))
+               .andExpect(status().isBadRequest());
+        }
+
+        @Test
+        @DisplayName("an anonymous caller cannot read them")
+        void anonymousCannotRead() throws Exception {
+            mvc.perform(get("/api/teachers/1/students")).andExpect(status().isUnauthorized());
+        }
+    }
+
     @Nested
     @DisplayName("assigning and unassigning teachers to a student")
     class TeacherAssignment {
