@@ -151,8 +151,12 @@ School Management System/
 │       │   │                   #   ImportSummary is the bulk-import per-row report
 │       │   ├── config/         # SecurityConfig (auth, CSRF, cookie flags), CorsConfig
 │       │                   #   (allowed origins), SchedulingConfig (@Profile("!test")),
-│       │                   #   ProductionConfigCheck (refuses to start a "prod" profile
-│       │                   #   with unset environment variables - @Profile("prod"))
+│       │                   #   ProductionConfigCheck (refuses to start the "prod"
+│       │                   #   profile with unset environment variables - an
+│       │                   #   EnvironmentPostProcessor registered in
+│       │                   #   META-INF/spring.factories, NOT a bean: it has to run
+│       │                   #   before any @ConditionalOnProperty is evaluated, and a
+│       │                   #   BeanFactoryPostProcessor was measurably too late)
 │       │   ├── security/       # AppUserDetailsService - loads accounts for Spring Security
 │       │   └── exception/      # AssignmentNotFoundException, ResourceNotFoundException,
 │       │                       #   AccessDeniedException, GlobalExceptionHandler
