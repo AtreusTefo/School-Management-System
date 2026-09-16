@@ -59,6 +59,22 @@
             <artifactId>spring-boot-starter-mail</artifactId>
         </dependency>
 
+        <!-- Actuator, for ONE endpoint: /actuator/health.
+             A load balancer, container orchestrator or uptime monitor needs
+             something cheap to probe that says whether this instance can
+             actually serve - including whether its database connection is
+             alive, which "the port is open" does not tell you.
+             Every other actuator endpoint stays shut. The exposure list in
+             application.properties names health and nothing else, and
+             SecurityConfig permits exactly that one path while /actuator/**
+             falls under anyRequest().authenticated() like everything else.
+             show-details is never, so an anonymous prober is told UP or DOWN
+             and not which component failed or what it is connected to. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
         <!-- SQL SERVER DRIVER: how Java talks to MSSQLSERVER01 over TCP.
              Note this is JDBC, not Entity Framework - EF is a .NET technology and
              cannot be used from Java. JPA/Hibernate fills the same role here, and

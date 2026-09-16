@@ -12,6 +12,14 @@ The repository is named *School Management System*, but the delivered system is 
 
 **Password reset by email DOES exist now** (added 26 August 2026, `PasswordResetToken`, migration V15). Two things about it are load-bearing rather than incidental: the request endpoint answers IDENTICALLY whether the identifier matched an account, matched one with no email, or matched nothing - it is reachable while signed out, so any variation would be an account-enumeration oracle - and the token is stored only as a SHA-256 hash, never in readable form. That hash is deliberately NOT BCrypt: a per-row salt would make lookup by token impossible, and a 256-bit random value has nothing to guess. The application runs with no mail server - `ResetLinkMailer` logs the link at WARN instead of sending, which is a development convenience that announces itself on every send.
 
+**Sign-in is throttled now** (added 16 September 2026, `LoginAttempt`/`LoginThrottleService`, migration V19). Failed attempts are counted per username and per source address over a sliding window; past either limit, `POST /api/auth/login` answers 429 without looking at the password. Three things about it are load-bearing:
+
+- **Nothing is locked.** There is no flag on `AppUser` and nothing an administrator has to undo. Whether sign-in is currently refused is COMPUTED by counting rows in the last few minutes, the same rule percentages and performance levels follow. That is not tidiness: a username-keyed limit is unavoidably a way to make somebody else fail to sign in, and a persistent lock would turn that into a denial of service with a human in the loop to reverse it, once per victim.
+- **A failure is counted for ANY attempted username, real or invented.** This is what stops the throttle becoming the account-enumeration oracle that `PasswordResetService` is carefully built to avoid - 429 must be as easy to reach with a made-up id as with a real one. It is also why `login_attempt` has no foreign key to `app_user`: the third and last such omission in this schema, and the only one where the missing key is a security property rather than a deletion convenience.
+- **The per-IP limit is the loose one, deliberately.** A school is the NAT case - a whole computer lab arrives from one public address - so a limit tight enough to stop a determined sprayer would lock out a classroom. The per-username limit is the one that actually holds; per-IP catches the careless.
+
+The window and both limits are properties. `application-test.properties` raises them enormously rather than switching the feature off, because every MockMvc request in the suite shares one loopback address and would otherwise throttle the suite against itself; `LoginThrottleTest` sets its own small limits with `@TestPropertySource` and so does not depend on either number.
+
 **Messaging and notifications DO exist now** (added 16 September 2026, `Message`/`Notification`/`NotificationType`, migration V18). Earlier revisions of this file said there were none, and that was true when written. Four things about them are load-bearing:
 
 - **Nothing leaves the building.** Every message and every notification is delivered to a page inside this app. There is no email, no SMS and no push - a parent is not texted when a child is marked absent. The only mail the system ever sends is the password reset link described above.
@@ -123,6 +131,9 @@ School Management System/
 │       │   │                   #   PersonPatterns (Omang + phone, shared by the
 │       │   │                   #   entity @Check and the service guard),
 │       │   │                   #   NotificationService (raising + reading),
+│       │   │                   #   LoginThrottleService (how often signing in may
+│       │   │                   #     fail - the whole rule, including why it
+│       │   │                   #     does not lock an account),
 │       │   │                   #   MessagingService (and the who-may-write-to-whom
 │       │   │                   #   rule), DueDateReminderJob (the only @Scheduled
 │       │   │                   #   thing in the app - see SchedulingConfig)
@@ -133,16 +144,23 @@ School Management System/
 │       │   │                   #   PerformanceLevel, AuditLog, AuditAction,
 │       │   │                   #   Term, TimetablePeriod, TimetableSlot, Attendance,
 │       │   │                   #   AttendanceStatus, PasswordResetToken, Message,
+│       │   │                   #   LoginAttempt (failed sign-ins only),
 │       │   │                   #   Notification, NotificationType, Gender
 │       │   │                   #   (DERIVED from the Omang, never stored)
 │       │   ├── dto/            # Records the API publishes - see SubjectView for why;
 │       │   │                   #   ImportSummary is the bulk-import per-row report
-│       │   ├── config/         # SecurityConfig (auth, CSRF), CorsConfig (allowed origins)
+│       │   ├── config/         # SecurityConfig (auth, CSRF, cookie flags), CorsConfig
+│       │                   #   (allowed origins), SchedulingConfig (@Profile("!test")),
+│       │                   #   ProductionConfigCheck (refuses to start a "prod" profile
+│       │                   #   with unset environment variables - @Profile("prod"))
 │       │   ├── security/       # AppUserDetailsService - loads accounts for Spring Security
 │       │   └── exception/      # AssignmentNotFoundException, ResourceNotFoundException,
 │       │                       #   AccessDeniedException, GlobalExceptionHandler
 │       ├── main/resources/
-│       │   ├── application.properties
+│       │   ├── application.properties       # the DEVELOPMENT configuration
+│       │   ├── application-prod.properties  # --spring.profiles.active=prod - tightens
+│       │                   #   the above and REMOVES every default, so an unconfigured
+│       │                   #   deployment fails instead of inheriting a dev value
 │       │   └── db/migration/   # Flyway, SQL Server dialect - V1 baseline, V2 accounts and
 │       │                       #   ownership, V3 must-change-password, V4 subjects/classes/
 │       │                       #   courses/submissions, V5 timestamp column types,
@@ -155,7 +173,8 @@ School Management System/
 │       │                       #   V15 password reset tokens,
 │       │                       #   V16 contact_email index (corrects a V12 claim),
 │       │                       #   V17 attendance.recorded_by_id index,
-│       │                       #   V18 messages + notifications
+│       │                       #   V18 messages + notifications,
+│       │                       #   V19 login_attempt (the sign-in throttle)
 │       └── test/
 │           ├── java/com/example/tracker/
 │           │   ├── AssignmentApiTest.java            # MockMvc, real security
@@ -175,6 +194,14 @@ School Management System/
 │           │   │                                     #   rules, correction not duplication
 │           │   ├── PasswordResetApiTest.java         # the identical answer whatever the
 │           │   │                                     #   identifier matched; hashed tokens
+│           │   ├── LoginThrottleTest.java           # the sign-in throttle: both limits,
+│           │   │                                     #   that a success clears the count,
+│           │   │                                     #   that an invented username is
+│           │   │                                     #   refused in identical words
+│           │   ├── config/ProductionProfileTest.java # that no seed runner is ungated,
+│           │   │                                     #   and that every bare placeholder in
+│           │   │                                     #   application-prod.properties is in
+│           │   │                                     #   ProductionConfigCheck.REQUIRED
 │           │   └── service/AssignmentServiceTest.java # business rules, repository mocked
 │           └── resources/
 │               ├── application-test.properties # H2, Flyway off, ddl-auto=create-drop
@@ -290,10 +317,30 @@ School Management System/
 - **Build backend:** `.\mvnw.cmd clean package -DskipTests` produces `backend/target/tracker-0.0.1-SNAPSHOT.jar`.
 - **Build frontend:** `npm run build` in `frontend/tracker-ui`.
 - **Type-check frontend:** `npx tsc --noEmit -p tsconfig.app.json`.
-- **Run tests:** `.\mvnw.cmd test` - 293 tests, run against H2, no SQL Server needed.
+- **Run tests:** `.\mvnw.cmd test` - 310 tests, run against H2, no SQL Server needed.
 - **Database:** SQL Server, database `School Management System`, login `tracker_app`. The connection string in `application.properties` uses port 14333; confirm your instance actually listens there before assuming a failure is the application's fault. Query it with:
   `sqlcmd -S "tcp:localhost,14333" -U tracker_app -P 'Tracker!2026Dev' -d "School Management System"`
-- **Development accounts:** `admin`, `teacher` and `student`, all password `password123`, reset at every startup. These keep their literal usernames as a documented exception - every account created through the admin panel from here on signs in with a generated id instead (`STU20260001`, `TCH20260001`, `ADM20260001`); see the Scope Guard section above.
+- **Development accounts:** `admin`, `teacher` and `student`, all password `password123`, reset at every startup. **They do not exist under the `prod` profile** - all four seed runners in `TrackerApplication` carry `@Profile("!prod")`, and `ProductionProfileTest` fails the build if a new one is added without it. These keep their literal usernames as a documented exception - every account created through the admin panel from here on signs in with a generated id instead (`STU20260001`, `TCH20260001`, `ADM20260001`); see the Scope Guard section above.
+- **Production profile:** `java -jar tracker.jar --spring.profiles.active=prod`. It reads `application-prod.properties`, which turns Swagger off, marks cookies `Secure`, honours `X-Forwarded-*`, keeps SQL and bind parameters out of the log, and - most importantly - **removes every development default**, so four environment variables become mandatory:
+
+  | Variable | Example |
+  |---|---|
+  | `DB_URL` | `jdbc:sqlserver://db.example.com:1433;databaseName=School Management System;encrypt=true` |
+  | `DB_USERNAME` | `tracker_app` |
+  | `DB_PASSWORD` | (the real one) |
+  | `APP_CORS_ALLOWED_ORIGINS` | `https://tracker.example.com` |
+  | `MAIL_HOST` | `smtp.example.com` |
+  | `RESET_LINK_BASE` | `https://tracker.example.com/reset-password` |
+
+  With any of them unset the application refuses to start and names all the missing ones at once - `ProductionConfigCheck` does that, and exists because Boot's `Binder` does NOT throw on an unresolved `${...}` in a `spring.datasource.*` value the way `@Value` does; it passes the literal text through, and the deployment then fails with a driver or login error pointing at the wrong thing. Verified by starting the profile both ways.
+
+  `MAIL_HOST` and `RESET_LINK_BASE` are required for the same reason as the rest, and it is the sharpest one in the list: with no mail server `ResetLinkMailer` WRITES THE RESET LINK TO THE LOG instead of sending it, and never throws while doing so. With no `RESET_LINK_BASE` the emails that do go out contain `http://localhost:4200/...`. If a deployment genuinely has no mail server, take the forgot-password route out of `SecurityConfig` rather than letting the links go to the log.
+
+  Behind a single origin (the production frontend build uses relative URLs, so that is the normal shape) set `APP_CORS_ALLOWED_ORIGINS` to the site's own origin. It is still required rather than defaulted, because the alternative is inheriting `http://localhost:4200` from the shared file and granting it credentialed access to a production API.
+
+- **Health check:** `GET /actuator/health`, the one actuator endpoint that is exposed and the one path that does not need a session - a load balancer cannot sign in. It answers `{"status":"UP"}` and nothing more (`show-details=never`), so it does not describe the infrastructure behind it to an anonymous prober. Every other actuator path, `/actuator/health/db` included, requires a session.
+
+  **What the prod profile does NOT fix, and a deployment still must:** `ck_person_profile_omang_format` is still `is_not_trusted = 1` from V13; there is no backup or restore procedure written down; the privacy policy and terms still carry bracketed placeholders for the operating school to complete, and say so in their own text.
 
 Start the backend first. The frontend calls it directly at `http://localhost:8080` and shows a red banner with a Retry button if it cannot connect.
 
@@ -397,6 +444,7 @@ The service signals problems by throwing. `GlobalExceptionHandler` translates ex
 | Invalid input, blank or over-long title, null id | 400 |
 | Unknown assignment id | 404 |
 | Already submitted, or a concurrent modification | 409 |
+| Too many failed sign-in attempts, too quickly | 429 |
 | Genuine server fault | 500 |
 
 Every error body uses one shape so the client parses one format:
@@ -457,7 +505,7 @@ What used to be one long page behind boolean flags is now four routed pages - Da
 - **A database SEQUENCE, not `SELECT MAX(id) + 1`, generates every admin-issued login id.** `IdGeneratorService` calls `NEXT VALUE FOR seq_student_id` (and `_teacher_id`, `_admin_id`) rather than reading the highest number issued so far - the latter is a genuine race under two admins onboarding at the same moment, caught only as a 409 the second one has to retry past. A sequence is atomic by construction, so there is nothing to retry. H2 has no annotation that creates a free-standing sequence as a side effect of `ddl-auto`, so the test schema gets its own copy in `src/test/resources/schema.sql`, which Spring Boot runs automatically against any embedded database.
 
 ### Testing Requirements
-There is an automated suite: `.\mvnw.cmd test` runs 293 tests, and `package` fails the build if any fail. Add to it rather than reverting to manual checks.
+There is an automated suite: `.\mvnw.cmd test` runs 310 tests, and `package` fails the build if any fail. Add to it rather than reverting to manual checks.
 
 - **Unit tests** (`AssignmentServiceTest`) - business rules with the repository mocked.
 - **Full-stack tests** (`AssignmentApiTest`, `InputValidationApiTest`) - MockMvc with real security; every status code in the error contract, and every DTO's Jakarta Bean Validation.

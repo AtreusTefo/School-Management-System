@@ -227,6 +227,34 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * 429 TOO MANY REQUESTS — sign-in was refused before the credentials were
+     * looked at, because too many recent attempts failed.
+     *
+     * A SEPARATE STATUS FROM 401, DELIBERATELY, AND THE ONE PLACE THIS SYSTEM
+     * TELLS A CALLER SOMETHING IT OTHERWISE WOULD NOT. Everything around it is
+     * built to answer identically whatever was tried; this answers differently.
+     * That is safe only because of how LoginThrottleService counts: a failure
+     * is recorded for ANY attempted username, so an invented one reaches 429
+     * exactly as readily as a real one and the status says nothing about
+     * whether the account exists. If that ever changes to count only real
+     * accounts, this handler becomes an enumeration oracle.
+     *
+     * 401 would have been the alternative - indistinguishable, but it would
+     * also have told a legitimate user who mistyped that their password was
+     * wrong, and left them retrying against a wall with no explanation.
+     *
+     * No Retry-After header: the message is deliberately vague about when the
+     * window reopens, and a header giving the exact second would hand an
+     * attacker a timer to pace against.
+     */
+    @ExceptionHandler(TooManyAttemptsException.class)
+    public ResponseEntity<ApiError> handleTooManyAttempts(
+            TooManyAttemptsException ex,
+            jakarta.servlet.http.HttpServletRequest request) {
+        return build(HttpStatus.TOO_MANY_REQUESTS, ex.getMessage(), request.getRequestURI());
+    }
+
+    /**
      * 400 BAD REQUEST — thrown by Spring when a @Valid @RequestBody fails its
      * annotations (e.g. @NotBlank on the title). We flatten the validation
      * failures into one readable sentence, e.g. "title: Title must not be blank".

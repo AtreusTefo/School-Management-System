@@ -1,0 +1,10 @@
+# Registers ProductionConfigCheck, which refuses to start the prod profile
+# when a required environment variable is missing.
+#
+# It is here rather than being a @Component or a @Bean because it has to run
+# while the Environment is being prepared - before component scanning, before
+# any @Configuration class is parsed, and before any @ConditionalOnProperty is
+# evaluated. See the class comment for the failure that proved a bean was too
+# late even as a BeanFactoryPostProcessor.
+org.springframework.boot.env.EnvironmentPostProcessor=\
+  com.example.tracker.config.ProductionConfigCheck

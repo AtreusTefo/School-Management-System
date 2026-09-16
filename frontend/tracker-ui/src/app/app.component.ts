@@ -352,6 +352,20 @@ export class AppComponent implements OnInit {
         const status = (err as { status?: number })?.status;
         if (status === 401) {
           this.loginError = 'Invalid username or password.';
+        } else if (status === 429) {
+          // Throttled - too many recent failures. Shown INLINE, next to the
+          // form, for the same reason the 401 above is: the banner is for
+          // things that went wrong elsewhere, and somebody who cannot sign in
+          // is looking at the form, not at the top of the page.
+          //
+          // The SERVER'S sentence is used rather than one written here. That
+          // message is deliberately vague about which limit was reached and
+          // how long remains (see LoginThrottleService), and restating it in
+          // the client would be a second copy free to become more specific -
+          // and more useful to somebody guessing - without anyone noticing.
+          const message = (err as { error?: { message?: string } })?.error?.message;
+          this.loginError = message
+            ?? 'Too many sign-in attempts. Please wait a few minutes and try again.';
         } else {
           this.notifications.showError(err, 'Could not sign in');
         }

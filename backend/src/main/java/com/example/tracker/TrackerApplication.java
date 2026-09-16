@@ -23,6 +23,7 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Profile;
 import org.springframework.core.annotation.Order;
 import org.springframework.data.web.config.EnableSpringDataWebSupport;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -69,8 +70,34 @@ public class TrackerApplication {
      * It only writes when the stored value does not already verify, so restarts
      * are idempotent and a changed password is not silently reset.
      */
+    /*
+     * WHY THE SEED RUNNERS ARE GATED "!prod" AND NOT "dev".
+     *
+     * Every runner below writes accounts whose password is a literal in this
+     * file, and ensureAccount RESETS a changed password back to it on every
+     * start. That is a development convenience and a standing way in for anyone
+     * who has read this repository, so a production deployment must never run
+     * it - hence the gate.
+     *
+     * It is expressed as an EXCLUSION rather than @Profile("dev") on purpose.
+     * The test profile has no Flyway (see application-test.properties), so
+     * these runners are the only thing that creates the accounts, courses and
+     * classes that AttendanceApiTest, MessagingApiTest, NotificationApiTest and
+     * the rest are written against - requireCourse's own comment below already
+     * records what happens when that data is missing. @Profile("dev") would
+     * have switched the suite off along with production, and the failure would
+     * have looked like a broken feature rather than a missing fixture.
+     *
+     * "Fails closed" is the same principle SecurityConfig.openApiEnabled
+     * follows, applied the other way round: documentation is off unless
+     * switched on, seeding is on unless switched off. The difference is that
+     * forgetting to set a profile at all must leave a DEVELOPER with working
+     * data, while the one profile name a deployment does set is the one that
+     * has to be safe.
+     */
     @Bean
     @Order(1)
+    @Profile("!prod")
     CommandLineRunner seedAccounts(AppUserRepository users, PasswordEncoder encoder) {
         return args -> {
             ensureAccount(users, encoder, "admin", Role.ADMIN);
@@ -128,6 +155,7 @@ public class TrackerApplication {
      */
     @Bean
     @Order(2)
+    @Profile("!prod")   // see seedAccounts above for why this is an exclusion
     CommandLineRunner seedTimetable(SubjectRepository subjects,
                                     SchoolClassRepository classes,
                                     EnrolmentRepository enrolments,
@@ -171,6 +199,7 @@ public class TrackerApplication {
      */
     @Bean
     @Order(3)
+    @Profile("!prod")   // see seedAccounts above for why this is an exclusion
     CommandLineRunner seedAssignments(AssignmentRepository assignments,
                                       SubmissionRepository submissions,
                                       EnrolmentRepository enrolments,
@@ -230,6 +259,7 @@ public class TrackerApplication {
      */
     @Bean
     @Order(4)
+    @Profile("!prod")   // see seedAccounts above for why this is an exclusion
     CommandLineRunner seedMarks(AssessmentRepository assessments,
                                 CourseRepository courses,
                                 SubjectRepository subjects,

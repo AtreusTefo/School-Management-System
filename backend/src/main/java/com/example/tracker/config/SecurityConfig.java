@@ -47,6 +47,39 @@ public class SecurityConfig {
     private boolean openApiEnabled;
 
     /**
+     * Whether the cookies this application sets carry the Secure flag.
+     *
+     * Defaults to FALSE because development is served over plain http on
+     * localhost, where a Secure cookie is never sent back at all - and the
+     * symptom of getting that wrong is every write failing CSRF with nothing
+     * in the log that says why. application-prod.properties turns it on.
+     *
+     * Note what the customizer below does with it: it only ever ADDS the flag,
+     * never removes it. Spring Security's own default follows
+     * request.isSecure(), so an HTTPS deployment that forgets this property
+     * still gets a Secure cookie; setting it false explicitly would have taken
+     * one away.
+     */
+    @org.springframework.beans.factory.annotation.Value("${app.cookies.secure:false}")
+    private boolean secureCookies;
+
+    /**
+     * SameSite for those cookies. "Lax" is right whenever the browser reaches
+     * the API and the site it came from on the same registrable domain, which
+     * includes development (localhost:4200 and localhost:8080 differ by port,
+     * and a port does not make a different SITE).
+     *
+     * It is a property rather than a literal because CORS exists precisely to
+     * support the deployment where they are NOT the same site, and there
+     * "Lax" would silently stop sending the session cookie on the API call -
+     * an authentication failure with a cookie-policy cause, which is among the
+     * harder things to diagnose from a 401. Such a deployment needs "None",
+     * which browsers only honour together with Secure.
+     */
+    @org.springframework.beans.factory.annotation.Value("${app.cookies.same-site:Lax}")
+    private String cookieSameSite;
+
+    /**
      * The paths springdoc serves. Listed once here rather than inline, so the
      * set that is opened up is visible in a single place.
      */
@@ -97,7 +130,7 @@ public class SecurityConfig {
              * forging requests, not against script on our own page.
              */
             .csrf(csrf -> csrf
-                    .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
+                    .csrfTokenRepository(csrfTokenRepository())
                     .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler()))
 
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
@@ -124,6 +157,23 @@ public class SecurityConfig {
                     if (openApiEnabled) {
                         auth.requestMatchers(OPENAPI_PATHS).permitAll();
                     }
+                    /*
+                     * The health probe, and ONLY the health probe.
+                     *
+                     * A load balancer cannot sign in, so this one path has to
+                     * be open. Note what is NOT written here: no
+                     * "/actuator/**", and not even "/actuator/health/**" -
+                     * that second form would expose /actuator/health/db, which
+                     * reports per-component detail. Everything else actuator
+                     * serves falls through to anyRequest().authenticated()
+                     * below, so it fails closed even if the exposure list in
+                     * application.properties is ever widened by accident.
+                     *
+                     * management.endpoint.health.show-details=never keeps the
+                     * body to UP or DOWN, so this says whether the instance is
+                     * serving without describing what it is connected to.
+                     */
+                    auth.requestMatchers("/actuator/health").permitAll();
                     // Everything else needs an account.
                     auth.anyRequest().authenticated();
             })
@@ -144,5 +194,25 @@ public class SecurityConfig {
             .logout(l -> l.disable());   // handled by AuthController so it returns JSON
 
         return http.build();
+    }
+
+    /**
+     * The CSRF token repository, built in its own method so the cookie's
+     * attributes are readable rather than buried inside the filter chain.
+     *
+     * withHttpOnlyFalse is not negotiable here - Angular's HttpClient has to
+     * READ XSRF-TOKEN to echo it back as X-XSRF-TOKEN, which is the whole
+     * mechanism. Secure and SameSite are the two attributes that can be
+     * tightened without breaking that, so they are the two that are settable.
+     */
+    private CookieCsrfTokenRepository csrfTokenRepository() {
+        CookieCsrfTokenRepository repository = CookieCsrfTokenRepository.withHttpOnlyFalse();
+        repository.setCookieCustomizer(cookie -> {
+            if (secureCookies) {
+                cookie.secure(true);
+            }
+            cookie.sameSite(cookieSameSite);
+        });
+        return repository;
     }
 }

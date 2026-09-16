@@ -34,12 +34,15 @@ public class AuthController {
     private final AuthenticationManager authenticationManager;
     private final AppUserService users;
     private final com.example.tracker.service.PasswordResetService passwordReset;
+    private final com.example.tracker.service.LoginThrottleService loginThrottle;
 
     public AuthController(AuthenticationManager authenticationManager, AppUserService users,
-                          com.example.tracker.service.PasswordResetService passwordReset) {
+                          com.example.tracker.service.PasswordResetService passwordReset,
+                          com.example.tracker.service.LoginThrottleService loginThrottle) {
         this.authenticationManager = authenticationManager;
         this.users = users;
         this.passwordReset = passwordReset;
+        this.loginThrottle = loginThrottle;
     }
 
     /**
@@ -51,19 +54,37 @@ public class AuthController {
      * Wrong username and wrong password produce the SAME 401 with the same
      * message. Distinguishing them would tell an attacker which usernames exist,
      * turning one guess into two separate, easier problems.
+     *
+     * THE THREE THROTTLE CALLS ARE SEQUENCING, NOT A RULE. What the limits are,
+     * what window they run over, and what being past one means all live in
+     * LoginThrottleService; this method only says when each is consulted. The
+     * order is the part that matters and is easy to get wrong:
+     *
+     *   check   BEFORE authenticating, so a refused attempt costs one indexed
+     *           count instead of a BCrypt verification
+     *   record  only on failure, and inside its own transaction, so it survives
+     *           the 401 this method is about to throw
+     *   clear   only after a success, so mistyping four times and then getting
+     *           it right does not leave somebody near the limit
      */
     @PostMapping("/login")
     public UserView login(@Valid @RequestBody LoginRequest request,
                           HttpServletRequest httpRequest,
                           HttpServletResponse httpResponse) {
+        String address = loginThrottle.addressOf(httpRequest);
+        loginThrottle.assertNotThrottled(request.getUsername(), address);
+
         Authentication authentication;
         try {
             authentication = authenticationManager.authenticate(
                     new UsernamePasswordAuthenticationToken(
                             request.getUsername(), request.getPassword()));
         } catch (Exception ex) {
+            loginThrottle.recordFailure(request.getUsername(), address);
             throw new BadCredentialsException("Invalid username or password.");
         }
+
+        loginThrottle.clearFailures(request.getUsername());
 
         // Bind the authenticated context to a session so it persists across calls.
         SecurityContext context = SecurityContextHolder.createEmptyContext();
@@ -141,7 +162,16 @@ public class AuthController {
 
     /** What the client may send when signing in. */
     static class LoginRequest {
+        /*
+         * Capped at app_user.username's own length. This was unbounded until
+         * the throttle gave the value somewhere to be STORED - login_attempt
+         * records the username as typed, so an unbounded field here would have
+         * been a way to push arbitrary-length text at a column. A string
+         * longer than 50 cannot match any account anyway, so rejecting it
+         * costs nothing real.
+         */
         @NotBlank(message = "Username must not be blank")
+        @Size(max = 50, message = "That is too long to be a sign-in ID")
         private String username;
 
         @NotBlank(message = "Password must not be blank")
