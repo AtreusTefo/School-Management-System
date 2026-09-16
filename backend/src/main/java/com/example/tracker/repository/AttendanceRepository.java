@@ -3,7 +3,6 @@ package com.example.tracker.repository;
 import com.example.tracker.model.Attendance;
 import com.example.tracker.model.AppUser;
 import com.example.tracker.model.AttendanceStatus;
-import com.example.tracker.model.SchoolClass;
 import com.example.tracker.model.TimetableSlot;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -33,7 +32,9 @@ public interface AttendanceRepository extends JpaRepository<Attendance, Long> {
             AppUser student, LocalDate from, LocalDate to);
 
     /*
-     * There is no findBySchoolClassAndLessonDate here any more.
+     * There is no findBySchoolClassAndLessonDate here any more, and no
+     * SchoolClass import either - removing the method but keeping the import
+     * is what left an unused-import warning behind the first time.
      *
      * It was written alongside the others and never called by anything - dead
      * code that read like a live capability, which is how a column ends up

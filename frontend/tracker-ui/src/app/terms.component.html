@@ -13,7 +13,10 @@
     These terms describe how the software behaves and the conduct expected of
     its users. They are not legal advice. The school operating this system
     should have them reviewed, and replace the placeholders marked in square
-    brackets.
+    brackets. Section 2 also assumes outbound email is configured on the
+    server; until it is, reset links are written to the application log
+    instead of being delivered, and that section will not describe what your
+    users experience.
   </div>
 
   <div class="prose">
@@ -52,6 +55,24 @@
         read an existing one.
       </li>
       <li>
+        If you forget your password you can reset it yourself, provided the
+        school holds a contact email address for you. A link is sent to that
+        address; it works <strong>once</strong> and expires after
+        <strong>{{ resetLinkMinutes }} minutes</strong>. Requesting a new link
+        cancels any earlier one.
+      </li>
+      <li>
+        The forgotten-password page gives the same response whether or not
+        what you typed matched an account, so that it cannot be used to find
+        out who holds one. If no link arrives, check the address the school
+        has on file rather than assuming the request failed.
+      </li>
+      <li>
+        A reset link is as good as your password until it is used. Do not
+        forward one, and tell the school if you receive a link you did not ask
+        for.
+      </li>
+      <li>
         Tell the school immediately if you believe someone else has used your
         account.
       </li>
@@ -81,7 +102,76 @@
       </li>
     </ul>
 
-    <h3>4. Academic honesty</h3>
+    <h3>4. Attendance</h3>
+    <ul>
+      <li>
+        Attendance is recorded <strong>per lesson</strong>, not once a day. A
+        register marks each student present, late, absent or excused, and may
+        carry a short note.
+      </li>
+      <li>
+        Only the teacher who teaches that lesson, or an administrator, can
+        take or change its register. Students cannot record or amend their own
+        attendance, and cannot see anyone else's.
+      </li>
+      <li>
+        Taking a register again <strong>corrects</strong> it. There is one
+        record per student per lesson per date, so the latest entry is the
+        record - there is no separate history of earlier versions to appeal
+        against.
+      </li>
+      <li>
+        A register can only be taken against a date the lesson genuinely falls
+        on - the right weekday, inside the right term, for a student actually
+        enrolled in that class. This is enforced, not merely expected.
+      </li>
+      <li>
+        What attendance means for a student - whether an absence is
+        authorised, and what follows from a pattern of them - is the school's
+        decision under its own policies. The system records what happened; it
+        does not judge it. If you believe a mark on your record is wrong,
+        raise it with the teacher who took that register.
+      </li>
+    </ul>
+
+    <h3>5. Messages and notifications</h3>
+    <ul>
+      <li>
+        Messaging in this system is for school business. It is not private
+        mail: messages are stored in full on the school's system, and the
+        school can access them where it has a proper reason to.
+      </li>
+      <li>
+        Who you can write to is decided by the system, not by you. Students can
+        message the teachers who teach them and any administrator. Teachers can
+        message their own students, other teachers and administrators. Students
+        <strong>cannot</strong> message other students, and attempting to work
+        around that restriction is a breach of section 7 below.
+      </li>
+      <li>
+        A message cannot be edited or withdrawn once sent, and the recipient
+        can see when you first opened theirs. Write accordingly.
+      </li>
+      <li>
+        Bullying, harassment, or anything you would not say in a classroom is a
+        matter for the school's disciplinary process, and the stored message is
+        evidence in it.
+      </li>
+      <li>
+        Notifications tell you that a mark has been posted, that a register
+        marked you absent, or that work is nearly due. They are
+        <strong>a convenience, not a formal notice</strong>: they arrive only
+        inside this app, nothing is emailed or texted to you or to anyone at
+        home, and you remain responsible for your own due dates whether or not
+        a notification reached you.
+      </li>
+      <li>
+        You cannot delete a notification. Marking it read is the only change
+        you can make, because it is a record of what you were told and when.
+      </li>
+    </ul>
+
+    <h3>6. Academic honesty</h3>
     <p>
       Work you submit must be your own, produced in line with the school's
       academic integrity policy. Submitting someone else's work, or allowing
@@ -91,12 +181,12 @@
       evidence in such a process.
     </p>
 
-    <h3>5. Acceptable use</h3>
+    <h3>7. Acceptable use</h3>
     <p>You must not:</p>
     <ul>
       <li>
-        Attempt to access another person's account, submissions, files or
-        marks.
+        Attempt to access another person's account, submissions, files, marks,
+        attendance record, messages or notifications.
       </li>
       <li>
         Attempt to bypass, probe or interfere with the system's access
@@ -116,7 +206,7 @@
       The school may suspend or remove access for a breach of these rules.
     </p>
 
-    <h3>6. Marks and records</h3>
+    <h3>8. Marks and records</h3>
     <p>
       Marks recorded in this system are entered by teaching staff. Totals,
       percentages and performance levels shown to you are calculated from
@@ -130,7 +220,7 @@
       believe a mark is wrong, raise it with the teacher concerned.
     </p>
 
-    <h3>7. Availability</h3>
+    <h3>9. Availability</h3>
     <p>
       The school aims to keep the system available but does not guarantee
       uninterrupted access. It may be unavailable during maintenance, or
@@ -139,21 +229,21 @@
       be reachable.
     </p>
 
-    <h3>8. Your information</h3>
+    <h3>10. Your information</h3>
     <p>
       Information held about you is described in the
       <a routerLink="/privacy">Privacy Policy</a>, which forms part of these
       terms.
     </p>
 
-    <h3>9. Ownership</h3>
+    <h3>11. Ownership</h3>
     <p>
       You keep whatever rights you already hold in work you submit. By
       submitting it, you allow the school to store, display and assess it for
       educational and administrative purposes.
     </p>
 
-    <h3>10. Changes to these terms</h3>
+    <h3>12. Changes to these terms</h3>
     <p>
       These terms may be updated. The date at the top of this page will change
       when they are, and continuing to use the system after that means you
@@ -161,7 +251,7 @@
       {{ lastUpdated }}.
     </p>
 
-    <h3>11. Contact</h3>
+    <h3>13. Contact</h3>
     <p>
       Questions about these terms should go to
       <strong>[contact name or office]</strong> at

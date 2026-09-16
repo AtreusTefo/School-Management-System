@@ -156,6 +156,29 @@ export const routes: Routes = [
     canActivate: [authGuard]
   },
   {
+    /*
+     * Everything the system has told the caller, and nothing about anybody
+     * else - NotificationService deliberately has no "notifications of user X"
+     * method at all, so authGuard alone is the whole story here.
+     */
+    path: 'notifications',
+    loadComponent: () => import('./notifications-page.component')
+      .then(m => m.NotificationsPageComponent),
+    canActivate: [authGuard]
+  },
+  {
+    /*
+     * Conversations. authGuard alone, not teacherGuard: every role messages
+     * somebody, and WHO each may write to is decided by MessagingService from
+     * the session rather than by this route - the same division /timetable and
+     * /attendance already use.
+     */
+    path: 'messages',
+    loadComponent: () => import('./messages-page.component')
+      .then(m => m.MessagesPageComponent),
+    canActivate: [authGuard]
+  },
+  {
     path: 'reports',
     loadComponent: () => import('./reports-page.component').then(m => m.ReportsPageComponent),
     canActivate: [authGuard]

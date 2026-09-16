@@ -81,5 +81,6 @@
             "path": "C:\\Users\\Developer.03\\Java\\jdk-25.0.4+7",
             "default": true
         }
-    ]
+    ],
+    "java.jdt.ls.vmargs": "-XX:+UseParallelGC -XX:GCTimeRatio=4 -XX:AdaptiveSizePolicyWeight=90 -Dsun.zip.disableMemoryMapping=true -Xmx4G -Xms100m -Xlog:disable"
 }

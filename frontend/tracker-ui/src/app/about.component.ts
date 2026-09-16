@@ -31,8 +31,11 @@ export class AboutComponent {
       body: 'A rule enforced only in application code holds right up until '
           + 'something else writes to the same table. Constraints, foreign keys '
           + 'and checks make a rule true of the data itself - so a score cannot '
-          + 'exceed its maximum, and an account that still owns work cannot '
-          + 'simply be deleted out from under it.'
+          + 'exceed its maximum, a class cannot be booked into two lessons at '
+          + 'once, and an account that still owns work cannot simply be deleted '
+          + 'out from under it. Where a rule genuinely cannot be expressed that '
+          + 'way it is written down as an exception rather than quietly left to '
+          + 'the application.'
     },
     {
       title: 'Nothing derived is stored',

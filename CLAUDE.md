@@ -12,7 +12,18 @@ The repository is named *School Management System*, but the delivered system is 
 
 **Password reset by email DOES exist now** (added 26 August 2026, `PasswordResetToken`, migration V15). Two things about it are load-bearing rather than incidental: the request endpoint answers IDENTICALLY whether the identifier matched an account, matched one with no email, or matched nothing - it is reachable while signed out, so any variation would be an account-enumeration oracle - and the token is stored only as a SHA-256 hash, never in readable form. That hash is deliberately NOT BCrypt: a per-row salt would make lookup by token impossible, and a 256-bit random value has nothing to guess. The application runs with no mail server - `ResetLinkMailer` logs the link at WARN instead of sending, which is a development convenience that announces itself on every send.
 
-There are **no** notifications and no messaging. Documentation describing such features was inherited from an unrelated ASP.NET project; do not assume a feature exists because a document once mentioned it. Verify against the code.
+**Messaging and notifications DO exist now** (added 16 September 2026, `Message`/`Notification`/`NotificationType`, migration V18). Earlier revisions of this file said there were none, and that was true when written. Four things about them are load-bearing:
+
+- **Nothing leaves the building.** Every message and every notification is delivered to a page inside this app. There is no email, no SMS and no push - a parent is not texted when a child is marked absent. The only mail the system ever sends is the password reset link described above.
+- **One notification per recipient per event, enforced by `uq_notification_recipient_event`, not by the code remembering.** `notification.dedupe_key` names the EVENT (`MARK:41`, `DUE_SOON:512`, `ABSENCE:903`), so `DueDateReminderJob` can re-read the same window on every sweep with no memory of its own and never notify twice. `NotificationService.raise` checks `existsByRecipientAndDedupeKey` FIRST - not as a second copy of the rule, but because letting the constraint fire inside a transaction throws `DataIntegrityViolationException` and JPA then marks the whole transaction rollback-only, which would roll back the mark that caused the notification.
+- **`notification.subject_type`/`subject_id` deliberately carry NO foreign key.** This is the second and last such deviation in the schema, after `audit_log.performed_by_id`, and for the same reason: a live reference would make a mark undeletable because somebody was told about it. `title` and `body` are a snapshot written once and never recomputed, which is what makes that safe - and is the one place in this system where text is duplicated rather than derived, because a notification records what somebody was TOLD, not what is currently true.
+- **Who may message whom is enforced in Java alone, and cannot be anywhere else.** Every clause needs to read `Course` or `Enrolment`. Students may write only to the teachers who actually teach them and to any admin - **never to another student**, which is a safeguarding rule, not a UI preference. `MessagingService.listCorrespondents` is written in terms of the same predicate that refuses a send, so the compose form can never offer somebody the send path rejects.
+
+Messages and notifications are the "current arrangement" side of this system's oldest distinction, so `AdminService.deleteStudent`/`deleteTeacher` clear them with the account (like enrolments and reset tokens) rather than refusing the delete the way a mark, a submission or a register does.
+
+Scheduling is enabled by `SchedulingConfig`, which is `@Profile("!test")` - a timer firing mid-suite against the shared H2 database would make any "this student has one notification" assertion depend on when it happened to run.
+
+Documentation describing features beyond these was inherited from an unrelated ASP.NET project; do not assume a feature exists because a document once mentioned it. Verify against the code.
 
 **An attendance register DOES exist now** (added 26 August 2026, `Attendance`/`AttendanceStatus`, migration V14). It is recorded PER LESSON, not per day - a row is (timetable_slot, student, date), which is only expressible because V11 gave lessons an identity. Three of its rules are enforced in Java alone, in `AttendanceService`, because each needs to read a second table and a `CHECK` cannot: the date's weekday must match the lesson's day, the date must fall inside the lesson's term, and the student must be enrolled in the class. Taking a register twice is a CORRECTION, not a second register - `uq_attendance_slot_student_date` makes that structural rather than conventional.
 
@@ -93,7 +104,8 @@ School Management System/
 │       │   ├── controller/     # AssignmentController, SubmissionController,
 │       │   │                   #   SchoolController, AssessmentController,
 │       │   │                   #   AuthController, AdminController,
-│       │   │                   #   TimetableController, AttendanceController
+│       │   │                   #   TimetableController, AttendanceController,
+│       │   │                   #   MessageController, NotificationController
 │       │   ├── service/        # AssignmentService (fan-out), SubmissionService (PDF),
 │       │   │                   #   SchoolService (timetable + admin course/enrolment
 │       │   │                   #   endpoints), AssessmentService (marks),
@@ -109,14 +121,19 @@ School Management System/
 │       │   │                   #   AttendanceService (the per-lesson register),
 │       │   │                   #   PasswordResetService (+ ResetLinkMailer),
 │       │   │                   #   PersonPatterns (Omang + phone, shared by the
-│       │   │                   #   entity @Check and the service guard)
+│       │   │                   #   entity @Check and the service guard),
+│       │   │                   #   NotificationService (raising + reading),
+│       │   │                   #   MessagingService (and the who-may-write-to-whom
+│       │   │                   #   rule), DueDateReminderJob (the only @Scheduled
+│       │   │                   #   thing in the app - see SchedulingConfig)
 │       │   ├── repository/     # One per entity (Spring Data JPA)
 │       │   ├── model/          # AppUser, PersonProfile, Role, Subject, SchoolClass,
 │       │   │                   #   Enrolment, Course, Assignment, Submission,
 │       │   │                   #   SubmissionFile, AssignmentStatus, Assessment,
 │       │   │                   #   PerformanceLevel, AuditLog, AuditAction,
 │       │   │                   #   Term, TimetablePeriod, TimetableSlot, Attendance,
-│       │   │                   #   AttendanceStatus, PasswordResetToken, Gender
+│       │   │                   #   AttendanceStatus, PasswordResetToken, Message,
+│       │   │                   #   Notification, NotificationType, Gender
 │       │   │                   #   (DERIVED from the Omang, never stored)
 │       │   ├── dto/            # Records the API publishes - see SubjectView for why;
 │       │   │                   #   ImportSummary is the bulk-import per-row report
@@ -137,7 +154,8 @@ School Management System/
 │       │                       #   V14 attendance register,
 │       │                       #   V15 password reset tokens,
 │       │                       #   V16 contact_email index (corrects a V12 claim),
-│       │                       #   V17 attendance.recorded_by_id index
+│       │                       #   V17 attendance.recorded_by_id index,
+│       │                       #   V18 messages + notifications
 │       └── test/
 │           ├── java/com/example/tracker/
 │           │   ├── AssignmentApiTest.java            # MockMvc, real security
@@ -187,6 +205,10 @@ School Management System/
                 ├── password-reset.service.ts # the two signed-out endpoints
                 ├── theme.service.ts         # dark/light, persisted; toggle lives in the shell
                 ├── confirm.service.ts       # THE confirm dialog - replaces window.confirm
+                ├── notification-feed.service.ts # the notifications the SERVER raised -
+                │                            #   NOT notification.service.ts, which is the
+                │                            #   error banner; see its own header
+                ├── messaging.service.ts     # conversations, correspondents, sending
                 ├── auth.guard.ts            # signed-in + not mustChangePassword, else -> '/'
                 ├── teacher.guard.ts         # teacher-only routes, else -> /marking-queue
                 ├── admin-auth.guard.ts      # admin-only routes, else -> '/' - there is no
@@ -218,6 +240,10 @@ School Management System/
                 │                                         #   every role, shaped by session
                 ├── attendance-page.component.ts/.html    # '/attendance' - take a register,
                 │                                         #   or read your own attendance
+                ├── notifications-page.component.ts/.html # '/notifications' - read-only
+                │                                         #   except for "read"; no delete
+                ├── messages-page.component.ts/.html      # '/messages' - conversations and
+                │                                         #   composing, two panes
                 ├── reports-page.component.ts/.html       # '/reports' - performance summary
                 │                                         #   + mark book + Export Excel
                 ├── admin-dashboard.component.ts/.html    # '/admin' - quick links
@@ -264,7 +290,7 @@ School Management System/
 - **Build backend:** `.\mvnw.cmd clean package -DskipTests` produces `backend/target/tracker-0.0.1-SNAPSHOT.jar`.
 - **Build frontend:** `npm run build` in `frontend/tracker-ui`.
 - **Type-check frontend:** `npx tsc --noEmit -p tsconfig.app.json`.
-- **Run tests:** `.\mvnw.cmd test` - 262 tests, run against H2, no SQL Server needed.
+- **Run tests:** `.\mvnw.cmd test` - 293 tests, run against H2, no SQL Server needed.
 - **Database:** SQL Server, database `School Management System`, login `tracker_app`. The connection string in `application.properties` uses port 14333; confirm your instance actually listens there before assuming a failure is the application's fault. Query it with:
   `sqlcmd -S "tcp:localhost,14333" -U tracker_app -P 'Tracker!2026Dev' -d "School Management System"`
 - **Development accounts:** `admin`, `teacher` and `student`, all password `password123`, reset at every startup. These keep their literal usernames as a documented exception - every account created through the admin panel from here on signs in with a generated id instead (`STU20260001`, `TCH20260001`, `ADM20260001`); see the Scope Guard section above.
@@ -431,7 +457,7 @@ What used to be one long page behind boolean flags is now four routed pages - Da
 - **A database SEQUENCE, not `SELECT MAX(id) + 1`, generates every admin-issued login id.** `IdGeneratorService` calls `NEXT VALUE FOR seq_student_id` (and `_teacher_id`, `_admin_id`) rather than reading the highest number issued so far - the latter is a genuine race under two admins onboarding at the same moment, caught only as a 409 the second one has to retry past. A sequence is atomic by construction, so there is nothing to retry. H2 has no annotation that creates a free-standing sequence as a side effect of `ddl-auto`, so the test schema gets its own copy in `src/test/resources/schema.sql`, which Spring Boot runs automatically against any embedded database.
 
 ### Testing Requirements
-There is an automated suite: `.\mvnw.cmd test` runs 262 tests, and `package` fails the build if any fail. Add to it rather than reverting to manual checks.
+There is an automated suite: `.\mvnw.cmd test` runs 293 tests, and `package` fails the build if any fail. Add to it rather than reverting to manual checks.
 
 - **Unit tests** (`AssignmentServiceTest`) - business rules with the repository mocked.
 - **Full-stack tests** (`AssignmentApiTest`, `InputValidationApiTest`) - MockMvc with real security; every status code in the error contract, and every DTO's Jakarta Bean Validation.

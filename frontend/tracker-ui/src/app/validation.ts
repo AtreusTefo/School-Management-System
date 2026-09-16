@@ -57,6 +57,7 @@ export const SUBJECT_CODE_MAX_LENGTH = 20;            // subject.code
 export const SUBJECT_NAME_MAX_LENGTH = 100;           // subject.name
 export const CLASS_NAME_MAX_LENGTH = 50;              // school_class.name
 export const ASSESSMENT_NAME_MAX_LENGTH = 100;        // assessment.name
+export const MESSAGE_BODY_MAX_LENGTH = 2000;          // message.body
 
 // person_profile - the admin panel's student/teacher onboarding forms.
 export const PERSON_NAME_MIN_LENGTH = 2;              // first_name / last_name

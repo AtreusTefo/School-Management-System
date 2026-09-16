@@ -9,6 +9,7 @@ import com.example.tracker.model.AppUser;
 import com.example.tracker.model.Assessment;
 import com.example.tracker.model.AuditAction;
 import com.example.tracker.model.Course;
+import com.example.tracker.model.NotificationType;
 import com.example.tracker.model.Role;
 import com.example.tracker.model.Submission;
 import com.example.tracker.repository.AssessmentRepository;
@@ -58,19 +59,22 @@ public class AssessmentService {
     private final SubmissionRepository submissions;
     private final AppUserService users;
     private final AuditLogService audit;
+    private final NotificationService notifications;
 
     public AssessmentService(AssessmentRepository assessments,
                              CourseRepository courses,
                              EnrolmentRepository enrolments,
                              SubmissionRepository submissions,
                              AppUserService users,
-                             AuditLogService audit) {
+                             AuditLogService audit,
+                             NotificationService notifications) {
         this.assessments = assessments;
         this.courses = courses;
         this.enrolments = enrolments;
         this.submissions = submissions;
         this.users = users;
         this.audit = audit;
+        this.notifications = notifications;
     }
 
     // ----- reading -------------------------------------------------------------
@@ -236,6 +240,33 @@ public class AssessmentService {
                 "Recorded '" + cleanName + "' (" + score.stripTrailingZeros().toPlainString()
                         + "/" + maxScore.stripTrailingZeros().toPlainString() + ") for '"
                         + student.getUsername() + "' in " + course.getLabel() + ".");
+
+        /*
+         * TELL THE STUDENT - in this same transaction, so a mark that rolls
+         * back cannot leave a notification claiming it was posted.
+         *
+         * The body carries the score, which makes it a SNAPSHOT of what the
+         * mark was at the moment it was posted, and that is deliberate. It
+         * looks like it contradicts "nothing derived is stored" and does not:
+         * a percentage is recomputed because the marks behind it are still
+         * authoritative, whereas this records what the student was TOLD.
+         * Recomputing it later would not correct it, it would rewrite what was
+         * said. See Notification's class comment.
+         *
+         * updateMark deliberately does NOT notify. The dedupe key is the
+         * assessment, so a correction would be silently swallowed anyway - but
+         * the reason it is not wanted is that a student already has a
+         * notification pointing at this mark, and the mark book shows its
+         * current value. A second "your mark was posted" for a number that
+         * moved by one point is noise, not news.
+         */
+        notifications.raise(student, NotificationType.MARK_POSTED,
+                "New mark in " + course.getSubject().getName(),
+                cleanName + ": " + score.stripTrailingZeros().toPlainString() + " out of "
+                        + maxScore.stripTrailingZeros().toPlainString()
+                        + ", recorded by " + me.getUsername() + ".",
+                "ASSESSMENT", saved.getId(),
+                "MARK:" + saved.getId());
 
         return AssessmentView.of(saved);
     }

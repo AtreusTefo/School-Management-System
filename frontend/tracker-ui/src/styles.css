@@ -1847,6 +1847,15 @@ table.dataTable .input { min-width: 140px; }
   display: flex;
   align-items: center;
   gap: 10px;
+  /*
+   * NEVER SHRINKS. Without this the nav (flex: 1) and this block competed for
+   * the same pixels, and because .nav__link is nowrap the links overflowed
+   * their own box and ran UNDERNEATH the icons here rather than being clipped
+   * - "Performance & marks" sat behind the envelope. Nothing detected it:
+   * the bar was not wrapping and the page was not overflowing, so both
+   * existing assertions passed while the bar was visibly broken.
+   */
+  flex: none;
 }
 
 /* A square button for an icon with no label beside it. The base .btn is sized
@@ -2141,7 +2150,14 @@ table.dataTable .input { min-width: 140px; }
 /* Wider than the 1080px content column - the bar carries more across than any
    page does, and there is no reason for it to be held to the same width. */
 .appbar__inner {
-  max-width: 1320px;
+  /*
+   * 1400, raised from 1320 when messages and notifications added two icons to
+   * the right-hand end. Measured, not guessed: at 1320 a teacher's bar needed
+   * 1350px and the overflow went behind .appbar__end rather than anywhere
+   * visible. Shortening one nav label bought back more than the icons cost,
+   * and this leaves the bar with room rather than sitting exactly on its limit.
+   */
+  max-width: 1400px;
   flex-wrap: nowrap;          /* a bar that wraps is the bug being fixed */
 }
 
@@ -2327,3 +2343,246 @@ table.dataTable .input { min-width: 140px; }
   .brand__text h1 { font-size: 0.95rem; }
   .appbar__end { gap: 6px; }
 }
+
+/* =============================================================================
+   MESSAGES AND NOTIFICATIONS
+   =============================================================================
+   Added with the messaging feature. Everything here is built from the existing
+   tokens rather than new colours, so both themes are covered by the same
+   definitions the rest of the app already uses - see the token block at the
+   top of this file for why colours are named by meaning.
+
+   The two pages share nothing structurally: notifications are a single list,
+   messages are a two-pane layout. They share only the badge on the app bar. */
+
+/* ---- the badge on the bell and the envelope ------------------------------- */
+/* The anchor is position:relative so the count can sit on its corner. The
+   count is deliberately capped at "9+" in the template rather than allowed to
+   grow, because a three-digit badge changes the width of the app bar. */
+.appbar__badgeable { position: relative; }
+
+.appbar__badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  border-radius: 999px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 15px;
+  text-align: center;
+  pointer-events: none;   /* the anchor underneath must stay clickable */
+}
+
+/* A header that carries buttons opposite its title. */
+.card__actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;   /* so two buttons stack rather than widen the card */
+}
+
+/* An empty state inside a pane rather than filling a page. */
+.empty--inline {
+  padding: 24px 16px;
+  border: none;
+  background: transparent;
+}
+
+/* ---- the notifications list ---------------------------------------------- */
+.notification-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.notification {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+/* Unread is marked by BOTH a tint and a dot, not by colour alone - a colour
+   difference this subtle is not reliable for every reader. */
+.notification--unread { background: var(--surface-muted); border-color: var(--border-strong); }
+
+.notification__dot {
+  width: 8px;
+  height: 8px;
+  margin-top: 7px;
+  border-radius: 50%;
+  background: transparent;
+  flex: none;
+}
+.notification__dot--on { background: var(--brand); }
+
+.notification__main { min-width: 0; flex: 1; }  /* min-width:0 lets text wrap */
+
+.notification__head {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.notification__title { font-weight: 600; color: var(--text); }
+.notification__when  { margin-left: auto; font-size: 12px; color: var(--text-subtle); }
+
+.notification__body {
+  margin: 0 0 8px;
+  color: var(--text-muted);
+  font-size: 14px;
+  overflow-wrap: anywhere;   /* a long title must not widen the page */
+}
+
+.notification__actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.notification__read { font-size: 12px; color: var(--text-subtle); }
+
+/* ---- the messages page --------------------------------------------------- */
+/* Two panes on a desktop, one column below 900px. The conversation list is
+   fixed-width because a variable-width list makes the thread jump about as
+   names change length. */
+.messaging {
+  display: grid;
+  grid-template-columns: minmax(200px, 280px) 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .messaging { grid-template-columns: 1fr; }
+}
+
+.messaging__list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 520px;
+  overflow-y: auto;
+}
+
+.messaging__thread {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+  background: var(--surface);
+  min-width: 0;
+}
+
+.thread__title { margin: 0 0 12px; font-size: 16px; color: var(--text); }
+
+/* ---- one conversation in the list ---------------------------------------- */
+.convo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+.convo:hover  { background: var(--surface-muted); }
+.convo--active { border-color: var(--brand); background: var(--brand-soft); }
+
+.convo__top { display: flex; align-items: center; gap: 8px; }
+.convo__name { font-weight: 600; overflow-wrap: anywhere; }
+.convo__unread { margin-left: auto; flex: none; }
+.convo__meta { display: flex; align-items: center; gap: 8px; }
+.convo__when { font-size: 11px; color: var(--text-subtle); margin-left: auto; }
+
+/* One line only - the full text is in the thread. */
+.convo__preview {
+  font-size: 12px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- choosing a recipient ------------------------------------------------ */
+.recipient-list { list-style: none; margin: 0; padding: 0; display: flex;
+                  flex-direction: column; gap: 6px; }
+
+.recipient {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  flex-wrap: wrap;
+}
+.recipient:hover { background: var(--surface-muted); }
+.recipient__name { font-weight: 600; }
+.recipient__context { margin-left: auto; font-size: 12px; color: var(--text-subtle); }
+
+/* ---- the conversation itself --------------------------------------------- */
+.bubbles {
+  list-style: none;
+  margin: 0 0 14px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 380px;
+  overflow-y: auto;
+}
+
+.bubble {
+  max-width: 78%;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-muted);
+  align-self: flex-start;
+}
+
+/* The caller's own messages, on the right - the one place in this app where
+   left/right carries meaning, which is why the sender is also named below
+   every bubble rather than implied by its side alone. */
+.bubble--mine {
+  align-self: flex-end;
+  background: var(--brand-soft);
+  border-color: transparent;
+}
+
+.bubble__body { font-size: 14px; color: var(--text); overflow-wrap: anywhere;
+                white-space: pre-wrap; }
+
+.bubble__meta {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-subtle);
+}
+
+/* ---- the composer -------------------------------------------------------- */
+.composer { display: flex; flex-direction: column; gap: 6px; }
+.composer__input { width: 100%; resize: vertical; min-height: 64px; }
+.composer__actions { display: flex; align-items: center; gap: 10px; }
+.composer__count { font-size: 11px; color: var(--text-subtle); }
+.composer__actions .btn { margin-left: auto; }

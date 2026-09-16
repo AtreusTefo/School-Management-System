@@ -62,12 +62,21 @@
         becoming two accounts.
       </li>
       <li>
+        <strong>Sex, derived and never stored.</strong> The national identity
+        number encodes this in one of its digits, and the system reads it from
+        there whenever it is displayed. There is no separate field holding it,
+        nothing asks you for it, and it cannot be set or corrected on its own -
+        correcting the identity number is what corrects it.
+      </li>
+      <li>
         <strong>Date of birth</strong> and <strong>date enrolled</strong>.
       </li>
       <li>
         <strong>Contact email address and phone number</strong>, where
-        provided. These are contact details only. They are never used as a
-        sign-in credential.
+        provided. Neither is a sign-in credential - your sign-in ID is. The
+        email address has one further use: if you ask to reset a forgotten
+        password, the reset link is sent there, and you may identify yourself
+        by that address instead of your ID when asking.
       </li>
     </ul>
     <p class="prose__aside">
@@ -82,6 +91,19 @@
         which teacher teaches which subject to that class.
       </li>
       <li>
+        <strong>Timetable</strong> - the terms of the school year, the periods
+        a day is divided into, and which lesson is taught in which period on
+        which weekday. This describes the school rather than any one person,
+        but it is what makes the attendance record below meaningful.
+      </li>
+      <li>
+        <strong>Attendance</strong> - for each lesson on each date, whether a
+        student was present, late, absent or excused, an optional note, and
+        which member of staff recorded it. Attendance is held per lesson rather
+        than per day, so the record shows which specific lessons were missed
+        and not merely that a day was incomplete.
+      </li>
+      <li>
         <strong>Assignments and submissions</strong> - the work set, its due
         date, and each student's submission state and the time it changed.
       </li>
@@ -93,6 +115,52 @@
       <li>
         <strong>Marks</strong> - the score awarded out of a maximum, who
         recorded it, and when.
+      </li>
+    </ul>
+    <p class="prose__aside">
+      Attendance rates and percentages are never stored. They are worked out
+      from the individual records each time they are shown, so a corrected
+      register corrects every figure built on it.
+    </p>
+
+    <h4>Messages and notifications</h4>
+    <ul>
+      <li>
+        <strong>Messages you send.</strong> The text, who wrote it, who it was
+        sent to, when it was sent, and when the recipient first opened it.
+        Messages are stored in full and are not encrypted end-to-end: they are
+        school correspondence held on the school's system, not private mail.
+      </li>
+      <li>
+        <strong>Notifications.</strong> A short title and description of
+        something that happened to your records - a mark posted, an absence
+        recorded, work falling due - together with when it was raised and when
+        you read it. The wording is written once, at the moment it is raised,
+        and is never rewritten afterwards, so it remains an accurate record of
+        what you were told and when.
+      </li>
+    </ul>
+    <p class="prose__aside">
+      Who may message whom is restricted and enforced on the server. A student
+      can write only to the teachers who actually teach them and to an
+      administrator - not to other students. Staff cannot read a conversation
+      they are not a party to.
+    </p>
+
+    <h4>Password resets</h4>
+    <ul>
+      <li>
+        When you ask to reset a forgotten password, the system stores a
+        <strong>one-way hash of the reset token</strong> - never the token
+        itself - together with the account it belongs to and the time it
+        expires. The link stops working <strong>30 minutes</strong> after it
+        is issued, or as soon as it has been used once, and using one link
+        invalidates any others outstanding for that account.
+      </li>
+      <li>
+        A record that a reset was <em>requested</em> is written to the audit
+        log described below. The link itself is never written there or to any
+        log.
       </li>
     </ul>
 
@@ -113,20 +181,39 @@
     </p>
     <ul>
       <li>
-        <strong>Students</strong> see their own submissions, their own
-        uploaded files, and their own marks. A student cannot see another
-        student's work, marks, or class register.
+        <strong>Students</strong> see their own timetable, their own
+        submissions, their own uploaded files, their own marks and their own
+        attendance. A student cannot see another student's work, marks,
+        attendance, or class register - asking for someone else's is refused
+        outright rather than quietly answered with their own.
       </li>
       <li>
-        <strong>Teachers</strong> see the students in the classes they teach,
-        the submissions for the work they set, and the marks they and other
-        teachers of that course have recorded.
+        <strong>Teachers</strong> see their own teaching week, the students in
+        the classes they teach, the submissions for the work they set, and the
+        marks they and other teachers of that course have recorded. A register
+        may be taken and read only by the teacher who teaches that particular
+        lesson, or by an administrator.
+      </li>
+      <li>
+        <strong>Nobody</strong> can read another person's notifications, and no
+        part of this system offers a way to. A conversation is visible only to
+        its two participants - an administrator is not given a view of other
+        people's messages.
       </li>
       <li>
         <strong>Administrators</strong> can see account records and the audit
-        log, and maintain the subjects, classes and courses.
+        log, maintain the subjects, classes, courses, terms and periods, and
+        see which subjects and students any teacher teaches and which teachers
+        teach any student.
       </li>
     </ul>
+    <p class="prose__aside">
+      One deliberate exception is worth stating: a student's attendance history
+      may be read by <em>any</em> member of staff, not only the teachers who
+      teach them, because attendance is a pastoral matter that often needs to
+      be looked at by someone outside the classroom. Every other record listed
+      above is scoped to the people directly involved in it.
+    </p>
 
     <h3>4. How the information is protected</h3>
     <ul>
@@ -149,16 +236,30 @@
         Error messages returned to the browser never include database or
         internal system detail.
       </li>
+      <li>
+        The forgotten-password page answers <strong>identically</strong>
+        whether the ID or email you typed matched an account or not. This is
+        deliberate: anyone can reach that page without signing in, so a
+        different answer for a real account would let a stranger use it to
+        discover who has one. It also means the page cannot confirm to
+        <em>you</em> that your own address was recognised.
+      </li>
+      <li>
+        Reset links are stored only as one-way hashes, expire after 30 minutes
+        and work once. Requests are rate-limited, so asking repeatedly does not
+        produce a stream of valid links.
+      </li>
     </ul>
 
     <h3>5. How long it is kept</h3>
     <p>
-      Academic records - submissions, uploaded files and marks - are retained
-      for as long as the school requires them, in line with its own records
-      retention policy: <strong>[state the retention period]</strong>.
+      Academic records - submissions, uploaded files, marks and attendance -
+      are retained for as long as the school requires them, in line with its
+      own records retention policy:
+      <strong>[state the retention period]</strong>.
     </p>
     <p>
-      Two behaviours are worth stating plainly, because they are deliberate:
+      Five behaviours are worth stating plainly, because they are deliberate:
     </p>
     <ul>
       <li>
@@ -166,6 +267,27 @@
         A student with a recorded mark or a submission on file cannot be
         removed, because doing so would destroy the record of work that was
         genuinely done. Removing it must be a separate, deliberate act.
+      </li>
+      <li>
+        <strong>A lesson cannot be removed from the timetable once a register
+        has been taken against it.</strong> A register records who was
+        actually in a room on a date, and rearranging the timetable afterwards
+        is not a reason for that to stop being true.
+      </li>
+      <li>
+        <strong>Taking a register again corrects it; it does not add a second
+        one.</strong> There is only ever one attendance record per student per
+        lesson per date, so the current record is the current answer and there
+        is no history of superseded versions to accumulate.
+      </li>
+      <li>
+        <strong>Messages and notifications are removed with the account.</strong>
+        Unlike marks, submissions and attendance - which are records of
+        something that happened, and which prevent an account being deleted at
+        all - correspondence and alerts describe a live relationship. When an
+        account is removed, its notifications and its conversations are deleted
+        with it, including the other party's copy of those conversations. The
+        audit log is what carries the administrative trail past that point.
       </li>
       <li>
         <strong>The audit log is append-only.</strong> Entries are never
@@ -197,7 +319,9 @@
       the personal information held about you, to have inaccurate information
       corrected, or to object to how it is used. Corrections to a name, a
       national identity number, a date of birth or contact details can usually
-      be made directly by a school administrator.
+      be made directly by a school administrator; a wrong attendance mark is
+      corrected by the teacher who takes that lesson's register, and a wrong
+      mark by the teacher who recorded it.
     </p>
 
     <h3>9. Contact</h3>

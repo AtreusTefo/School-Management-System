@@ -9,6 +9,8 @@ import { ConfirmService } from './confirm.service';
 import { FieldErrorComponent } from './field-error.component';
 import { HomeComponent } from './home.component';
 import { ThemeService } from './theme.service';
+import { NotificationFeedService } from './notification-feed.service';
+import { MessagingService } from './messaging.service';
 import { PasswordStrengthValidatorDirective } from './password-strength-validator.directive';
 import { isPublicPath } from './app.routes';
 import { PASSWORD_MIN_LENGTH, USERNAME_MAX_LENGTH } from './validation';
@@ -142,13 +144,26 @@ export class AppComponent implements OnInit {
     public notifications: NotificationService,
     public confirmDialog: ConfirmService,
     public theme: ThemeService,
+    public feed: NotificationFeedService,
+    public messaging: MessagingService,
     private router: Router
   ) {
     this.isPublicPage = isPublicPath(this.router.url);
+
   }
 
   ngOnInit(): void {
-    this.session.init().subscribe();
+    /*
+     * The badges are refreshed HERE as well as on navigation, because a hard
+     * reload while already signed in resolves init() AFTER the first
+     * NavigationEnd has come and gone - so the navigation hook alone asks for
+     * the counts while the session is still unknown, gets nothing, and never
+     * asks again.
+     */
+    this.session.init().subscribe({
+      next: () => this.refreshBadges(),
+      error: () => { /* SessionService reports its own failure */ }
+    });
 
     /*
      * Once a navigation has SETTLED, the router itself is the authority on
@@ -169,7 +184,49 @@ export class AppComponent implements OnInit {
         this.isPublicPage = this.readPublicFlagFromRoute();
         // A panel left open would cover the page it just opened.
         this.closeMenus();
+        this.refreshBadges();
       });
+  }
+
+  /**
+   * Re-read the two unread counts after every settled navigation.
+   *
+   * ON NAVIGATION RATHER THAN ON A TIMER, deliberately. A poll would put a
+   * request on the wire every few seconds for every signed-in browser, for a
+   * number that only changes when somebody else acts - and this app has no
+   * push channel to do better. Refreshing when the user moves means the badge
+   * is right whenever they are actually looking at it, which is the only time
+   * it matters, at no cost while they sit still.
+   *
+   * Skipped entirely while signed out or while a password change is pending:
+   * both endpoints would answer 401, and an error banner reading "could not
+   * count notifications" on the sign-in screen would be noise about something
+   * the visitor cannot act on.
+   *
+   * The errors are swallowed rather than shown for the same reason - a badge
+   * that fails to load is not worth interrupting anybody over, and the page
+   * itself reports properly if its own request fails. This is the one place in
+   * this app where an empty error callback is right, so it says why rather
+   * than looking like the missing handler CLAUDE.md forbids.
+   */
+  private refreshBadges(): void {
+    if (!this.session.user() || this.mustChangePassword) {
+      this.feed.reset();
+      this.messaging.reset();
+      return;
+    }
+    this.feed.refreshUnread().subscribe({ error: () => { /* badge only */ } });
+    this.messaging.refreshUnread().subscribe({ error: () => { /* badge only */ } });
+  }
+
+  /** The number on the bell. */
+  get unreadNotifications(): number {
+    return this.feed.unread();
+  }
+
+  /** The number on the envelope. */
+  get unreadMessages(): number {
+    return this.messaging.unread();
   }
 
   /** The deepest activated route's `public` flag - see ngOnInit. */
@@ -269,6 +326,15 @@ export class AppComponent implements OnInit {
         this.loginPassword = '';
         this.loginError = null;
         this.passwordNotice = null;
+        /*
+         * Explicitly, rather than relying on the navigation below to trigger
+         * it. Signing in while already ON '/' navigates to '/' - the same URL -
+         * and the Router emits no NavigationEnd for that, so the badges stayed
+         * empty until the user happened to click something. Found in a browser;
+         * no unit test would have shown it, because the gap is in the Router's
+         * behaviour rather than in anything this component computes.
+         */
+        this.refreshBadges();
         // One shared form for every role - the server, not the form, decided
         // who just signed in. Where they land follows from that: an admin
         // has no use for the teacher/student dashboard, and vice versa.
@@ -297,6 +363,10 @@ export class AppComponent implements OnInit {
     this.session.logout().subscribe({
       next: () => {
         this.notifications.clear();
+        // Otherwise the next person to sign in on this browser briefly sees
+        // the previous account's unread count.
+        this.feed.reset();
+        this.messaging.reset();
         this.showPasswordForm = false;
         this.passwordNotice = null;
         this.resetPasswordFields();

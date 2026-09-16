@@ -9,6 +9,7 @@ import com.example.tracker.model.Attendance;
 import com.example.tracker.model.AttendanceStatus;
 import com.example.tracker.model.AuditAction;
 import com.example.tracker.model.Enrolment;
+import com.example.tracker.model.NotificationType;
 import com.example.tracker.model.PersonProfile;
 import com.example.tracker.model.Role;
 import com.example.tracker.model.TimetableSlot;
@@ -62,19 +63,22 @@ public class AttendanceService {
     private final PersonProfileRepository profiles;
     private final AppUserService users;
     private final AuditLogService audit;
+    private final NotificationService notifications;
 
     public AttendanceService(AttendanceRepository attendance,
                              TimetableSlotRepository slots,
                              EnrolmentRepository enrolments,
                              PersonProfileRepository profiles,
                              AppUserService users,
-                             AuditLogService audit) {
+                             AuditLogService audit,
+                             NotificationService notifications) {
         this.attendance = attendance;
         this.slots = slots;
         this.enrolments = enrolments;
         this.profiles = profiles;
         this.users = users;
         this.audit = audit;
+        this.notifications = notifications;
     }
 
     // ===== reading ===========================================================
@@ -170,6 +174,11 @@ public class AttendanceService {
             throw new IllegalArgumentException("A register needs at least one student.");
         }
 
+        // Collected as the register is written and notified after it, because a
+        // brand-new row has no id until it is saved and the id is what the
+        // notification is keyed on.
+        List<Attendance> absences = new ArrayList<>();
+
         // Everyone enrolled in the class this lesson is taught to. A mark for
         // anyone else is refused rather than silently ignored: quietly dropping
         // it would leave the caller believing it was recorded.
@@ -193,14 +202,17 @@ public class AttendanceService {
 
             Attendance existing = attendance
                     .findBySlotAndStudentAndLessonDate(slot, student, date).orElse(null);
+            Attendance row;
             if (existing == null) {
-                saved.add(AttendanceView.withName(
-                        attendance.save(new Attendance(
-                                slot, student, date, status, mark.note(), me)),
-                        nameOf(student)));
+                row = attendance.save(new Attendance(
+                        slot, student, date, status, mark.note(), me));
             } else {
                 existing.amend(status, mark.note(), me);
-                saved.add(AttendanceView.withName(existing, nameOf(student)));
+                row = existing;
+            }
+            saved.add(AttendanceView.withName(row, nameOf(student)));
+            if (status == AttendanceStatus.ABSENT) {
+                absences.add(row);
             }
         }
 
@@ -208,6 +220,36 @@ public class AttendanceService {
                 "Took the register for " + slot.getCourse().getSubject().getName()
                         + " (" + slot.getSchoolClass().getName() + ") on " + date
                         + " - " + saved.size() + " students.");
+
+        /*
+         * TELL EACH ABSENT STUDENT, in this same transaction - a register that
+         * rolls back must not leave somebody notified of an absence that was
+         * never recorded.
+         *
+         * Keyed on the attendance ROW, so one notification per student per
+         * lesson per date - which is exactly the grain
+         * uq_attendance_slot_student_date already enforces on the register
+         * itself. Taking the register twice is a correction there and is a
+         * no-op here, so a teacher fixing a note does not notify the class
+         * again.
+         *
+         * A CONSEQUENCE WORTH STATING: correcting ABSENT to PRESENT afterwards
+         * does not withdraw the notification. That is deliberate and is the
+         * same reasoning as the snapshot body - the notification records what
+         * the student was told on a date, and deleting it would rewrite that.
+         * The register is the authority on what is true now, which is why the
+         * body sends them to it rather than restating the mark as a fact.
+         */
+        for (Attendance absence : absences) {
+            notifications.raise(absence.getStudent(), NotificationType.ABSENCE_RECORDED,
+                    "Marked absent from " + slot.getCourse().getSubject().getName(),
+                    "You were marked absent from "
+                            + slot.getCourse().getSubject().getName() + " ("
+                            + slot.getPeriod().getName() + ") on " + date
+                            + ". Check your attendance record if this is wrong.",
+                    "ATTENDANCE", absence.getId(),
+                    "ABSENCE:" + absence.getId());
+        }
         return saved;
     }
 

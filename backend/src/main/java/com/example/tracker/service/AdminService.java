@@ -21,6 +21,8 @@ import com.example.tracker.repository.AssignmentRepository;
 import com.example.tracker.repository.AssessmentRepository;
 import com.example.tracker.repository.CourseRepository;
 import com.example.tracker.repository.EnrolmentRepository;
+import com.example.tracker.repository.MessageRepository;
+import com.example.tracker.repository.NotificationRepository;
 import com.example.tracker.repository.PersonProfileRepository;
 import com.example.tracker.repository.SchoolClassRepository;
 import com.example.tracker.repository.SubjectRepository;
@@ -107,6 +109,8 @@ public class AdminService {
     private final AssessmentRepository assessments;
     private final AttendanceRepository attendance;
     private final PasswordResetTokenRepository resetTokens;
+    private final NotificationRepository notifications;
+    private final MessageRepository messages;
     private final PasswordEncoder encoder;
     private final AppUserService currentUser;
     private final AuditLogService audit;
@@ -122,12 +126,16 @@ public class AdminService {
                         AssessmentRepository assessments,
                         AttendanceRepository attendance,
                         PasswordResetTokenRepository resetTokens,
+                        NotificationRepository notifications,
+                        MessageRepository messages,
                         PasswordEncoder encoder,
                         AppUserService currentUser, AuditLogService audit,
                         IdGeneratorService ids, ImportRowReader importRowReader,
                         @NonNull PlatformTransactionManager transactionManager) {
         this.attendance = attendance;
         this.resetTokens = resetTokens;
+        this.notifications = notifications;
+        this.messages = messages;
         this.users = users;
         this.profiles = profiles;
         this.courses = courses;
@@ -492,6 +500,31 @@ public class AdminService {
          * without its account, and fk_password_reset_token_user does not
          * cascade, so leaving one behind would simply make the delete fail.
          */
+        /*
+         * Notifications and correspondence go with the account.
+         *
+         * This is the "arrangement, not an event" side of the distinction this
+         * method's own header draws. A mark, a submission and a register are
+         * records of something that HAPPENED and block the delete; an unread
+         * alert and a private conversation describe a live relationship that is
+         * ending. The audit log is what carries the administrative trail past
+         * this point, which is precisely why it stores a snapshot rather than a
+         * reference (see V7).
+         *
+         * Messages are cleared in BOTH directions, because a message has two
+         * ends and fk_message_sender does not cascade any more than
+         * fk_message_recipient does - leaving the other half would strand a
+         * conversation pointing at an account that no longer exists, and would
+         * simply make this delete fail.
+         *
+         * Worth being explicit that this DOES remove the other party's copy of
+         * the conversation. That is the deliberate choice: correspondence with
+         * somebody the school has removed is not a school record, and keeping
+         * half a conversation readable while its author cannot be identified is
+         * worse than keeping none of it.
+         */
+        notifications.deleteByRecipient(teacher);
+        messages.deleteAllInvolving(teacher);
         resetTokens.deleteByAppUser(teacher);
         profiles.findByAppUser(teacher).ifPresent(profiles::delete);
 
@@ -631,6 +664,31 @@ public class AdminService {
          * without its account, and fk_password_reset_token_user does not
          * cascade, so leaving one behind would simply make the delete fail.
          */
+        /*
+         * Notifications and correspondence go with the account.
+         *
+         * This is the "arrangement, not an event" side of the distinction this
+         * method's own header draws. A mark, a submission and a register are
+         * records of something that HAPPENED and block the delete; an unread
+         * alert and a private conversation describe a live relationship that is
+         * ending. The audit log is what carries the administrative trail past
+         * this point, which is precisely why it stores a snapshot rather than a
+         * reference (see V7).
+         *
+         * Messages are cleared in BOTH directions, because a message has two
+         * ends and fk_message_sender does not cascade any more than
+         * fk_message_recipient does - leaving the other half would strand a
+         * conversation pointing at an account that no longer exists, and would
+         * simply make this delete fail.
+         *
+         * Worth being explicit that this DOES remove the other party's copy of
+         * the conversation. That is the deliberate choice: correspondence with
+         * somebody the school has removed is not a school record, and keeping
+         * half a conversation readable while its author cannot be identified is
+         * worse than keeping none of it.
+         */
+        notifications.deleteByRecipient(student);
+        messages.deleteAllInvolving(student);
         resetTokens.deleteByAppUser(student);
         profiles.findByAppUser(student).ifPresent(profiles::delete);
 

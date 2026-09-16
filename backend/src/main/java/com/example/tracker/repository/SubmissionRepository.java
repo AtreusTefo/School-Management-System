@@ -6,9 +6,11 @@ import com.example.tracker.model.AssignmentStatus;
 import com.example.tracker.model.Submission;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -70,4 +72,25 @@ public interface SubmissionRepository extends JpaRepository<Submission, Long> {
             ORDER BY s.id ASC
             """)
     List<Submission> findForTeacher(AppUser teacher);
+
+    /**
+     * Work that is due soon and has NOT been handed in - the query behind the
+     * due-date reminder.
+     *
+     * Status is checked here rather than in Java so the job never loads the
+     * submissions it has nothing to say about, which on a full school is the
+     * overwhelming majority of them. The date window is passed in rather than
+     * computed here: a repository that knows what "soon" means is a repository
+     * holding a business rule, and how much notice a student gets is
+     * DueDateReminderJob's decision, not this interface's.
+     */
+    @Query("""
+            SELECT s FROM Submission s
+            WHERE s.status = com.example.tracker.model.AssignmentStatus.IN_PROGRESS
+              AND s.assignment.dueDate BETWEEN :from AND :to
+            ORDER BY s.assignment.dueDate ASC, s.id ASC
+            """)
+    @NonNull
+    List<Submission> findDueBetweenAndNotHandedIn(@Param("from") LocalDate from,
+                                                  @Param("to") LocalDate to);
 }

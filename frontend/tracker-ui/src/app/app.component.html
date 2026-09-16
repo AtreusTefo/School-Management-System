@@ -79,8 +79,13 @@
         <a routerLink="/attendance" routerLinkActive="nav__link--active" class="nav__link">
           Attendance
         </a>
+        <!-- "Marks" rather than "Performance & marks": this one label was
+             ~110px of the horizontal bar, and it was the difference between a
+             teacher's nav fitting beside the two new icons and running
+             underneath them. The hamburger panel and the dashboard quick-link
+             both keep the fuller wording, because neither is short of room. -->
         <a routerLink="/reports" routerLinkActive="nav__link--active" class="nav__link">
-          Performance &amp; marks
+          Marks
         </a>
       </nav>
 
@@ -99,6 +104,51 @@
            were crowding out. Collapsing them is what makes a single-row nav
            possible on a laptop rather than only on a wide desktop. -->
       <div class="appbar__end">
+
+        <!-- ===== MESSAGES AND NOTIFICATIONS =====
+             ICONS, NOT NAV LINKS, deliberately. The main nav was already
+             overcrowded enough to wrap onto a second row on a laptop, and two
+             more worded links would have put it straight back there. Both of
+             these are also personal rather than navigational - they are about
+             YOU, like the avatar menu beside them - so the right-hand end is
+             where they belong.
+
+             Both are hidden while a password change is pending, for the same
+             reason the nav is: that screen must be finished before anything
+             else is reachable. -->
+        <a *ngIf="user && !mustChangePassword" routerLink="/messages"
+           class="btn btn--ghost btn--icon appbar__badgeable"
+           routerLinkActive="nav__link--active"
+           [attr.aria-label]="unreadMessages > 0
+              ? unreadMessages + ' unread messages' : 'Messages'"
+           [attr.title]="'Messages'">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2" stroke-linecap="round"
+               stroke-linejoin="round" aria-hidden="true">
+            <rect x="2" y="4" width="20" height="16" rx="2" />
+            <path d="m2 7 10 6 10-6" />
+          </svg>
+          <span class="appbar__badge" *ngIf="unreadMessages > 0">
+            {{ unreadMessages > 9 ? '9+' : unreadMessages }}
+          </span>
+        </a>
+
+        <a *ngIf="user && !mustChangePassword" routerLink="/notifications"
+           class="btn btn--ghost btn--icon appbar__badgeable"
+           routerLinkActive="nav__link--active"
+           [attr.aria-label]="unreadNotifications > 0
+              ? unreadNotifications + ' unread notifications' : 'Notifications'"
+           [attr.title]="'Notifications'">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2" stroke-linecap="round"
+               stroke-linejoin="round" aria-hidden="true">
+            <path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+            <path d="M13.7 21a2 2 0 0 1-3.4 0" />
+          </svg>
+          <span class="appbar__badge" *ngIf="unreadNotifications > 0">
+            {{ unreadNotifications > 9 ? '9+' : unreadNotifications }}
+          </span>
+        </a>
 
         <button type="button" class="btn btn--ghost btn--icon"
                 (click)="toggleTheme()"

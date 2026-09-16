@@ -17,12 +17,26 @@ import { RouterLink } from '@angular/router';
  * ------------------------
  * Only what the code actually does. CLAUDE.md's Scope Guard exists because
  * this repository is named "School Management System" while the delivered
- * system is one slice of that idea - assignment tracking with PDF hand-in,
- * marks, and the admin onboarding around them. There is no attendance, no
- * terms, no timetable PERIODS, and no notifications, so nothing on this page
- * mentions any of them. A landing page that oversells is the same defect as
- * a document describing features the code does not have, with a wider
+ * system is a defined part of that idea - assignment tracking with PDF
+ * hand-in, marks, a timetable, an attendance register, and the admin
+ * onboarding around them. A landing page that oversells is the same defect
+ * as a document describing features the code does not have, with a wider
  * audience.
+ *
+ * THIS PAGE HAS BEEN WRONG BEFORE, WHICH IS THE POINT OF THIS NOTE.
+ * It used to state that there was no attendance register and no term or
+ * period timetable. That was true when written and became false when V11 and
+ * V14 shipped, and the page went on saying it - a marketing page UNDER-selling
+ * is a smaller problem than one overselling, but it is the same defect: a
+ * claim about the system that nothing keeps in step with the system. If you
+ * add or remove a capability, this file and about.component.ts are part of
+ * that change, not follow-up work.
+ *
+ * Messaging and notifications were the last things this page denied, and they
+ * shipped too. What remains genuinely absent, and is still said plainly below:
+ * anything that leaves the building. There is no email, no SMS and no push -
+ * a notification arrives on a page in this app and nowhere else, and the only
+ * mail the system ever sends is a password reset link somebody asked for.
  */
 @Component({
   selector: 'app-home',
@@ -68,10 +82,39 @@ export class HomeComponent {
           + 'are reading the same records rather than two lists that disagree.'
     },
     {
+      title: 'A timetable that says when',
+      body: 'Terms, the shape of the school day, and which lesson sits in which '
+          + 'period. A class cannot be booked into two lessons at once and a '
+          + 'teacher cannot be in two rooms at once - both are refused by the '
+          + 'database, not merely discouraged by the screen.'
+    },
+    {
+      title: 'A register taken per lesson',
+      body: 'Attendance is recorded against a lesson on a date, not once a day, '
+          + 'so a student present at first period and absent at fourth is '
+          + 'recorded as exactly that. Taking a register again corrects the '
+          + 'first one instead of quietly creating a second.'
+    },
+    {
       title: 'Accounts an administrator controls',
       body: 'Only an admin onboards a student, a teacher or another admin - one '
           + 'at a time, or in bulk from a spreadsheet. Each account is issued a '
-          + 'sign-in ID rather than choosing a username.'
+          + 'sign-in ID rather than choosing a username, and anyone who forgets '
+          + 'their password can reset it by email without waiting for staff.'
+    },
+    {
+      title: 'Messages that stay inside the school',
+      body: 'Students can write to the teachers who actually teach them and to '
+          + 'the office, teachers to their own students and to each other. '
+          + 'Student-to-student messaging is refused outright rather than '
+          + 'merely hidden - a school is not a social network.'
+    },
+    {
+      title: 'Told once, and only once',
+      body: 'A new mark, an absence, a due date coming up. Each notice is tied '
+          + 'to the event that caused it, so correcting a register or running '
+          + 'the reminder again cannot produce a second copy of the same '
+          + 'message - the database refuses it rather than the code remembering.'
     },
     {
       title: 'A record of what changed',
@@ -85,18 +128,21 @@ export class HomeComponent {
   readonly roles = [
     {
       name: 'Teachers',
-      body: 'Set work for the classes you teach, see who has handed in, mark what '
-          + 'arrives, and export performance to Excel.'
+      body: 'Read your own week, take the register for your lessons, set work for '
+          + 'the classes you teach, see who has handed in, mark what arrives, '
+          + 'message your students and colleagues, and export performance to Excel.'
     },
     {
       name: 'Students',
-      body: 'See every piece of work set for you, hand it in as a PDF, and read '
-          + 'your own marks and performance.'
+      body: 'See your timetable and every piece of work set for you, hand it in as '
+          + 'a PDF, read your own marks, performance and attendance, and message '
+          + 'the teachers who teach you.'
     },
     {
       name: 'Administrators',
-      body: 'Onboard accounts, maintain subjects, classes and courses, and review '
-          + 'the audit log.'
+      body: 'Onboard accounts, maintain subjects, classes and courses, set the '
+          + 'terms and periods the timetable is built from, see what any teacher '
+          + 'teaches and whom, and review the audit log.'
     }
   ];
 
@@ -105,7 +151,8 @@ export class HomeComponent {
     {
       title: 'An admin sets up the school',
       body: 'Subjects, classes, and which teacher teaches which subject to which '
-          + 'class. Students are enrolled into a class.'
+          + 'class. Students are enrolled into a class, and the terms and periods '
+          + 'that decide when each lesson happens are set once.'
     },
     {
       title: 'A teacher sets work',

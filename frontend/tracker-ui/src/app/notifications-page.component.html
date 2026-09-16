@@ -1,0 +1,76 @@
+<!-- '/notifications' - everything the system has told you.
+     No delete: see the component for why a notification is not the caller's
+     to remove. -->
+
+<div class="card">
+  <div class="card__header">
+    <div class="card__title">
+      <h2>Notifications</h2>
+      <span class="badge" [class.badge--progress]="unreadCount > 0"
+            [class.badge--neutral]="unreadCount === 0">
+        {{ unreadCount }} unread
+      </span>
+    </div>
+
+    <div class="card__actions">
+      <button type="button" class="btn btn--ghost btn--sm" (click)="toggleFilter()">
+        {{ showUnreadOnly ? 'Show all' : 'Unread only' }}
+      </button>
+      <button type="button" class="btn btn--sm" (click)="markAllRead()"
+              [disabled]="unreadCount === 0">
+        Mark all read
+      </button>
+    </div>
+  </div>
+
+  <p class="card__note">
+    Raised by the system when a mark is posted, when you are marked absent, and
+    when work is due soon. This app sends no email and no text messages - this
+    page is where they arrive.
+  </p>
+
+  <div *ngIf="loading" class="loading">
+    <span class="spinner" aria-hidden="true"></span>
+    <span>Loading your notifications...</span>
+  </div>
+
+  <div *ngIf="!loading && notifications.length === 0" class="empty">
+    <div class="empty__title">
+      {{ showUnreadOnly ? 'Nothing unread' : 'Nothing yet' }}
+    </div>
+    <p class="empty__text">
+      {{ showUnreadOnly
+          ? 'You have read everything.'
+          : 'You will be told here when a mark is posted, when a due date is close, or when a register marks you absent.' }}
+    </p>
+  </div>
+
+  <ul class="notification-list" *ngIf="!loading && notifications.length > 0">
+    <li class="notification" *ngFor="let n of notifications"
+        [class.notification--unread]="!n.read">
+
+      <span class="notification__dot" aria-hidden="true"
+            [class.notification__dot--on]="!n.read"></span>
+
+      <div class="notification__main">
+        <div class="notification__head">
+          <span class="badge badge--neutral">{{ kindLabel(n) }}</span>
+          <span class="notification__title">{{ n.title }}</span>
+          <span class="notification__when">{{ n.createdAt | date:'d MMM y, HH:mm' }}</span>
+        </div>
+
+        <p class="notification__body">{{ n.body }}</p>
+
+        <div class="notification__actions">
+          <!-- Only rendered when there is somewhere real to go. A subject the
+               server no longer has simply yields no link - see linkFor(). -->
+          <a *ngIf="linkFor(n) as target" [routerLink]="target"
+             class="btn btn--ghost btn--sm" (click)="markRead(n)">Open</a>
+          <button *ngIf="!n.read" type="button" class="btn btn--ghost btn--sm"
+                  (click)="markRead(n)">Mark read</button>
+          <span *ngIf="n.read" class="notification__read">Read</span>
+        </div>
+      </div>
+    </li>
+  </ul>
+</div>

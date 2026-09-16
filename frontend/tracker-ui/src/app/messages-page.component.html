@@ -1,0 +1,138 @@
+<!-- '/messages' - conversations on the left, the selected one on the right.
+     Who appears in the compose list is the SERVER's answer; this page never
+     filters it further. See the component. -->
+
+<div class="card">
+  <div class="card__header">
+    <div class="card__title">
+      <h2>Messages</h2>
+      <span class="badge" [class.badge--progress]="totalUnread > 0"
+            [class.badge--neutral]="totalUnread === 0">
+        {{ totalUnread }} unread
+      </span>
+    </div>
+    <div class="card__actions">
+      <button type="button" class="btn btn--sm" (click)="startCompose()">New message</button>
+    </div>
+  </div>
+
+  <p class="card__note">
+    Students can message the teachers who teach them and any administrator;
+    teachers can message their own students, other teachers and administrators.
+    Nothing here is emailed - a message arrives on this page.
+  </p>
+
+  <div *ngIf="loading" class="loading">
+    <span class="spinner" aria-hidden="true"></span>
+    <span>Loading your messages...</span>
+  </div>
+
+  <div class="messaging" *ngIf="!loading">
+
+    <!-- ===== LEFT: WHO ===== -->
+    <aside class="messaging__list" aria-label="Conversations">
+
+      <div *ngIf="conversations.length === 0 && !composing" class="empty empty--inline">
+        <div class="empty__title">No conversations yet</div>
+        <p class="empty__text">Use "New message" to start one.</p>
+      </div>
+
+      <button type="button" class="convo" *ngFor="let c of conversations"
+              [class.convo--active]="selectedId === c.personId"
+              (click)="select(c.personId, c.fullName || c.username)">
+        <span class="convo__top">
+          <span class="convo__name">{{ c.fullName || c.username }}</span>
+          <span class="badge badge--progress convo__unread" *ngIf="c.unread > 0">
+            {{ c.unread }}
+          </span>
+        </span>
+        <span class="convo__meta">
+          <span class="badge badge--role">{{ c.role }}</span>
+          <span class="convo__when">{{ c.lastMessageAt | date:'d MMM, HH:mm' }}</span>
+        </span>
+        <span class="convo__preview">{{ c.lastMessage }}</span>
+      </button>
+    </aside>
+
+    <!-- ===== RIGHT: THE CONVERSATION, OR THE COMPOSE LIST ===== -->
+    <section class="messaging__thread" aria-live="polite">
+
+      <!-- Choosing somebody to write to. Selecting one simply opens the
+           conversation with them, existing or empty - there is no separate
+           compose screen to keep in step with this one. -->
+      <div *ngIf="composing">
+        <h3 class="thread__title">Who would you like to message?</h3>
+
+        <div *ngIf="correspondents.length === 0" class="empty empty--inline">
+          <div class="empty__title">Nobody to message yet</div>
+          <p class="empty__text">
+            You are not linked to any staff or students yet. An administrator
+            sets that up under Timetable.
+          </p>
+        </div>
+
+        <ul class="recipient-list" *ngIf="correspondents.length > 0">
+          <li *ngFor="let p of correspondents">
+            <button type="button" class="recipient" (click)="chooseRecipient(p)">
+              <span class="recipient__name">{{ p.fullName || p.username }}</span>
+              <span class="badge badge--role">{{ p.role }}</span>
+              <span class="recipient__context">{{ p.context }}</span>
+            </button>
+          </li>
+        </ul>
+      </div>
+
+      <!-- Nothing picked yet. -->
+      <div *ngIf="!composing && selectedId === null" class="empty empty--inline">
+        <div class="empty__title">Pick a conversation</div>
+        <p class="empty__text">Choose somebody on the left, or start a new message.</p>
+      </div>
+
+      <!-- The conversation itself. -->
+      <ng-container *ngIf="!composing && selectedId !== null">
+        <h3 class="thread__title">{{ selectedName }}</h3>
+
+        <div *ngIf="loadingThread" class="loading">
+          <span class="spinner" aria-hidden="true"></span>
+          <span>Loading...</span>
+        </div>
+
+        <div *ngIf="!loadingThread && thread.length === 0" class="empty empty--inline">
+          <div class="empty__title">No messages yet</div>
+          <p class="empty__text">Write the first one below.</p>
+        </div>
+
+        <ol class="bubbles" *ngIf="!loadingThread && thread.length > 0">
+          <li *ngFor="let m of thread" class="bubble"
+              [class.bubble--mine]="isMine(m)">
+            <div class="bubble__body">{{ m.body }}</div>
+            <div class="bubble__meta">
+              <span>{{ isMine(m) ? 'You' : m.senderUsername }}</span>
+              <span>{{ m.sentAt | date:'d MMM y, HH:mm' }}</span>
+            </div>
+          </li>
+        </ol>
+
+        <form class="composer" (ngSubmit)="send()" #messageForm="ngForm">
+          <label class="sr-only" for="messageBody">Message</label>
+          <textarea id="messageBody" name="body" rows="3" class="input composer__input"
+                    [(ngModel)]="draft" #bodyModel="ngModel"
+                    required [maxlength]="bodyMaxLength"
+                    placeholder="Write a message..."></textarea>
+          <app-field-error [control]="bodyModel" label="Message"></app-field-error>
+
+          <div class="composer__actions">
+            <span class="composer__count">
+              {{ draft.length }} / {{ bodyMaxLength }}
+            </span>
+            <button type="submit" class="btn btn--primary btn--sm"
+                    [disabled]="sending || !draft.trim()">
+              {{ sending ? 'Sending...' : 'Send' }}
+            </button>
+          </div>
+        </form>
+      </ng-container>
+
+    </section>
+  </div>
+</div>

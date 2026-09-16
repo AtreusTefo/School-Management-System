@@ -20,9 +20,10 @@
       </p>
 
       <p class="hero__lead">
-        The answer here is deliberately narrow. One shared list of assignments
-        and their submission state, held to rules the database itself
-        enforces, rather than a broad system that tracks everything loosely.
+        The answer here is deliberately bounded. A timetable, a register, and
+        one shared list of assignments with their submission state and marks -
+        each held to rules the database itself enforces, rather than a broad
+        system that tracks everything loosely.
       </p>
     </div>
 
@@ -54,10 +55,29 @@
         performance levels that are calculated fresh every time they are read.
       </p>
       <p>
-        Around that sits the administration it needs to be usable: an
-        administrator onboards accounts, maintains the subjects, classes and
-        courses that define who is taught what by whom, and can review an
-        audit log of every change the system has made.
+        Around that sits the school week itself. An administrator defines the
+        terms and the periods a day is divided into, and places each course in
+        a period on a weekday - so "timetable" here means both who teaches what
+        to whom and when it happens. Attendance is then taken against a lesson
+        on a date rather than once a day, which is the only way to record a
+        student who was present at first period and missing by fourth.
+      </p>
+      <p>
+        People can also write to each other, within limits the system enforces
+        rather than merely suggests: a student may message the teachers who
+        actually teach them and the office, and nobody else. Alongside that,
+        the system raises a notice of its own when a mark is posted, when a
+        register marks somebody absent, and when work is nearly due - each one
+        tied to the event that caused it, so the same thing cannot be announced
+        twice.
+      </p>
+      <p>
+        The administration it needs to be usable sits around that in turn: an
+        administrator onboards accounts one at a time or in bulk, maintains the
+        subjects, classes and courses that define who is taught what by whom,
+        can see from either end what a teacher teaches and which teachers reach
+        a given student, and can review an audit log of every change the system
+        has made.
       </p>
     </div>
   </section>
@@ -111,16 +131,24 @@
     </div>
   </section>
 
-  <!-- ===== SCOPE ===== -->
+  <!-- ===== SCOPE =====
+       This callout named attendance and the term/period timetable as things
+       the system did not have, and went on saying so after both were built.
+       Anything listed here must be genuinely absent on the day it is read;
+       see the same note on home.component.ts. -->
   <section class="section" aria-labelledby="scopeAboutTitle">
     <div class="callout">
       <h3 id="scopeAboutTitle" class="callout__title">Deliberate limits</h3>
       <p class="callout__body">
-        This system tracks assignments and the marks attached to them. It has
-        no attendance register, no term or period timetable, and no messaging.
-        Those are real needs, and they are not what this was built for -
-        pretending otherwise would only move the confusion somewhere less
-        visible.
+        This system covers teaching, work, marks, attendance, messaging and
+        notices. What it deliberately does not do is leave the building: every
+        message and every notification arrives on a page inside this app, and
+        there is no email, no SMS and no push notification behind any of it.
+        Nobody is texted when a child is marked absent. It holds no fees, no
+        library, no behaviour records, and produces no school report beyond the
+        marks it was given. Those are real needs, and they are not what this
+        was built for; pretending otherwise would only move the confusion
+        somewhere less visible.
       </p>
     </div>
   </section>
