@@ -156,7 +156,12 @@ School Management System/
 │       │                   #   EnvironmentPostProcessor registered in
 │       │                   #   META-INF/spring.factories, NOT a bean: it has to run
 │       │                   #   before any @ConditionalOnProperty is evaluated, and a
-│       │                   #   BeanFactoryPostProcessor was measurably too late)
+│       │                   #   BeanFactoryPostProcessor was measurably too late),
+│       │                   #   SpaRoutes + SpaWebConfig (serve the packaged Angular
+│       │                   #   site and answer deep links with index.html - only
+│       │                   #   GET/HEAD outside /api, /actuator and the docs paths),
+│       │                   #   FirstAdminBootstrap (prod only: creates "admin" from
+│       │                   #   APP_BOOTSTRAP_ADMIN_PASSWORD while no admin exists)
 │       │   ├── security/       # AppUserDetailsService - loads accounts for Spring Security
 │       │   └── exception/      # AssignmentNotFoundException, ResourceNotFoundException,
 │       │                       #   AccessDeniedException, GlobalExceptionHandler
@@ -335,6 +340,8 @@ School Management System/
   | `APP_CORS_ALLOWED_ORIGINS` | `https://tracker.example.com` |
   | `MAIL_HOST` | `smtp.example.com` |
   | `RESET_LINK_BASE` | `https://tracker.example.com/reset-password` |
+
+  `APP_BOOTSTRAP_ADMIN_PASSWORD` is optional and deliberately not in that list: it is read only by `FirstAdminBootstrap`, which creates the first `admin` account (forced to change its password) while no administrator exists and does nothing afterwards. Remove it once the first sign-in has happened. The whole deployment, including the jar that serves the Angular build itself, is described in `docs/guides/DEPLOYMENT_AZURE.md`.
 
   With any of them unset the application refuses to start and names all the missing ones at once - `ProductionConfigCheck` does that, and exists because Boot's `Binder` does NOT throw on an unresolved `${...}` in a `spring.datasource.*` value the way `@Value` does; it passes the literal text through, and the deployment then fails with a driver or login error pointing at the wrong thing. Verified by starting the profile both ways.
 

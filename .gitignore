@@ -12,6 +12,10 @@ node_modules/
 .angular/
 dist/
 
+# The Angular build, copied in by the deployment workflow so the jar can serve
+# the site. Built output, never source - see SpaWebConfig.
+backend/src/main/resources/static/
+
 # ---- Logs ----
 *.log
 npm-debug.log*
