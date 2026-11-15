@@ -556,3 +556,10 @@ whichever host serves it — the usual shape behind a reverse proxy that forward
 `/api` to the backend. That also means production needs no CORS permission at all;
 CORS is a development concern here, created by serving the page and the API on
 different ports.
+
+**Both halves as one jar** — the deploy workflow
+(`.github/workflows/azure-app-service.yml`) copies the Angular build into
+`backend/src/main/resources/static` before packaging, and the backend then serves
+the site itself, answering deep links with `index.html` (`SpaWebConfig`). That is
+how the live demo on Azure App Service runs; see
+[`docs/guides/DEPLOYMENT_AZURE.md`](docs/guides/DEPLOYMENT_AZURE.md).

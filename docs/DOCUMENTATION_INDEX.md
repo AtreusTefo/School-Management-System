@@ -69,6 +69,12 @@ document permitted to sit loose in `docs/`; everything else belongs in a subfold
 | [`invalid-runtime-for-javase.md`](error-fixes/invalid-runtime-for-javase.md) | The Red Hat Java extension reporting "Invalid runtime for JavaSE-nn: the path points to a missing or inaccessible folder". Root cause: `java.configuration.runtimes` in `.vscode/settings.json` listed four JDK paths belonging to the original development machine. Editor-only; the Maven build reads `JAVA_HOME` and was unaffected. |
 | [`mvnw-permission-denied-in-ci.md`](error-fixes/mvnw-permission-denied-in-ci.md) | GitHub Actions failing with "./mvnw: Permission denied" and exit code 126. Root cause: `backend/mvnw` was committed as mode 100644 because Windows sets `core.filemode=false`, so the wrapper had never been executable on a Unix filesystem. Fixed in the repository with `git update-index --chmod=+x`, not with a `chmod` step in CI. |
 
+### guides/
+
+| Document | Contents |
+|----------|----------|
+| [`DEPLOYMENT_AZURE.md`](guides/DEPLOYMENT_AZURE.md) | Putting the application online as one Azure App Service (Linux, Java 25, free F1) with an Azure SQL free-offer database: the App settings the `prod` profile needs, the deploy workflow, and signing in for the first time through `FirstAdminBootstrap`. |
+
 ---
 
 ## Folder taxonomy
@@ -83,7 +89,7 @@ Where a new document belongs. Do not leave files loose in `docs/`.
 | `memory/` | Session-handoff snapshots: implementation state and operational knowledge, kept current rather than dated | In use |
 | `error-fixes/` | Bug fixes and error resolutions, one file per issue | Empty, reserved |
 | `implementation/` | Implementation guides, code summaries, completion reports | Not yet created |
-| `guides/` | Quick start, testing, how-to | Not yet created |
+| `guides/` | Quick start, testing, how-to | In use |
 
 `CLAUDE.md` and `README.md` stay at the repository root by design and must not be
 moved into `docs/`. Documentation previously lived under `backend/docs/` and was

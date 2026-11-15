@@ -174,6 +174,18 @@ public class SecurityConfig {
                      * serving without describing what it is connected to.
                      */
                     auth.requestMatchers("/actuator/health").permitAll();
+                    /*
+                     * The Angular site itself, when it is packaged into the jar.
+                     *
+                     * Downloading the page bundle must work signed out - it is
+                     * where the login form lives. SpaRoutes decides what counts
+                     * as the site: GET or HEAD, and NOT under /api, /actuator,
+                     * the springdoc paths or /error. Every API route therefore
+                     * still falls through to anyRequest().authenticated() below,
+                     * exactly as before. See SpaRoutes for why the rule is
+                     * written as exclusions rather than as a list of pages.
+                     */
+                    auth.requestMatchers(SpaRoutes::isSiteRequest).permitAll();
                     // Everything else needs an account.
                     auth.anyRequest().authenticated();
             })
